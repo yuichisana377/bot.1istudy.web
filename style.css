@@ -1,0 +1,91 @@
+body {
+  font-family: sans-serif;
+  background: #f2f2f2;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 15px;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* 入力欄カード */
+.input-card {
+  background: #fff;
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  display: flex;
+  gap: 10px;
+}
+
+.input-card input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+}
+
+.input-card button {
+  padding: 10px 15px;
+  border: none;
+  background: #4dabf7;
+  color: white;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+/* カード全体 */
+.card {
+  background: #fff;
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* 日付 */
+.card-date {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+/* タスク共通 */
+.task {
+  background: #f7f7f7;
+  padding: 10px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.4;
+  border-left: 4px solid #ccc;
+}
+
+/* 提出・宿題 → 淡い黄色 */
+.task.submit,
+.task.homework {
+  background: #fff7cc;
+  border-left: 4px solid #ffd43b;
+}
+
+/* 持ち物 → 淡い緑 */
+.task.item {
+  background: #e8ffe8;
+  border-left: 4px solid #51cf66;
+}
+
+/* テスト → 淡い赤 */
+.task.test {
+  background: #ffe0e0;
+  border-left: 4px solid #ff6b6b;
+}
