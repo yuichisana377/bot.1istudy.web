@@ -23,25 +23,24 @@ body {
   color: #333;
 }
 
-/* サイドバー（最初は隠す） */
+/* サイドバー（初期状態は完全に隠す） */
 .sidebar {
-  width: 200px;
+  width: 220px;
   background: #222;
   color: white;
   padding: 20px;
   height: 100vh;
   position: fixed;
   top: 0;
-  left: -220px;   /* ← 初期状態は完全に隠す */
+  left: -240px;   /* ← 初期状態は画面外 */
   transition: left 0.3s ease;
   z-index: 999;
 }
 
-/* 表示状態 */
+/* 開いたときだけ表示 */
 .sidebar.open {
-  left: 0;        /* ← ハンバーガーを押したら表示 */
+  left: 0;
 }
-
 
 .sidebar button {
   width: 100%;
@@ -62,6 +61,9 @@ body {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+}
+.content {
+  padding: 20px;
 }
 
 /* ★ 日付カード（白背景） */
