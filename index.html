@@ -8,17 +8,38 @@
 </head>
 <body>
 
-  <div class="container">
+  <!-- ★ ハンバーガーメニュー -->
+  <div class="hamburger" onclick="toggleSidebar()">☰</div>
 
-    <h1>課題一覧</h1>
+  <div class="layout">
 
-    <!-- ★ 最終更新時刻（上部） -->
-    <div id="lastUpdated" style="text-align:center; margin-bottom:10px; color:#666;">
-      最終更新：--
+    <!-- ★ 左側メニュー -->
+    <div class="sidebar" id="sidebar">
+      <h2>Menu</h2>
+      <button onclick="showPage('home')">Home</button>
+      <button onclick="showPage('logs')">Logs</button>
     </div>
 
-    <!-- 課題一覧 -->
-    <div id="schedule"></div>
+    <!-- ★ 右側メイン画面 -->
+    <div class="main">
+
+      <!-- Home（課題一覧） -->
+      <div id="page-home" class="page">
+        <h1>課題一覧</h1>
+
+        <!-- ★ 入力欄は削除済み -->
+
+        <div id="lastUpdated"></div>
+        <div id="schedule"></div>
+      </div>
+
+      <!-- Logs（編集履歴） -->
+      <div id="page-logs" class="page" style="display:none;">
+        <h1>編集ログ</h1>
+        <div id="logs"></div>
+      </div>
+
+    </div>
 
   </div>
 
