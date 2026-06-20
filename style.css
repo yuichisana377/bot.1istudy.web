@@ -23,7 +23,7 @@ body {
   color: #333;
 }
 
-/* サイドバー（スライド） */
+/* サイドバー（最初は隠す） */
 .sidebar {
   width: 200px;
   background: #222;
@@ -32,14 +32,16 @@ body {
   height: 100vh;
   position: fixed;
   top: 0;
-  left: -220px;
+  left: -220px;   /* ← 初期状態は完全に隠す */
   transition: left 0.3s ease;
   z-index: 999;
 }
 
+/* 表示状態 */
 .sidebar.open {
-  left: 0;
+  left: 0;        /* ← ハンバーガーを押したら表示 */
 }
+
 
 .sidebar button {
   width: 100%;
