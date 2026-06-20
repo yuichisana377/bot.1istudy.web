@@ -1,91 +1,216 @@
+/* ★ 全体の背景を灰色に */
 body {
-  font-family: sans-serif;
-  background: #f2f2f2;
+  background: #e5e5e5;
   margin: 0;
   padding: 0;
+  font-family: sans-serif;
 }
 
-.container {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 15px;
-}
-
-h1 {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-/* 入力欄カード */
-.input-card {
-  background: #fff;
-  padding: 15px;
-  margin-bottom: 15px;
-  border-radius: 12px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+/* レイアウト全体 */
+.layout {
   display: flex;
-  gap: 10px;
+  height: 100vh;
 }
 
-.input-card input {
-  flex: 1;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-  font-size: 16px;
+/* ハンバーガーボタン */
+.hamburger {
+  position: fixed;
+  top: 15px;
+  left: 15px;
+  font-size: 28px;
+  cursor: pointer;
+  z-index: 1000;
+  color: #333;
 }
 
-.input-card button {
-  padding: 10px 15px;
-  border: none;
-  background: #4dabf7;
+/* サイドバー（スライド） */
+.sidebar {
+  width: 200px;
+  background: #222;
   color: white;
-  border-radius: 8px;
-  font-size: 16px;
+  padding: 20px;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: -220px;
+  transition: left 0.3s ease;
+  z-index: 999;
 }
 
-/* カード全体 */
+.sidebar.open {
+  left: 0;
+}
+
+.sidebar button {
+  width: 100%;
+  margin: 10px 0;
+  padding: 10px;
+  background: #444;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.sidebar button:hover {
+  background: #666;
+}
+
+/* メイン画面 */
+.main {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* ★ 日付カード（白背景） */
 .card {
-  background: #fff;
-  padding: 15px;
-  margin-bottom: 15px;
-  border-radius: 12px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  background: #ffffff;       /* ← 白に変更 */
+  padding: 18px;
+  margin-bottom: 20px;
+  border-radius: 10px;
+  border-left: 8px solid #ccc;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-/* 日付 */
 .card-date {
-  font-size: 18px;
   font-weight: bold;
-  margin-bottom: 10px;
+  font-size: 17px;
+  margin-bottom: 12px;
 }
 
-/* タスク共通 */
-.task {
-  background: #f7f7f7;
+/* ★ 課題カード（カテゴリ色） */
+.task-card {
   padding: 10px;
   margin-bottom: 8px;
   border-radius: 8px;
+  background: #f7f7f7;
+  border-left: 6px solid #888;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   font-size: 15px;
+}
+
+/* カテゴリ別背景色 */
+.task-submit,
+.task-homework {
+  background: #fff7cc;      /* 黄色 */
+  border-left-color: #ffd43b;
+}
+
+.task-item {
+  background: #e8ffe8;      /* 緑 */
+  border-left-color: #51cf66;
+}
+
+.task-test {
+  background: #ffe0e0;      /* 赤 */
+  border-left-color: #ff6b6b;
+}
+
+.task-other {
+  background: #f2f2f2;      /* 灰色 */
+  border-left-color: #999;
+}
+
+/* ★ Logs のタイムライン */
+.timeline {
+  position: relative;
+  margin-left: 20px;
+  padding-left: 20px;
+  border-left: 3px solid #ccc;
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: 25px;
+  padding-left: 15px;
+}
+
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  background: #888;
+  border-radius: 50%;
+}
+
+.timeline-add::before { background: #5cb85c; }
+.timeline-edit::before { background: #0275d8; }
+.timeline-delete::before { background: #d9534f; }
+
+.timeline-text {
+  font-size: 14px;
   line-height: 1.4;
-  border-left: 4px solid #ccc;
 }
 
-/* 提出・宿題 → 淡い黄色 */
-.task.submit,
-.task.homework {
-  background: #fff7cc;
-  border-left: 4px solid #ffd43b;
-}
+/* ============================
+   📱 スマホ最適化（幅480px以下）
+   ============================ */
+@media (max-width: 480px) {
 
-/* 持ち物 → 淡い緑 */
-.task.item {
-  background: #e8ffe8;
-  border-left: 4px solid #51cf66;
-}
+  /* 全体の余白を少し広めに */
+  .main {
+    padding: 10px;
+  }
 
-/* テスト → 淡い赤 */
-.task.test {
-  background: #ffe0e0;
-  border-left: 4px solid #ff6b6b;
+  /* タイトルを少し小さく */
+  h1 {
+    font-size: 22px;
+    margin-bottom: 15px;
+  }
+
+  /* カードの余白と文字サイズ調整 */
+  .card {
+    padding: 12px;
+    margin-bottom: 15px;
+  }
+
+  .card-date {
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+
+  /* 課題カード（task-card）を押しやすく */
+  .task-card {
+    font-size: 16px;
+    padding: 10px;
+    margin: 6px 0;
+  }
+
+  /* タイムライン（Logs）も見やすく */
+  .timeline-item {
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+
+  .timeline-text {
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
+  /* ハンバーガーメニューを大きく */
+  .hamburger {
+    font-size: 28px;
+    top: 12px;
+    left: 12px;
+  }
+
+  /* サイドバーをスマホ用に最適化 */
+  .sidebar {
+    width: 70%;
+    max-width: 240px;
+  }
+
+  .sidebar button {
+    font-size: 18px;
+    padding: 12px;
+  }
+
+  /* 最終更新時刻 */
+  #lastUpdated {
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
 }
