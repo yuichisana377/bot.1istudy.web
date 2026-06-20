@@ -11,7 +11,7 @@
   <!-- ★ ハンバーガーメニュー -->
   <div class="hamburger" onclick="toggleSidebar()">☰</div>
 
-  <!-- ★ 左側メニュー（layout の外に移動） -->
+  <!-- ★ サイドバー（layout の外に置く） -->
   <div class="sidebar" id="sidebar">
     <h2>Menu</h2>
     <button onclick="showPage('home')">Home</button>
@@ -21,18 +21,14 @@
   <!-- ★ メインレイアウト（sidebar を含めない） -->
   <div class="layout">
 
-    <!-- ★ 右側メイン画面 -->
     <div class="main">
 
-      <!-- Home（課題一覧） -->
       <div id="page-home" class="page">
         <h1>課題一覧</h1>
-
         <div id="lastUpdated"></div>
         <div id="schedule"></div>
       </div>
 
-      <!-- Logs（編集履歴） -->
       <div id="page-logs" class="page" style="display:none;">
         <h1>編集ログ</h1>
         <div id="logs"></div>
@@ -44,4 +40,3 @@
 
   <script src="app.js"></script>
 </body>
-</html>
