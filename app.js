@@ -1,7 +1,25 @@
-// ★ サーバーIDを固定
-const FIXED_SERVER_ID = "1509880344806162544";
+// ★ サーバーID固定
+const SERVER_ID = "1509880344806162544";
 
-// 科目名から安定した色を生成
+// サイドバー開閉
+function toggleSidebar() {
+  document.getElementById("sidebar").classList.toggle("open");
+}
+
+// ページ切り替え（押したら自動で閉じる）
+function showPage(name) {
+  document.getElementById("page-home").style.display = "none";
+  document.getElementById("page-logs").style.display = "none";
+
+  document.getElementById("page-" + name).style.display = "block";
+
+  // ★ メニューを自動で閉じる
+  document.getElementById("sidebar").classList.remove("open");
+
+  if (name === "logs") loadLogs();
+}
+
+// 科目名から色生成
 function stringToColor(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -11,14 +29,14 @@ function stringToColor(str) {
   return `hsl(${hue}, 70%, 50%)`;
 }
 
-// 曜日を返す
+// 曜日
 function getWeekday(dateStr) {
   const date = new Date(dateStr);
   const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
   return weekdays[date.getDay()];
 }
 
-// 最終更新時刻を表示
+// 最終更新時刻
 function updateLastUpdated() {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0");
@@ -29,17 +47,14 @@ function updateLastUpdated() {
     `最終更新：${hh}:${mm}:${ss}`;
 }
 
+// 課題一覧読み込み（HOME）
 async function loadSchedule() {
-  // ★ キャッシュ完全無効化
-  const url = `https://raw.githubusercontent.com/yuichisana377/python.bot.1istudy/main/plans_${FIXED_SERVER_ID}.json?time=${Date.now()}`;
+  const url = `https://raw.githubusercontent.com/yuichisana377/python.bot.1istudy/main/plans_${SERVER_ID}.json?time=${Date.now()}`;
 
   try {
     const res = await fetch(url);
-    if (!res.ok) throw new Error("読み込み失敗");
-
     const data = await res.json();
 
-    // 日付ごとにまとめる
     const grouped = {};
     data.forEach(item => {
       if (!grouped[item.date]) grouped[item.date] = [];
@@ -49,7 +64,6 @@ async function loadSchedule() {
     const container = document.getElementById("schedule");
     container.innerHTML = "";
 
-    // 日付順にソート
     const sortedDates = Object.keys(grouped).sort();
 
     sortedDates.forEach(date => {
@@ -58,28 +72,25 @@ async function loadSchedule() {
 
       const dateTitle = document.createElement("div");
       dateTitle.className = "card-date";
-
-      // ★ 曜日を追加
-      const w = getWeekday(date);
-      dateTitle.textContent = `${date}（${w}）`;
+      dateTitle.textContent = `${date}（${getWeekday(date)}）`;
 
       card.appendChild(dateTitle);
 
       grouped[date].forEach(entry => {
         const task = document.createElement("div");
-        task.className = "task";
+        task.className = "task-card";
 
-        const content = entry.content;
+        // カテゴリ判定
+        let cls = "task-other";
+        if (entry.content.includes("【提出】")) cls = "task-submit";
+        if (entry.content.includes("【宿題】")) cls = "task-homework";
+        if (entry.content.includes("【持ち物】")) cls = "task-item";
+        if (entry.content.includes("【テスト】")) cls = "task-test";
 
-        // カテゴリ色
-        if (content.includes("【提出】")) task.classList.add("submit");
-        if (content.includes("【宿題】")) task.classList.add("homework");
-        if (content.includes("【持ち物】")) task.classList.add("item");
-        if (content.includes("【テスト】")) task.classList.add("test");
+        task.classList.add(cls);
 
-        // ★ 科目ごとの色（左ライン）
-        const subjectColor = stringToColor(entry.subject);
-        task.style.borderLeftColor = subjectColor;
+        // 科目色（左線の色）
+        task.style.borderLeftColor = stringToColor(entry.subject);
 
         task.textContent = `・${entry.subject}：${entry.content}`;
         card.appendChild(task);
@@ -88,21 +99,51 @@ async function loadSchedule() {
       container.appendChild(card);
     });
 
-    // ★ 最終更新時刻を更新
     updateLastUpdated();
 
   } catch (e) {
     console.error(e);
-    alert("データの読み込みに失敗しました");
   }
 }
 
-// ★ ページ読み込み時に自動実行
-window.onload = () => {
-  loadSchedule();
-};
+// Logs 読み込み（タイムライン）
+async function loadLogs() {
+  const url = `https://raw.githubusercontent.com/yuichisana377/python.bot.1istudy/main/logs_${SERVER_ID}.json?time=${Date.now()}`;
 
-// ★ 10秒ごとに自動更新
-setInterval(() => {
-  loadSchedule();
-}, 10000);
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const container = document.getElementById("logs");
+    container.innerHTML = "";
+
+    const timeline = document.createElement("div");
+    timeline.className = "timeline";
+
+    data.reverse().forEach(log => {
+      const item = document.createElement("div");
+      item.className = "timeline-item";
+
+      if (log.type === "add") item.classList.add("timeline-add");
+      if (log.type === "edit") item.classList.add("timeline-edit");
+      if (log.type === "delete") item.classList.add("timeline-delete");
+
+      const text = document.createElement("div");
+      text.className = "timeline-text";
+      text.innerHTML = `${log.time} / ${log.type}<br>${log.detail}`;
+      item.appendChild(text);
+      timeline.appendChild(item);
+    });
+
+    container.appendChild(timeline);
+
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ★ 30秒ごと更新
+setInterval(loadSchedule, 30000);
+setInterval(loadLogs, 30000);
+loadSchedule();
+loadLogs();
