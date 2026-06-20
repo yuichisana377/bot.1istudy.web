@@ -11,14 +11,15 @@
   <!-- ★ ハンバーガーメニュー -->
   <div class="hamburger" onclick="toggleSidebar()">☰</div>
 
-  <div class="layout">
+  <!-- ★ 左側メニュー（layout の外に移動） -->
+  <div class="sidebar" id="sidebar">
+    <h2>Menu</h2>
+    <button onclick="showPage('home')">Home</button>
+    <button onclick="showPage('logs')">Logs</button>
+  </div>
 
-    <!-- ★ 左側メニュー -->
-    <div class="sidebar" id="sidebar">
-      <h2>Menu</h2>
-      <button onclick="showPage('home')">Home</button>
-      <button onclick="showPage('logs')">Logs</button>
-    </div>
+  <!-- ★ メインレイアウト（sidebar を含めない） -->
+  <div class="layout">
 
     <!-- ★ 右側メイン画面 -->
     <div class="main">
@@ -26,8 +27,6 @@
       <!-- Home（課題一覧） -->
       <div id="page-home" class="page">
         <h1>課題一覧</h1>
-
-        <!-- ★ 入力欄は削除済み -->
 
         <div id="lastUpdated"></div>
         <div id="schedule"></div>
