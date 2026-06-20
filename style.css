@@ -7,7 +7,6 @@ body {
 }
 .layout {
   display: flex;
-  height: 100vh;
   margin-left: 0 !important;
 }
 
@@ -67,6 +66,7 @@ body {
   padding: 20px;
   overflow-y: auto;
   margin-left: 0 !important;
+  min-height: 100vh;   /* ← main だけ高さを確保する */
 }
 .content {
   padding: 20px;
