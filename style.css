@@ -40,9 +40,10 @@ body {
   height: 100vh;
   position: fixed;
   top: 0;
-  left: -240px;   /* ← 初期状態は画面外 */
+  left: -260px;   /* ← width(220) + padding左右(20×2) + 余裕分 = 260px以上に */
   transition: left 0.3s ease;
   z-index: 999;
+  box-sizing: border-box;  /* ← paddingをwidth内に含める */
 }
 
 /* 開いたときだけ表示 */
