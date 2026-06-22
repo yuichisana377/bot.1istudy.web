@@ -27,7 +27,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; b
 
 /* バッジ */
 .badge { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
-.badge-宿題  { background: #ffedd5; color: #9a3412; }
+.badge-宿題  { background: #dbeafe; color: #1e40af; }
 .badge-提出  { background: #ffedd5; color: #9a3412; }
 .badge-持ち物 { background: #dcfce7; color: #166534; }
 .badge-テスト { background: #fee2e2; color: #991b1b; }
@@ -135,6 +135,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; b
 .loading { text-align: center; padding: 2.5rem; color: var(--text-tertiary); font-size: 14px; }
 .empty   { text-align: center; padding: 3rem 1rem; color: var(--text-tertiary); font-size: 14px; }
 .cat-wrap { display: flex; flex-direction: column; gap: 6px; }
+
+/* ローディングボタン */
+.btn-primary:disabled, .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-loading { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+.spinner-dark { border-color: rgba(0,0,0,0.2); border-top-color: var(--text); }
 </style>
 </head>
 <body>
@@ -491,15 +498,18 @@ async function submitAdd() {
 
   if (!date || !subject || !content) { showErr('add-err', '日付・科目・内容は必須です'); return; }
 
+  const btn = document.querySelector('#modal-add .btn-primary');
+  setLoading(btn, '登録中…');
   const res = await api('/add_schedule', {
     method: 'POST',
     body: JSON.stringify({ guild_id: GUILD_ID, date, subject, category, content })
   });
+  resetLoading(btn, '追加する');
   if (res.ok) {
     showOk('add-ok');
     document.getElementById('add-content').value = '';
     resetCal('add', '日付を選択');
-    await loadPlans();   // ← 自動リロード
+    await loadPlans();
   } else {
     showErr('add-err', res.message || 'エラーが発生しました');
   }
@@ -513,7 +523,10 @@ async function submitEdit() {
   const c = getCatValue('edit'); if (c) body.category = c;
   const t = document.getElementById('edit-content').value.trim(); if (t) body.content = t;
 
+  const btn = document.querySelector('#modal-edit .btn-primary');
+  setLoading(btn, '保存中…');
   const res = await api('/edit_schedule', { method: 'POST', body: JSON.stringify(body) });
+  resetLoading(btn, '保存する');
   if (res.ok) {
     showOk('edit-ok');
     editTarget = null;
@@ -522,8 +535,8 @@ async function submitEdit() {
     document.getElementById('edit-category-inp').style.display = 'none';
     document.getElementById('edit-subject').value = '';
     resetCal('edit', '変更しない場合は空欄');
-    await loadPlans();          // ← 自動リロード（plans更新）
-    renderSelectList('edit-list', 'edit'); // ← リストも更新
+    await loadPlans();
+    renderSelectList('edit-list', 'edit');
   } else {
     showErr('edit-err', res.message || 'エラーが発生しました');
   }
@@ -531,15 +544,18 @@ async function submitEdit() {
 
 async function submitDelete() {
   if (!delTarget) return;
+  const btn = document.querySelector('#del-confirm .btn-danger');
+  setLoading(btn, '削除中…', true);
   const res = await api('/delete_schedule', {
     method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, target: delTarget })
   });
+  resetLoading(btn, '削除する');
   if (res.ok) {
     showOk('del-ok');
     document.getElementById('del-confirm').style.display = 'none';
     delTarget = null;
-    await loadPlans();           // ← 自動リロード
-    renderSelectList('del-list', 'delete'); // ← リストも更新
+    await loadPlans();
+    renderSelectList('del-list', 'delete');
   } else {
     showErr('del-err', res.message || 'エラーが発生しました');
   }
@@ -548,6 +564,17 @@ async function submitDelete() {
 // =============================================
 //  メッセージ
 // =============================================
+function setLoading(btn, label, dark = false) {
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner${dark ? ' spinner-dark' : ''}"></span>${label}`;
+  btn.classList.add('btn-loading');
+}
+function resetLoading(btn, label) {
+  btn.disabled = false;
+  btn.textContent = label;
+  btn.classList.remove('btn-loading');
+}
+
 function showOk(id) {
   const el = document.getElementById(id);
   el.style.display = 'block';
