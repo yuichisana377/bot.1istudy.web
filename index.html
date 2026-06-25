@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>学習サポート</title>
+<title>1I勉強会web</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -309,7 +309,7 @@ body {
 /* ============================
    時間割
 ============================ */
-.tt-main { max-width: 100%; margin: 0; padding: 0.75rem 0.4rem 5rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.tt-main { max-width: 720px; margin: 0 auto; padding: 1rem 0.75rem 5rem; display: flex; flex-direction: column; gap: 1rem; }
 
 .today-banner {
   background: var(--surface);
@@ -351,7 +351,7 @@ body {
 /* 時間割カード */
 .timetable-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
 .tt-card-header {
-  padding: 10px 10px 8px;
+  padding: 10px 14px 8px;
   border-bottom: 1px solid var(--border-light);
   display: flex; align-items: center; gap: 8px;
 }
@@ -366,13 +366,13 @@ body {
 
 .period-row {
   display: flex; align-items: flex-start;
-  padding: 10px 10px; border-bottom: 1px solid var(--border-light); gap: 8px;
+  padding: 16px 14px; border-bottom: 1px solid var(--border-light); gap: 10px;
 }
 .period-row:last-child { border-bottom: none; }
-.period-num { font-size: 11px; font-weight: 700; color: var(--text-tertiary); min-width: 14px; margin-top: 2px; text-align: center; }
-.period-subject { font-size: 14px; font-weight: 700; min-width: 0; flex: 2; flex-shrink: 0; }
+.period-num { font-size: 11px; font-weight: 700; color: var(--text-tertiary); min-width: 16px; margin-top: 2px; text-align: center; }
+.period-subject { font-size: 14px; font-weight: 700; min-width: 60px; flex-shrink: 0; }
 .period-subject.empty { font-weight: 400; color: var(--text-tertiary); font-size: 13px; }
-.period-right { flex: 3; display: flex; flex-direction: column; gap: 4px; }
+.period-right { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .items-row { display: flex; flex-wrap: wrap; gap: 4px; }
 .item-tag { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary); }
 
@@ -814,7 +814,7 @@ const TIMETABLE = {
     { subject: "情報工学ゼミ1", items: [] },
     { subject: "公共a",         items: ["教科書", "資料集", "プリント"] },
     { subject: "基礎解析1a",    items: ["教科書", "ワーク", "ノート"] },
-    { subject: "国語1甲a",      items: ["教科書","便覧","漢字"] },
+    { subject: "国語1甲a",      items: ["国語ノート"] },
   ],
   fri: [
     { subject: "英語表現基礎a",        items: ["英語教科書", "辞書"] },
