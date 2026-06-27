@@ -1,6 +1,6 @@
 // ============================================================
-//  cardmaker.js — CardMaker専用スクリプト
-//  cardmaker.html から読み込む
+//  Cardmaker.js — CardMaker専用スクリプト
+//  Cardmaker.html から読み込む
 // ============================================================
 
 const API_BASE = "https://python-bot-1istudy.onrender.com/";
