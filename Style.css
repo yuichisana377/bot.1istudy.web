@@ -97,6 +97,9 @@ body {
 .plan-sub-view.active { display: block; }
 
 /* 予定管理タブ */
+.past {
+    opacity: 0.45;
+}
 .view-toggle {
   display: flex;
   background: var(--bg);
