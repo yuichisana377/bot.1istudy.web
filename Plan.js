@@ -79,19 +79,40 @@ async function loadPlans() {
   scrollToToday();
 }
 function scrollToToday() {
-  const today = new Date().toISOString().split('T')[0];
-  const todayEl = document.querySelector(`.date-group[data-date="${today}"]`);
-  if (!todayEl) return;
+  if (!plans.length) return;
 
-  const rect = todayEl.getBoundingClientRect();
-  const offset = window.pageYOffset + rect.top - 70;  // ★ ヘッダー分ずらす
+  const today = new Date().toISOString().split("T")[0];
+
+  // 今日以降の予定日を全部集める
+  const futureDates = plans
+    .map(p => p.date)
+    .filter(d => d >= today)
+    .sort();
+
+  let targetDate = null;
+
+  if (futureDates.includes(today)) {
+    // 今日に予定がある
+    targetDate = today;
+  } else if (futureDates.length > 0) {
+    // 今日に予定がない → 次の予定日へ
+    targetDate = futureDates[0];
+  } else {
+    // 未来にも予定がない → 最後の予定日へ（任意）
+    targetDate = plans.map(p => p.date).sort().slice(-1)[0];
+  }
+
+  const targetEl = document.querySelector(`.date-group[data-date="${targetDate}"]`);
+  if (!targetEl) return;
+
+  const rect = targetEl.getBoundingClientRect();
+  const offset = window.pageYOffset + rect.top - 70;  // ヘッダー分ずらす
 
   window.scrollTo({
     top: offset,
-    behavior: 'auto'
+    behavior: 'auto'  // 即ジャンプ
   });
 }
-
 
 
 // ============================================================
