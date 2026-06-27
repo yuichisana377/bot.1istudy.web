@@ -83,7 +83,7 @@ function scrollToToday() {
   const todayEl = document.querySelector(`.date-group[data-date="${today}"]`);
 
   if (todayEl) {
-    todayEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    todayEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
