@@ -32,7 +32,15 @@ function switchPlanView(v) {
   });
   document.getElementById('plan-sub-plan').classList.toggle('active', v === 'plan');
   document.getElementById('plan-sub-log').classList.toggle('active',  v === 'log');
-  if (v === 'log') loadLogs();
+
+  if (v === 'log') {
+    loadLogs();
+  }
+
+  // ★ 予定一覧に切り替えたとき毎回スクロール
+  if (v === 'plan') {
+    setTimeout(scrollToToday, 50); 
+  }
 }
 
 // ============================================================
