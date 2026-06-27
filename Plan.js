@@ -81,11 +81,17 @@ async function loadPlans() {
 function scrollToToday() {
   const today = new Date().toISOString().split('T')[0];
   const todayEl = document.querySelector(`.date-group[data-date="${today}"]`);
+  if (!todayEl) return;
 
-  if (todayEl) {
-    todayEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  const rect = todayEl.getBoundingClientRect();
+  const offset = window.pageYOffset + rect.top - 80;  // ★ ヘッダー分ずらす（80px）
+
+  window.scrollTo({
+    top: offset,
+    behavior: 'smooth'
+  });
 }
+
 
 
 // ============================================================
