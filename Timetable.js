@@ -152,11 +152,21 @@ function moveWeek(dir) {
   renderTimetable();
 }
 function goToday() {
-  weekOffset = 0;
-  const today = new Date().getDay();
-  ttActiveDay = (today >= 1 && today <= 5) ? today - 1 : 0;
+  const today = new Date().getDay(); // 0=日, 6=土
+
+  if (today === 0 || today === 6) {
+    // ★ 土日 → 次の週へ
+    weekOffset = 1;
+    ttActiveDay = 0; // 月曜日を開く
+  } else {
+    // ★ 平日 → 今週
+    weekOffset = 0;
+    ttActiveDay = today - 1; // 月〜金 → 0〜4
+  }
+
   renderTimetable();
 }
+
 function ttSwitchDay(idx) {
   ttActiveDay = idx;
   renderTimetable();
