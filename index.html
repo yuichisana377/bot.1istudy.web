@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>予定管理 — 1I勉強会</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ドロワーオーバーレイ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+<!-- ドロワー -->
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="app-name">📚 学習サポート</div>
+    <div class="app-sub">統合学習ツール</div>
+  </div>
+  <nav class="drawer-nav">
+    <a class="drawer-item active" href="index.html">
+      <span class="di-icon">📘</span>予定管理
+    </a>
+    <a class="drawer-item" href="timetable.html">
+      <span class="di-icon">📒</span>時間割
+    </a>
+    <a class="drawer-item" href="cardmaker.html">
+      <span class="di-icon">📇</span>CardMaker
+    </a>
+  </nav>
+</div>
+
+<!-- ヘッダー -->
+<header class="header">
+  <button class="menu-btn" onclick="openDrawer()">☰</button>
+  <span class="header-title">予定管理</span>
+  <div class="view-toggle">
+    <button class="view-btn active" onclick="switchPlanView('plan')">予定一覧</button>
+    <button class="view-btn" onclick="switchPlanView('log')">ログ</button>
+  </div>
+</header>
+
+<!-- メインコンテンツ -->
+<main class="plan-main">
+  <div class="plan-sub-view active" id="plan-sub-plan">
+    <div class="loading" id="plan-loading">読み込み中…</div>
+    <div id="plan-content"></div>
+  </div>
+  <div class="plan-sub-view" id="plan-sub-log">
+    <div class="loading" id="log-loading" style="display:none">読み込み中…</div>
+    <div class="timeline" id="log-content"></div>
+  </div>
+</main>
+
+<!-- FAB -->
+<div class="fab-overlay" id="fab-overlay" onclick="closeFab()"></div>
+<div class="fab-wrap">
+  <div class="fab-actions" id="fab-actions">
+    <div class="fab-action" onclick="openModal('add')">
+      <span class="fab-label">追加</span><div class="fab-btn">＋</div>
+    </div>
+    <div class="fab-action" onclick="openModal('edit')">
+      <span class="fab-label">編集</span><div class="fab-btn">✎</div>
+    </div>
+    <div class="fab-action" onclick="openModal('delete')">
+      <span class="fab-label">削除</span><div class="fab-btn">✕</div>
+    </div>
+  </div>
+  <button class="fab-main" id="fab-main" onclick="toggleFab()">✎</button>
+</div>
+
+<!-- 追加モーダル -->
+<div class="modal-bg" id="modal-add" onclick="onBgClick(event,'add')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3>予定を追加</h3>
+      <button class="modal-close" onclick="closeModal('add')">✕</button>
+    </div>
+    <div class="success-bar" id="add-ok">✓ 登録しました！</div>
+    <div class="error-bar"   id="add-err"></div>
+    <div class="row2">
+      <div class="field">
+        <label>日付</label>
+        <div class="date-wrap">
+          <div class="date-display" onclick="toggleCal(event,'add')">
+            <span id="add-date-text" style="color:var(--text-tertiary);font-size:14px">日付を選択</span>
+            <span>📅</span>
+          </div>
+          <div class="cal-pop" id="cal-add"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>科目</label>
+        <select id="add-subject"><option value="">読み込み中…</option></select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>カテゴリ</label>
+        <div class="cat-wrap">
+          <select id="add-category-sel" onchange="onCatSel('add')">
+            <option value="宿題">宿題</option><option value="提出">提出</option>
+            <option value="持ち物">持ち物</option><option value="テスト">テスト</option>
+            <option value="その他">その他</option><option value="__custom__">自由入力…</option>
+          </select>
+          <input type="text" id="add-category-inp" placeholder="カテゴリを入力" style="display:none">
+        </div>
+      </div>
+      <div class="field">
+        <label>内容</label>
+        <input type="text" id="add-content" placeholder="例: p.10 問1〜5">
+      </div>
+    </div>
+    <button class="btn-primary" onclick="submitAdd()">追加する</button>
+  </div>
+</div>
+
+<!-- 編集モーダル -->
+<div class="modal-bg" id="modal-edit" onclick="onBgClick(event,'edit')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3>予定を編集</h3>
+      <button class="modal-close" onclick="closeModal('edit')">✕</button>
+    </div>
+    <div class="success-bar" id="edit-ok">✓ 編集しました！</div>
+    <div class="error-bar"   id="edit-err"></div>
+    <div class="modal-section-label">編集する予定を選択</div>
+    <div class="sel-list" id="edit-list"></div>
+    <div class="modal-section-label">変更する項目だけ入力</div>
+    <div class="row2">
+      <div class="field">
+        <label>新しい日付</label>
+        <div class="date-wrap">
+          <div class="date-display" onclick="toggleCal(event,'edit')">
+            <span id="edit-date-text" style="color:var(--text-tertiary);font-size:13px">変更しない場合は空欄</span>
+            <span>📅</span>
+          </div>
+          <div class="cal-pop" id="cal-edit"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>新しい科目</label>
+        <select id="edit-subject"><option value="">— 変更しない —</option></select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>新しいカテゴリ</label>
+        <div class="cat-wrap">
+          <select id="edit-category-sel" onchange="onCatSel('edit')">
+            <option value="">— 変更しない —</option>
+            <option value="宿題">宿題</option><option value="提出">提出</option>
+            <option value="持ち物">持ち物</option><option value="テスト">テスト</option>
+            <option value="その他">その他</option><option value="__custom__">自由入力…</option>
+          </select>
+          <input type="text" id="edit-category-inp" placeholder="カテゴリを入力" style="display:none">
+        </div>
+      </div>
+      <div class="field">
+        <label>新しい内容</label>
+        <input type="text" id="edit-content" placeholder="変更しない場合は空欄">
+      </div>
+    </div>
+    <button class="btn-primary" onclick="submitEdit()">保存する</button>
+  </div>
+</div>
+
+<!-- 削除モーダル -->
+<div class="modal-bg" id="modal-delete" onclick="onBgClick(event,'delete')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3>予定を削除</h3>
+      <button class="modal-close" onclick="closeModal('delete')">✕</button>
+    </div>
+    <div class="success-bar" id="del-ok">✓ 削除しました！</div>
+    <div class="error-bar"   id="del-err"></div>
+    <div class="modal-section-label">削除する予定を選択</div>
+    <div class="sel-list" id="del-list"></div>
+    <div class="del-confirm" id="del-confirm">
+      <p>この予定を削除しますか？</p>
+      <strong id="del-label"></strong>
+      <button class="btn-danger" onclick="submitDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<script src="plan.js"></script>
+</body>
+</html>

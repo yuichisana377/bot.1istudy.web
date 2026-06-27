@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CardMaker — 1I勉強会</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="cardmaker.css">
+</head>
+<body>
+
+<!-- ドロワーオーバーレイ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+<!-- ドロワー -->
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="app-name">📚 学習サポート</div>
+    <div class="app-sub">統合学習ツール</div>
+  </div>
+  <nav class="drawer-nav">
+    <a class="drawer-item" href="index.html">
+      <span class="di-icon">📘</span>予定管理
+    </a>
+    <a class="drawer-item" href="timetable.html">
+      <span class="di-icon">📒</span>時間割
+    </a>
+    <a class="drawer-item active" href="cardmaker.html">
+      <span class="di-icon">📇</span>CardMaker
+    </a>
+  </nav>
+</div>
+
+<!-- ══════════ デッキ一覧 ══════════ -->
+<div class="screen active" id="screen-list">
+  <div class="topbar">
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
+    <div class="topbar-title">📇 CardMaker</div>
+  </div>
+  <div class="scroll-body">
+    <div class="inner">
+      <div id="save-ok-banner" style="display:none;background:#dcfce7;color:#166534;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:600;margin-bottom:1rem;text-align:center">✓ 保存しました！</div>
+      <div id="deck-list-empty" class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div>まだデッキがありません</div>
+        <div style="margin-top:.5rem;font-size:13px">右下の ＋ からデッキを作成</div>
+      </div>
+      <div class="deck-grid" id="deck-grid" style="display:none"></div>
+    </div>
+  </div>
+  <button class="add-deck-btn" onclick="openNewSet()" aria-label="デッキ作成">＋</button>
+</div>
+
+<!-- ══════════ セット名入力 ══════════ -->
+<div class="screen" id="screen-new">
+  <div class="topbar">
+    <button class="topbar-back" onclick="showScreen('list')">←</button>
+    <div class="topbar-title">新しいデッキ</div>
+  </div>
+  <div class="scroll-body">
+    <div class="welcome-wrap">
+      <div class="welcome-icon">✍️</div>
+      <div class="welcome-title">新しいデッキを作成</div>
+      <div class="welcome-sub">科目を選んでセット名を入力してください。</div>
+      <select id="new-subject" style="width:100%;max-width:360px;padding:12px 14px;border:2px solid var(--border);border-radius:var(--r-md);font-family:inherit;font-size:16px;color:var(--text);background:var(--surface);outline:none;-webkit-appearance:none;margin-bottom:.75rem;transition:border-color .15s">
+        <option value="">科目を選択（任意）</option>
+      </select>
+      <input class="set-name-input" id="new-set-name" type="text"
+             placeholder="セット名を入力" maxlength="60"
+             onkeydown="if(event.key==='Enter')startEdit()">
+      <button class="btn btn-blue" style="width:100%;max-width:360px" onclick="startEdit()">作成 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ カード編集 ══════════ -->
+<div class="screen" id="screen-edit">
+  <div class="topbar">
+    <button class="topbar-back" onclick="confirmLeaveEdit()">←</button>
+    <div class="topbar-title" id="edit-deck-title">デッキ名</div>
+    <div class="editor-counter" id="edit-counter">0枚</div>
+  </div>
+  <div class="scroll-body" id="edit-scroll">
+    <div class="inner">
+
+      <div class="card-block">
+        <div class="block-header">
+          <span class="block-label">問題文 <span class="block-label-sub">Question</span></span>
+        </div>
+        <textarea class="auto-textarea" id="ta-q" placeholder="問題文を入力してください…" oninput="autoResize(this)"></textarea>
+        <div class="img-strip" id="imgs-q"></div>
+        <div class="block-actions">
+          <button class="block-action-btn" onclick="addImage('q')">🖼 画像を追加</button>
+        </div>
+      </div>
+
+      <div class="card-block">
+        <div class="block-header">
+          <span class="block-label">解答 <span class="block-label-sub">Answer</span></span>
+        </div>
+        <textarea class="auto-textarea" id="ta-a" placeholder="解答を入力してください…" oninput="autoResize(this)"></textarea>
+        <div class="img-strip" id="imgs-a"></div>
+        <div class="block-actions">
+          <button class="block-action-btn" onclick="addImage('a')">🖼 画像を追加</button>
+        </div>
+      </div>
+
+      <div class="card-block">
+        <div class="block-header">
+          <span class="block-label">解説 <span class="block-label-sub">Explanation</span></span>
+        </div>
+        <textarea class="auto-textarea" id="ta-e" placeholder="解説（任意）…" oninput="autoResize(this)"></textarea>
+        <div class="img-strip" id="imgs-e"></div>
+        <div class="block-actions">
+          <button class="block-action-btn" onclick="addImage('e')">🖼 画像を追加</button>
+        </div>
+      </div>
+
+      <div class="created-section" id="created-section" style="display:none">
+        <div class="created-label">作成済みカード</div>
+        <div class="created-list" id="created-list"></div>
+      </div>
+    </div>
+  </div>
+  <div class="editor-actions">
+    <button class="btn btn-outline" onclick="saveCard(false)">次へ</button>
+    <button class="btn btn-ghost"   onclick="saveCard('local')">保存</button>
+    <button class="btn btn-blue" id="btn-done" onclick="saveCard('publish')">保存して公開</button>
+  </div>
+</div>
+
+<!-- ══════════ 学習画面 ══════════ -->
+<div class="screen" id="screen-study">
+  <div class="topbar">
+    <button class="topbar-back" onclick="showScreen('list')">←</button>
+    <div class="topbar-title" id="study-title">学習</div>
+    <button class="btn btn-ghost btn-sm" onclick="shuffleStudy()">🔀</button>
+  </div>
+
+  <div class="study-done" id="study-done" style="display:none">
+    <div class="study-done-icon">🎉</div>
+    <div class="study-done-title">完了！</div>
+    <div class="study-done-sub" id="study-done-sub"></div>
+    <button class="btn btn-outline" onclick="shuffleStudy()">もう一度</button>
+    <button class="btn btn-blue"    onclick="showScreen('list')">一覧に戻る</button>
+  </div>
+
+  <div id="study-content" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
+    <div class="study-top">
+      <div class="study-progress-row">
+        <div class="study-progress-bar">
+          <div class="study-progress-fill" id="study-prog-fill"></div>
+        </div>
+        <div class="study-progress-label" id="study-prog-label"></div>
+      </div>
+      <div class="study-q-tag">問題</div>
+      <div class="study-q-text" id="study-q-text"></div>
+      <div class="study-q-imgs" id="study-q-imgs"></div>
+    </div>
+
+    <div class="study-bottom">
+      <div class="study-answer-panel" id="study-answer-panel">
+        <div class="answer-tag">解答</div>
+        <div class="answer-text" id="study-a-text"></div>
+        <div class="answer-imgs" id="study-a-imgs"></div>
+        <div id="study-expl-wrap" style="display:none">
+          <hr class="expl-divider">
+          <div class="expl-tag">解説</div>
+          <div class="expl-text" id="study-e-text"></div>
+        </div>
+      </div>
+      <div class="study-reveal-bar" id="study-reveal-bar">
+        <button class="btn btn-blue" style="width:100%;max-width:360px" onclick="revealAnswer()">答えを見る</button>
+      </div>
+      <div class="study-nav" id="study-nav" style="display:none">
+        <button class="btn btn-ghost" id="study-prev" onclick="studyMove(-1)" disabled>← 前へ</button>
+        <button class="unsure-btn" id="unsure-btn" onclick="toggleUnsure()">？ わからない</button>
+        <button class="btn btn-blue"  id="study-next" onclick="studyMove(1)">次へ →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: プレイモード選択 -->
+<div class="modal-overlay" id="modal-play-mode" onclick="onOverlayClick(event,'modal-play-mode')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="play-mode-deck-name" style="font-size:14px;color:var(--text-secondary);font-weight:600;margin-bottom:.75rem"></div>
+    <div class="play-mode-item" onclick="startStudyMode('all')">
+      <span class="play-mode-icon">📚</span>
+      <div>
+        <div>すべてのカード</div>
+        <div class="play-mode-sub" id="play-mode-all-sub"></div>
+      </div>
+    </div>
+    <div class="play-mode-item" id="play-mode-unsure-item" onclick="startStudyMode('unsure')">
+      <span class="play-mode-icon">🔖</span>
+      <div>
+        <div>わからないカードだけ</div>
+        <div class="play-mode-sub" id="play-mode-unsure-sub"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: デッキ名変更 -->
+<div class="modal-overlay" id="modal-rename" onclick="onOverlayClick(event,'modal-rename')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">デッキを編集</div>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">科目</label>
+    <select id="modal-rename-subject" class="modal-input" style="margin-bottom:.75rem;-webkit-appearance:none">
+      <option value="">読み込み中…</option>
+    </select>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">セット名</label>
+    <input class="modal-input" id="modal-rename-input" type="text" placeholder="セット名"
+           onkeydown="if(event.key==='Enter')saveRename()">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal('modal-rename')">キャンセル</button>
+      <button class="btn btn-blue"  onclick="saveRename()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: デッキメニュー -->
+<div class="modal-overlay" id="modal-deck-menu" onclick="onOverlayClick(event,'modal-deck-menu')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="menu-deck-name" style="font-size:14px;color:var(--text-secondary);font-weight:600;margin-bottom:.75rem"></div>
+    <div class="menu-item" onclick="menuEdit()">
+      <span class="menu-icon">✏️</span>カードを編集する
+    </div>
+    <div class="menu-item" onclick="menuRename()">
+      <span class="menu-icon">📝</span>デッキ名を変更する
+    </div>
+    <div class="menu-item" id="menu-unpublish-item" onclick="menuUnpublish()" style="display:none">
+      <span class="menu-icon">🔴</span>非公開に戻す
+    </div>
+    <div class="menu-item danger" onclick="menuDelete()">
+      <span class="menu-icon">🗑</span>デッキを削除する
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: カード編集 -->
+<div class="modal-overlay" id="modal-card-edit" onclick="onOverlayClick(event,'modal-card-edit')">
+  <div class="modal-sheet" style="padding-bottom:1.5rem">
+    <div class="modal-handle"></div>
+    <div class="modal-title">カードを編集</div>
+    <div id="card-edit-ok"  style="display:none;background:#dcfce7;color:#166534;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px">✓ 保存しました！</div>
+    <div id="card-edit-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"></div>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">問題文</label>
+    <textarea class="modal-input" id="modal-edit-q" style="min-height:70px;resize:none;margin-bottom:.75rem" oninput="autoResize(this)"></textarea>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解答</label>
+    <textarea class="modal-input" id="modal-edit-a" style="min-height:70px;resize:none;margin-bottom:.75rem" oninput="autoResize(this)"></textarea>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解説（任意）</label>
+    <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:1rem" oninput="autoResize(this)"></textarea>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal('modal-card-edit')">閉じる</button>
+      <button class="btn btn-blue" id="card-edit-save-btn" onclick="saveCardEdit()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="img-file-input" accept="image/*" style="display:none">
+
+<script src="cardmaker.js"></script>
+</body>
+</html>
