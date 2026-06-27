@@ -84,7 +84,7 @@ function scrollToToday() {
   if (!todayEl) return;
 
   const rect = todayEl.getBoundingClientRect();
-  const offset = window.pageYOffset + rect.top - 60;  // ★ ヘッダー分ずらす
+  const offset = window.pageYOffset + rect.top - 70;  // ★ ヘッダー分ずらす
 
   window.scrollTo({
     top: offset,
