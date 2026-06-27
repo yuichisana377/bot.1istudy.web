@@ -88,7 +88,7 @@ function scrollToToday() {
 
   window.scrollTo({
     top: offset,
-    behavior: 'smooth'
+    behavior: 'auto'
   });
 }
 
