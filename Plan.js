@@ -68,7 +68,17 @@ async function loadPlans() {
   } catch(e) { plans = []; }
   document.getElementById('plan-loading').style.display = 'none';
   renderPlans();
+  scrollToToday();
 }
+function scrollToToday() {
+  const today = new Date().toISOString().split('T')[0];
+  const todayEl = document.querySelector(`.date-group[data-date="${today}"]`);
+
+  if (todayEl) {
+    todayEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
 
 // ============================================================
 //  ログ読み込み
@@ -96,14 +106,22 @@ function parsePlanContent(raw) {
 
 function renderPlans() {
   const el = document.getElementById('plan-content');
-  if (!plans.length) { el.innerHTML = '<div class="empty-msg">予定はありません</div>'; return; }
-  const today   = new Date().toISOString().split('T')[0];
+  if (!plans.length) {
+    el.innerHTML = '<div class="empty-msg">予定はありません</div>';
+    return;
+  }
+
+  const today = new Date().toISOString().split('T')[0];
   const grouped = {};
   plans.forEach(p => { (grouped[p.date] = grouped[p.date] || []).push(p); });
+
   el.innerHTML = Object.keys(grouped).sort().map(date => {
     const d = new Date(date + 'T00:00:00');
     const label = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${WDAYS[d.getDay()]}）`;
+
     const isToday = date === today;
+    const isPast  = date < today;   // ★ 過去判定
+
     const rows = grouped[date].map(p => {
       const { cat, text } = parsePlanContent(p.content);
       return `<div class="plan-row">
@@ -112,12 +130,14 @@ function renderPlans() {
         <span class="content">${text}</span>
       </div>`;
     }).join('');
-    return `<div class="date-group">
+
+    return `<div class="date-group ${isPast ? 'past' : ''}" data-date="${date}">
       <div class="date-label">${label}${isToday ? '<span class="today-tag">今日</span>' : ''}</div>
       <div class="date-card">${rows}</div>
     </div>`;
   }).join('');
 }
+
 
 // ============================================================
 //  ログ 描画
