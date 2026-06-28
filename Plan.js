@@ -42,10 +42,9 @@ function switchPlanView(v) {
   const filterBtn = document.getElementById('filter-toggle-btn');
   if (filterBar) {
     if (v === 'log') {
-      filterBar.style.display = 'none';
+      filterBar.classList.remove('open');
       if (filterBtn) filterBtn.classList.remove('filter-toggle-active');
     }
-    // plan に戻っても自動で開かない（ユーザーが🔍で開く）
   }
 
   if (v === 'log') {
@@ -553,7 +552,7 @@ function closeDrawer() {
 function toggleFilterBar() {
   const bar = document.getElementById('filter-bar');
   const btn = document.getElementById('filter-toggle-btn');
-  const isOpen = bar.style.display !== 'none';
-  bar.style.display = isOpen ? 'none' : '';
+  const isOpen = bar.classList.contains('open');
+  bar.classList.toggle('open', !isOpen);
   btn.classList.toggle('filter-toggle-active', !isOpen);
 }
