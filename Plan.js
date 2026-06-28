@@ -15,6 +15,10 @@ let calState = {};
 let editTarget = null;
 let delTarget  = null;
 
+// ★ 絞り込み状態
+let filterSubject = 'all';  // 'all' or channel name
+let filterCat     = 'all';  // 'all' or category string
+
 // ============================================================
 //  起動
 // ============================================================
@@ -33,35 +37,33 @@ function switchPlanView(v) {
   document.getElementById('plan-sub-plan').classList.toggle('active', v === 'plan');
   document.getElementById('plan-sub-log').classList.toggle('active',  v === 'log');
 
+  // 絞り込みバーの表示切り替え
+  const filterBar = document.getElementById('filter-bar');
+  if (filterBar) filterBar.style.display = (v === 'plan') ? '' : 'none';
+
   if (v === 'log') {
     loadLogs();
   }
 
-  // ★ 予定一覧に切り替えたとき毎回スクロール
   if (v === 'plan') {
-    setTimeout(scrollToToday, 50); 
+    setTimeout(scrollToToday, 50);
   }
 }
 
 function scrollLogsTop() {
   const el = document.getElementById('log-content');
   if (!el) return;
-
-  window.scrollTo({
-    top: el.offsetTop - 70,   // ヘッダー分ずらす
-    behavior: 'smooth'
-  });
+  window.scrollTo({ top: el.offsetTop - 70, behavior: 'smooth' });
 }
+
 function onTodayButton() {
   const isLog = document.getElementById('plan-sub-log').classList.contains('active');
-
   if (isLog) {
-    scrollLogsTop();   // ★ ログの一番上へ smooth
+    scrollLogsTop();
   } else {
-    scrollToToday();   // ★ 予定の今日 or 次の予定へ
+    scrollToToday();
   }
 }
-
 
 // ============================================================
 //  API ヘルパー
@@ -82,6 +84,7 @@ async function loadChannels() {
     channels = data.ok ? data.channels : [];
   } catch(e) { channels = []; }
   renderChannelOptions();
+  renderSubjectFilterChips();  // ★ 絞り込みチップも更新
 }
 
 // ============================================================
@@ -98,42 +101,30 @@ async function loadPlans() {
   renderPlans();
   scrollToToday();
 }
+
 function scrollToToday() {
-  if (!plans.length) return;
+  const filtered = getFilteredPlans();
+  if (!filtered.length) return;
 
   const today = new Date().toISOString().split("T")[0];
-
-  // 今日以降の予定日を全部集める
-  const futureDates = plans
-    .map(p => p.date)
-    .filter(d => d >= today)
-    .sort();
+  const futureDates = filtered.map(p => p.date).filter(d => d >= today).sort();
 
   let targetDate = null;
-
   if (futureDates.includes(today)) {
-    // 今日に予定がある
     targetDate = today;
   } else if (futureDates.length > 0) {
-    // 今日に予定がない → 次の予定日へ
     targetDate = futureDates[0];
   } else {
-    // 未来にも予定がない → 最後の予定日へ（任意）
-    targetDate = plans.map(p => p.date).sort().slice(-1)[0];
+    targetDate = filtered.map(p => p.date).sort().slice(-1)[0];
   }
 
   const targetEl = document.querySelector(`.date-group[data-date="${targetDate}"]`);
   if (!targetEl) return;
 
   const rect = targetEl.getBoundingClientRect();
-  const offset = window.pageYOffset + rect.top - 70;  // ヘッダー分ずらす
-
-  window.scrollTo({
-    top: offset,
-    behavior: 'auto'  // 即ジャンプ
-  });
+  const offset = window.pageYOffset + rect.top - 70;
+  window.scrollTo({ top: offset, behavior: 'auto' });
 }
-
 
 // ============================================================
 //  ログ読み込み
@@ -149,6 +140,52 @@ async function loadLogs() {
 }
 
 // ============================================================
+//  ★ 絞り込みロジック
+// ============================================================
+
+/** 現在のフィルタを適用した plans を返す */
+function getFilteredPlans() {
+  return plans.filter(p => {
+    // 教科フィルタ
+    if (filterSubject !== 'all' && p.subject !== filterSubject) return false;
+    // カテゴリフィルタ
+    if (filterCat !== 'all') {
+      const { cat } = parsePlanContent(p.content);
+      if (cat !== filterCat) return false;
+    }
+    return true;
+  });
+}
+
+/** 教科チップを描画（チャンネル読み込み後に呼ぶ） */
+function renderSubjectFilterChips() {
+  const wrap = document.getElementById('filter-subject-chips');
+  if (!wrap) return;
+
+  const allBtn = `<button class="chip chip-active" data-subj="all" onclick="toggleSubjFilter(this)">すべて</button>`;
+  const chs = channels.map(c =>
+    `<button class="chip" data-subj="${c.name}" onclick="toggleSubjFilter(this)">${c.name}</button>`
+  ).join('');
+  wrap.innerHTML = allBtn + chs;
+}
+
+/** 教科チップがクリックされたとき */
+function toggleSubjFilter(btn) {
+  filterSubject = btn.dataset.subj;
+  btn.closest('.filter-chips').querySelectorAll('.chip').forEach(c => c.classList.remove('chip-active'));
+  btn.classList.add('chip-active');
+  renderPlans();
+}
+
+/** カテゴリチップがクリックされたとき */
+function toggleCatFilter(btn) {
+  filterCat = btn.dataset.cat;
+  btn.closest('.filter-chips').querySelectorAll('.chip').forEach(c => c.classList.remove('chip-active'));
+  btn.classList.add('chip-active');
+  renderPlans();
+}
+
+// ============================================================
 //  予定一覧 描画
 // ============================================================
 const WDAYS = ['日','月','火','水','木','金','土'];
@@ -161,21 +198,25 @@ function parsePlanContent(raw) {
 
 function renderPlans() {
   const el = document.getElementById('plan-content');
-  if (!plans.length) {
-    el.innerHTML = '<div class="empty-msg">予定はありません</div>';
+  const filtered = getFilteredPlans();
+
+  if (!filtered.length) {
+    el.innerHTML = plans.length
+      ? '<div class="empty-msg">条件に一致する予定はありません</div>'
+      : '<div class="empty-msg">予定はありません</div>';
     return;
   }
 
   const today = new Date().toISOString().split('T')[0];
   const grouped = {};
-  plans.forEach(p => { (grouped[p.date] = grouped[p.date] || []).push(p); });
+  filtered.forEach(p => { (grouped[p.date] = grouped[p.date] || []).push(p); });
 
   el.innerHTML = Object.keys(grouped).sort().map(date => {
     const d = new Date(date + 'T00:00:00');
     const label = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${WDAYS[d.getDay()]}）`;
 
     const isToday = date === today;
-    const isPast  = date < today;   // ★ 過去判定
+    const isPast  = date < today;
 
     const rows = grouped[date].map(p => {
       const { cat, text } = parsePlanContent(p.content);
@@ -192,7 +233,6 @@ function renderPlans() {
     </div>`;
   }).join('');
 }
-
 
 // ============================================================
 //  ログ 描画
