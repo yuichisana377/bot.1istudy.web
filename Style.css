@@ -589,23 +589,25 @@ body {
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
+  margin-bottom: 0;
   border-width: 0;
   opacity: 0;
-  pointer-events: none;
   transition:
-    max-height .26s ease,
-    padding    .26s ease,
-    border-width .26s ease,
-    opacity    .2s ease;
+    max-height .28s ease,
+    padding    .28s ease,
+    margin     .28s ease,
+    border-width .28s ease,
+    opacity    .22s ease;
 }
 
 .filter-bar.open {
-  max-height: 200px;
+  max-height: 1000px; /* ← ここを大きくする */
   padding-top: 10px;
   padding-bottom: 10px;
+  margin-bottom: 1rem;
   border-width: 1px;
   opacity: 1;
-  pointer-events: auto;
+  overflow-y: auto; /* ← スマホで綺麗に表示 */
 }
 
 .filter-row {
