@@ -543,6 +543,7 @@ body {
   border-color: var(--text);
 }
 
+
 /* ============================
    絞り込みトグルボタン（🔍）
 ============================ */
@@ -579,6 +580,30 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+
+  /* 折りたたみアニメーション */
+  overflow: hidden;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-width: 0;
+  opacity: 0;
+  transition:
+    max-height .28s ease,
+    padding    .28s ease,
+    margin     .28s ease,
+    border-width .28s ease,
+    opacity    .22s ease;
+}
+
+.filter-bar.open {
+  max-height: 200px;   /* 実際の高さより大きければOK */
+  padding-top: 10px;
+  padding-bottom: 10px;
+  margin-bottom: 1rem;
+  border-width: 1px;
+  opacity: 1;
 }
 
 .filter-row {
