@@ -43,6 +43,16 @@ function switchPlanView(v) {
   }
 }
 
+function scrollLogsTop() {
+  const el = document.getElementById('log-content');
+  if (!el) return;
+
+  window.scrollTo({
+    top: el.offsetTop - 70,   // ヘッダー分ずらす
+    behavior: 'smooth'
+  });
+}
+
 // ============================================================
 //  API ヘルパー
 // ============================================================
