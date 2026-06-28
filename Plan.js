@@ -39,7 +39,14 @@ function switchPlanView(v) {
 
   // 絞り込みバーの表示切り替え
   const filterBar = document.getElementById('filter-bar');
-  if (filterBar) filterBar.style.display = (v === 'plan') ? '' : 'none';
+  const filterBtn = document.getElementById('filter-toggle-btn');
+  if (filterBar) {
+    if (v === 'log') {
+      filterBar.style.display = 'none';
+      if (filterBtn) filterBtn.classList.remove('filter-toggle-active');
+    }
+    // plan に戻っても自動で開かない（ユーザーが🔍で開く）
+  }
 
   if (v === 'log') {
     loadLogs();
@@ -538,4 +545,15 @@ function openDrawer() {
 function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('drawer-overlay').classList.remove('open');
+}
+
+// ============================================================
+//  絞り込みバー 開閉
+// ============================================================
+function toggleFilterBar() {
+  const bar = document.getElementById('filter-bar');
+  const btn = document.getElementById('filter-toggle-btn');
+  const isOpen = bar.style.display !== 'none';
+  bar.style.display = isOpen ? 'none' : '';
+  btn.classList.toggle('filter-toggle-active', !isOpen);
 }
