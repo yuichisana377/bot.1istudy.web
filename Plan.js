@@ -52,6 +52,16 @@ function scrollLogsTop() {
     behavior: 'smooth'
   });
 }
+function onTodayButton() {
+  const isLog = document.getElementById('plan-sub-log').classList.contains('active');
+
+  if (isLog) {
+    scrollLogsTop();   // ★ ログの一番上へ smooth
+  } else {
+    scrollToToday();   // ★ 予定の今日 or 次の予定へ
+  }
+}
+
 
 // ============================================================
 //  API ヘルパー
