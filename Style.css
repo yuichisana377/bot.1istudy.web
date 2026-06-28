@@ -126,6 +126,22 @@ body {
   font-weight: 600;
   box-shadow: var(--shadow);
 }
+/* 予定管理 今日ボタン */
+.today-btn-plan {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  margin: 10px 0 14px;
+}
+.today-btn-plan:active {
+  background: #bfdbfe;
+}
+
 
 .date-group { margin-bottom: 1.1rem; }
 .date-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); letter-spacing: .07em; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
