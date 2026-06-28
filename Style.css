@@ -542,3 +542,88 @@ body {
   color: #fff;
   border-color: var(--text);
 }
+
+/* ============================
+   絞り込みトグルボタン（🔍）
+============================ */
+.filter-toggle-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 5px 8px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  line-height: 1;
+  transition: background .13s, border-color .13s;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.filter-toggle-btn:active {
+  background: var(--bg);
+}
+.filter-toggle-btn.filter-toggle-active {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+}
+
+/* ============================
+   絞り込みバー
+============================ */
+.filter-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 10px 12px;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  letter-spacing: .05em;
+  min-width: 36px;
+  padding-top: 5px;
+  flex-shrink: 0;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .13s, color .13s, border-color .13s;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.chip:active {
+  background: var(--border);
+}
+
+.chip.chip-active {
+  background: var(--text);
+  color: #fff;
+  border-color: var(--text);
+}
