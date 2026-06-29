@@ -30,6 +30,22 @@ const STUDENT = {
 
 // ── 追加：APIから取得 ────────────────────────────────────
 let TASKS_JSON = [];  // 動的に読み込む
+// ── Discord科目一覧 ───────────────────────────────
+let SUBJECTS = [];
+
+async function loadSubjects() {
+  try {
+    const data = await api("/channels?guild_id=" + GUILD_ID);
+    if (data.ok) {
+      SUBJECTS = data.channels.map(ch => ch.name);
+    } else {
+      SUBJECTS = [];
+    }
+  } catch(e) {
+    SUBJECTS = [];
+  }
+}
+
 
 async function loadTasks() {
   try {
@@ -90,15 +106,19 @@ window.addEventListener("load", function() {
   restoreTimer();
 
   Promise.all([
+    loadSubjects(),        // ← ここに追加
     loadLogs(),
     loadPoints(),
     loadCompletedTasks(),
-    loadTasks()   // ← これを追加する
+    loadTasks()
   ]).then(function() {
+    renderSubjectDropdown();  // ← ここに追加
     renderAll();
     renderTasks();
   });
+
 });
+
 
 
 // ── ヘッダーにセッション情報を反映 ─────────────────────
