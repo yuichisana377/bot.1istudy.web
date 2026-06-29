@@ -1,149 +1,101 @@
-// ============================================================
-//  Login.js — ログインページ専用スクリプト（学籍番号のみ認証）
-//
-//  認証フロー:
-//    1. 学籍番号を入力
-//    2. localStorage に登録済み → セッション生成してリダイレクト
-//    3. 未登録 → ニックネーム入力画面へ遷移
-//    4. ニックネーム登録 → ユーザー保存 → リダイレクト
-//
-//  StudyLog.js 側での使い方（変更なし）:
-//    const session = JSON.parse(localStorage.getItem("sl_session") || "null");
-//    if (!session) location.href = "/Login.html";
-// ============================================================
+/* ============================================================
+   Login.css — ログインページ専用スタイル（学籍番号のみ認証版）
+   Style.css の変数・.field・.btn-primary・.error-bar を流用
+============================================================ */
 
-const SESSION_KEY  = "sl_session";
-const USERS_KEY    = "sl_users";       // 登録ユーザー一覧
-const REDIRECT_PATH = "/StudyLog.html";
-
-// アバターカラーパレット（登録順に自動割り当て）
-const AVATAR_COLORS = [
-  { color: "#dbeafe", text: "#1e40af" },
-  { color: "#dcfce7", text: "#166534" },
-  { color: "#fce7f3", text: "#9d174d" },
-  { color: "#ffedd5", text: "#9a3412" },
-  { color: "#fef9c3", text: "#854d0e" },
-  { color: "#ede9fe", text: "#6d28d9" },
-  { color: "#fee2e2", text: "#991b1b" },
-  { color: "#f0fdf4", text: "#15803d" },
-];
-
-// ── 起動 ────────────────────────────────────────────────────
-window.addEventListener("load", () => {
-  if (getSession()) { location.href = REDIRECT_PATH; return; }
-  showStep("step-id");
-});
-
-// ── セッション ───────────────────────────────────────────────
-function getSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+/* ── ページ全体 ── */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 3rem 1rem 4rem;
+  gap: 1.5rem;
 }
 
-// ── 登録ユーザー一覧 ─────────────────────────────────────────
-function getUsers() {
-  try { return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; } catch { return {}; }
+/* ── ロゴ ── */
+.login-logo {
+  text-align: center;
 }
-function saveUsers(users) {
-  try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch {}
+.login-logo-icon {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: .5rem;
 }
-
-// ── ステップ切り替え ─────────────────────────────────────────
-function showStep(id) {
-  document.querySelectorAll(".login-step").forEach(el => {
-    el.style.display = el.id === id ? "" : "none";
-  });
+.login-logo-name {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--text);
 }
-
-// ============================================================
-//  STEP 1 — 学籍番号入力
-// ============================================================
-function submitId() {
-  const raw = document.getElementById("inp-student-id").value.trim().toUpperCase();
-  const errEl = document.getElementById("id-err");
-  errEl.style.display = "none";
-
-  // バリデーション（例: 英数字 3〜20文字）
-  if (!raw) { showIdErr("学籍番号を入力してください"); return; }
-  if (!/^[A-Z0-9]{2,20}$/.test(raw)) {
-    showIdErr("学籍番号は半角英数字で入力してください"); return;
-  }
-
-  const users = getUsers();
-
-  if (users[raw]) {
-    // 既存ユーザー → 即ログイン
-    createSession(raw, users[raw]);
-  } else {
-    // 新規 → ニックネーム登録ステップへ
-    document.getElementById("reg-student-id-label").textContent = raw;
-    document.getElementById("inp-student-id-hidden").value = raw;
-    document.getElementById("inp-nickname").value = "";
-    document.getElementById("reg-err").style.display = "none";
-    showStep("step-register");
-    document.getElementById("inp-nickname").focus();
-  }
+.login-logo-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
 }
 
-function showIdErr(msg) {
-  const el = document.getElementById("id-err");
-  el.textContent = "✕ " + msg;
-  el.style.display = "block";
-  setTimeout(() => { el.style.display = "none"; }, 4000);
+/* ── ログインカード ── */
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.5rem 1.25rem 1.75rem;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow);
 }
 
-// ============================================================
-//  STEP 2 — ニックネーム登録
-// ============================================================
-function submitRegister() {
-  const studentId = document.getElementById("inp-student-id-hidden").value;
-  const nickname  = document.getElementById("inp-nickname").value.trim();
-  const errEl     = document.getElementById("reg-err");
-  errEl.style.display = "none";
-
-  if (!nickname) { showRegErr("ニックネームを入力してください"); return; }
-  if (nickname.length > 16) { showRegErr("16文字以内で入力してください"); return; }
-
-  const users = getUsers();
-  const palette = AVATAR_COLORS[Object.keys(users).length % AVATAR_COLORS.length];
-
-  const userEntry = { nickname, color: palette.color, text: palette.text };
-  users[studentId] = userEntry;
-  saveUsers(users);
-
-  createSession(studentId, userEntry);
+.login-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
 }
 
-function showRegErr(msg) {
-  const el = document.getElementById("reg-err");
-  el.textContent = "✕ " + msg;
-  el.style.display = "block";
-  setTimeout(() => { el.style.display = "none"; }, 4000);
+/* 初回登録の説明文 */
+.login-reg-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 1.1rem;
+}
+.login-reg-desc strong {
+  color: var(--text);
+  font-weight: 700;
 }
 
-function backToId() {
-  showStep("step-id");
+/* ログイン / 登録ボタン */
+.login-btn {
+  width: 100%;
+  margin-top: .5rem;
+  height: 48px;
+  font-size: 15px;
 }
 
-// ============================================================
-//  セッション生成 → リダイレクト
-// ============================================================
-function createSession(studentId, userEntry) {
-  const session = {
-    student_id:   studentId,
-    nickname:     userEntry.nickname,
-    color:        userEntry.color,
-    text_color:   userEntry.text,
-    logged_in_at: new Date().toISOString(),
-  };
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
-  location.href = REDIRECT_PATH;
+/* 戻るボタン */
+.login-back-btn {
+  display: block;
+  width: 100%;
+  margin-top: .6rem;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: center;
+  border-radius: var(--r-md);
+  transition: background .12s;
 }
+.login-back-btn:hover  { background: var(--bg); }
+.login-back-btn:active { background: var(--border); }
 
-// ── Enter キー対応 ───────────────────────────────────────────
-document.addEventListener("keydown", e => {
-  if (e.key !== "Enter") return;
-  const step1 = document.getElementById("step-id");
-  const step2 = document.getElementById("step-register");
-  if (step1 && step1.style.display !== "none") submitId();
-  else if (step2 && step2.style.display !== "none") submitRegister();
-});
+/* ヒント文 */
+.login-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 1rem;
+  text-align: center;
+  line-height: 1.5;
+}
