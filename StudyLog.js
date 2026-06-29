@@ -282,7 +282,15 @@ function floatPoints(txt) {
 //  ポイント:  allPoints から取得（GitHub 管理・全員分ある）
 // ============================================================
 function buildRankData(wl) {
-  // 勉強時間マップ（週内ログから集計）
+  // --- ログから student_id → nickname の辞書を作る ---
+  var nameMap = {};
+  logs.forEach(function(l) {
+    if (!nameMap[l.student_id]) {
+      nameMap[l.student_id] = l.nickname;
+    }
+  });
+
+  // --- 勉強時間マップ ---
   var timeMap = {};
   wl.forEach(function(l) {
     if (!timeMap[l.student_id])
@@ -290,20 +298,23 @@ function buildRankData(wl) {
     timeMap[l.student_id].min += l.minutes;
   });
 
-  // ポイントマップ（サーバーの allPoints をそのまま使う）
-  // ニックネームはログから補完、ログがない人はポイントランキングのみ表示
+  // --- ポイントマップ ---
   var ptsMap = {};
   Object.keys(allPoints).forEach(function(sid) {
-    var fromLog = timeMap[sid];
     ptsMap[sid] = {
-      nickname: fromLog ? fromLog.nickname : (sid === STUDENT.id ? STUDENT.nickname : sid),
+      nickname: nameMap[sid] || sid,   // ← ログに名前があれば使う
       pts: allPoints[sid] || 0,
     };
-
   });
-  // 今週ログがあるがポイント0の人も表示
+
+  // --- 今週ログがあるがポイント0の人も追加 ---
   Object.keys(timeMap).forEach(function(sid) {
-    if (!ptsMap[sid]) ptsMap[sid] = { nickname: timeMap[sid].nickname, pts: 0 };
+    if (!ptsMap[sid]) {
+      ptsMap[sid] = {
+        nickname: timeMap[sid].nickname,
+        pts: 0
+      };
+    }
   });
 
   return {
