@@ -25,6 +25,10 @@ const STUDENT = {
 };
 
 // ── 課題 JSON ──────────────────────────────────────────
+// ── 削除：TASKS_JSON のハードコード ──────────────────────
+// const TASKS_JSON = [ ... ];  ← 丸ごと削除
+
+// ── 追加：APIから取得 ────────────────────────────────────
 let TASKS_JSON = [];  // 動的に読み込む
 
 async function loadTasks() {
@@ -80,13 +84,15 @@ let lastAwardedMin  = 0;
 // ============================================================
 //  起動
 // ============================================================
-window.addEventListener("load", () => {
+window.addEventListener("load", function() {
   applySession();
-  loadLocalState();
-  loadLogs();
-  loadTasks();    // ← renderTasks() の直接呼び出しを置き換え
   setTodayLabel();
   restoreTimer();
+  // ログ・ポイント・達成課題をサーバーから並列取得してから描画
+  Promise.all([loadLogs(), loadPoints(), loadCompletedTasks()]).then(function() {
+    renderAll();
+    renderTasks();
+  });
 });
 
 // ── ヘッダーにセッション情報を反映 ─────────────────────
