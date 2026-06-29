@@ -18,8 +18,16 @@
     <div class="login-logo-sub">勉強ログ・予定管理・カード学習</div>
   </div>
 
+  <!-- ══ ローディング（自動ログイン確認中） ══ -->
+  <div class="login-step login-card" id="step-loading" style="display:none">
+    <div class="login-loading-wrap">
+      <div class="login-spinner-lg"></div>
+      <div class="login-loading-msg" id="loading-msg">確認中…</div>
+    </div>
+  </div>
+
   <!-- ══ STEP 1: 学籍番号入力 ══ -->
-  <div class="login-card login-step" id="step-id">
+  <div class="login-step login-card" id="step-id" style="display:none">
     <h1 class="login-title">ログイン</h1>
 
     <div class="error-bar" id="id-err" style="display:none"></div>
@@ -27,27 +35,29 @@
     <div class="field">
       <label for="inp-student-id">学籍番号</label>
       <input type="text" id="inp-student-id"
-             placeholder="例: 1I001"
+             placeholder="例: 32600"
              autocomplete="username"
              autocapitalize="characters"
              maxlength="20">
     </div>
 
-    <button class="btn-primary login-btn" onclick="submitId()">
-      つぎへ →
+    <button class="btn-primary login-btn" id="btn-login" onclick="submitId()">
+      ログイン →
     </button>
 
-    <div class="login-hint">
-      初めての方はニックネーム登録に進みます。
-    </div>
+    <p class="login-hint">
+      初めての方は登録画面へ自動で案内します。
+    </p>
   </div>
 
-  <!-- ══ STEP 2: ニックネーム登録（初回のみ） ══ -->
-  <div class="login-card login-step" id="step-register" style="display:none">
-    <h1 class="login-title">はじめまして 👋</h1>
+  <!-- ══ STEP 2: 新規登録（初回のみ） ══ -->
+  <div class="login-step login-card" id="step-register" style="display:none">
+    <h1 class="login-title">新規登録 👋</h1>
+
     <p class="login-reg-desc">
-      学籍番号 <strong id="reg-student-id-label"></strong> は初めてのログインです。<br>
-      呼ばれたいニックネームを登録してください。
+      <strong id="reg-id-label"></strong> はまだ登録されていません。<br>
+      呼ばれたいニックネームを入力して登録してください。<br>
+      <span class="login-reg-note">※ 本名は禁止・公開されます</span>
     </p>
 
     <input type="hidden" id="inp-student-id-hidden">
@@ -62,7 +72,7 @@
              autocomplete="nickname">
     </div>
 
-    <button class="btn-primary login-btn" onclick="submitRegister()">
+    <button class="btn-primary login-btn" id="btn-register" onclick="submitRegister()">
       登録してログイン ✓
     </button>
 
