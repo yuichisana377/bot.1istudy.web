@@ -296,9 +296,10 @@ function buildRankData(wl) {
   Object.keys(allPoints).forEach(function(sid) {
     var fromLog = timeMap[sid];
     ptsMap[sid] = {
-      nickname: fromLog ? fromLog.nickname : sid,
+      nickname: fromLog ? fromLog.nickname : (sid === STUDENT.id ? STUDENT.nickname : sid),
       pts: allPoints[sid] || 0,
     };
+
   });
   // 今週ログがあるがポイント0の人も表示
   Object.keys(timeMap).forEach(function(sid) {
