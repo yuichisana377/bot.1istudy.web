@@ -25,14 +25,38 @@ const STUDENT = {
 };
 
 // ── 課題 JSON ──────────────────────────────────────────
-const TASKS_JSON = [
-  { id: "t1", subject: "数学", title: "教科書 第3章 演習問題を全部解く",    due: "2026-07-04", points: 5 },
-  { id: "t2", subject: "英語", title: "単語帳 Unit 1〜5 を暗記する",       due: "2026-07-04", points: 5 },
-  { id: "t3", subject: "国語", title: "現代文 問題集 p.20〜35 を解く",     due: "2026-07-11", points: 5 },
-  { id: "t4", subject: "理科", title: "化学式プリント 表裏を完成させる",    due: "2026-07-11", points: 5 },
-  { id: "t5", subject: "社会", title: "歴史年表 近代〜現代をまとめる",     due: "2026-07-18", points: 5 },
-  { id: "t6", subject: "情報", title: "プログラミング課題 Lv.2 を提出する", due: "2026-07-18", points: 5 },
-];
+let TASKS_JSON = [];  // 動的に読み込む
+
+async function loadTasks() {
+  try {
+    const data = await api("/list_schedule?guild_id=" + GUILD_ID);
+    if (!data.ok) { TASKS_JSON = []; renderTasks(); return; }
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    TASKS_JSON = (data.plans || [])
+      .filter(p => {
+        // カテゴリが【提出】か【宿題】のもの
+        const isTarget = p.content.includes("【提出】") || p.content.includes("【宿題】");
+        // 締切が今日以降のもの（過去は除外）
+        const due = new Date(p.date); due.setHours(0, 0, 0, 0);
+        return isTarget && due >= today;
+      })
+      .map(p => ({
+        // list_schedule のフォーマットから課題形式に変換
+        id:      `${p.date}_${p.subject}_${p.content}`,  // ユニークID
+        subject: p.subject,
+        title:   p.content.replace(/【.*?】/, "").trim(), // 【宿題】などを除去
+        due:     p.date,
+        points:  5,
+      }));
+
+    renderTasks();
+  } catch(e) {
+    TASKS_JSON = [];
+    renderTasks();
+  }
+}
 
 // ── LocalStorage キー（タイマー復元・達成済み課題のみ） ──
 // ポイントはサーバー管理なので localStorage には保存しない
