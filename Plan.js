@@ -164,7 +164,8 @@ function getFilteredPlans() {
       } else {
         if (cat !== filterCat) return false;
       }
-    }
+  }
+
 
     return true;
   });
