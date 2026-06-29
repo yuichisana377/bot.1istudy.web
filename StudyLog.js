@@ -1,7 +1,10 @@
 // ============================================================
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
-//  → 全員のポイントがランキングに反映される
+//  → 累計ポイントはヘッダーバッジに表示
+//  → ポイントランキングは「今週獲得分」のみ（毎週リセット）
+//     ・勉強ログ分: floor(minutes/5) pt  ← ログの日付でフィルタ
+//     ・課題達成分: +points pt            ← 達成日でフィルタ
 // ============================================================
 
 const API_BASE    = "https://python-bot-1istudy.onrender.com/";
@@ -33,14 +36,8 @@ let SUBJECTS = [];
 async function loadSubjects() {
   try {
     const data = await api("/channels?guild_id=" + GUILD_ID);
-    if (data.ok) {
-      SUBJECTS = data.channels.map(ch => ch.name);
-    } else {
-      SUBJECTS = [];
-    }
-  } catch(e) {
-    SUBJECTS = [];
-  }
+    SUBJECTS = data.ok ? data.channels.map(ch => ch.name) : [];
+  } catch(e) { SUBJECTS = []; }
 }
 
 async function loadTasks() {
@@ -65,10 +62,7 @@ async function loadTasks() {
       }));
 
     renderTasks();
-  } catch(e) {
-    TASKS_JSON = [];
-    renderTasks();
-  }
+  } catch(e) { TASKS_JSON = []; renderTasks(); }
 }
 
 // ── LocalStorage キー（タイマー復元のみ） ──────────────
@@ -76,10 +70,10 @@ const LS_TIMER = "sl_timer_" + STUDENT.id;
 
 // ── グローバル状態 ──────────────────────────────────────
 let logs           = [];   // 全ユーザーのログ
-let allPoints      = {};   // { "1I001": 12, "1I002": 7, ... } サーバーから取得
-let myPoints       = 0;    // 自分のポイント（表示用）
-let completedTasks = [];   // 達成済み課題ID
-let nicknameMap    = {};   // { "1I001": "太郎", ... } student_id → nickname
+let allPoints      = {};   // 累計ポイント { "1I001": 12, ... }（ヘッダーバッジ用）
+let myPoints       = 0;    // 自分の累計ポイント
+let completedTasks = [];   // 達成済み課題 [{id, date}, ...]（自分のみ）
+let nicknameMap    = {};   // { "1I001": "太郎", ... }
 
 let timerInterval   = null;
 let timerSec        = 0;
@@ -131,13 +125,21 @@ function doLogout() {
   location.replace("/Login.html");
 }
 
-// ── 達成済み課題（サーバー管理） ──────────────────────
+// ── 達成済み課題（サーバー管理・日付付き） ────────────
 async function loadCompletedTasks() {
   try {
     var data = await api(
       "/get_completed_tasks?guild_id=" + GUILD_ID + "&student_id=" + STUDENT.id
     );
-    completedTasks = data.ok ? (data.done || []) : [];
+    if (data.ok) {
+      // サーバーは [{id, date}, ...] を返す（旧形式の null date も含む）
+      completedTasks = (data.done || []).map(function(e) {
+        // 万が一フロントに旧形式（文字列）が届いた場合も正規化
+        return typeof e === "string" ? { id: e, date: null } : e;
+      });
+    } else {
+      completedTasks = [];
+    }
   } catch(e) { completedTasks = []; }
 }
 
@@ -157,18 +159,14 @@ async function loadLogs() {
   try {
     var data = await api("/list_study_logs?guild_id=" + GUILD_ID);
     logs = data.ok ? (data.logs || []) : [];
-    // ログからニックネームマップを構築
     logs.forEach(function(l) {
-      if (l.student_id && l.nickname) {
-        nicknameMap[l.student_id] = l.nickname;
-      }
+      if (l.student_id && l.nickname) nicknameMap[l.student_id] = l.nickname;
     });
-    // 自分自身はセッション情報で必ず上書き（確実に正しい名前を使う）
     nicknameMap[STUDENT.id] = STUDENT.nickname;
   } catch(e) { logs = []; }
 }
 
-// ── ポイント取得（全員分） ─────────────────────────────
+// ── ポイント取得（累計・ヘッダーバッジ用） ────────────
 async function loadPoints() {
   try {
     var data = await api("/get_points?guild_id=" + GUILD_ID);
@@ -180,7 +178,7 @@ async function loadPoints() {
   } catch(e) { allPoints = {}; myPoints = 0; }
 }
 
-// ── ログ投稿（サーバーがポイントも自動加算） ──────────
+// ── ログ投稿 ──────────────────────────────────────────
 async function postLog(entry) {
   var earned = Math.floor(entry.minutes / 5);
   try {
@@ -201,7 +199,6 @@ async function postLog(entry) {
       updatePointDisplay();
     }
   }
-  // ニックネームマップに自分を追加（ログ投稿で初めてログが生まれるケース）
   nicknameMap[STUDENT.id] = STUDENT.nickname;
   logs.push(entry);
   renderAll();
@@ -255,6 +252,41 @@ function setTodayLabel() {
 }
 
 // ============================================================
+//  今週の獲得ポイントを計算（ランキング用）
+//  ・勉強ログ分: floor(minutes/5) → 今週のログのみ対象
+//  ・課題達成分: task.points      → 今週達成したもののみ対象
+//    ※ 課題達成はログAPIに存在しないためcompletedTasks（自分のみ）
+//      で加算。他ユーザーの課題ポイントは現状APIから取得不可なので
+//      自分のみ反映される。
+// ============================================================
+function calcWeeklyPoints(wl) {
+  var r   = getWeekRange();
+  var map = {};
+
+  // ① 勉強ログ分（全ユーザー）
+  wl.forEach(function(l) {
+    if (!map[l.student_id]) map[l.student_id] = 0;
+    map[l.student_id] += Math.floor(l.minutes / 5);
+  });
+
+  // ② 課題達成分（自分のみ・今週達成したもの）
+  completedTasks.forEach(function(e) {
+    if (!e.date) return;  // 旧データ（date=null）はスキップ
+    var d = new Date(e.date); d.setHours(0, 0, 0, 0);
+    if (d < r.mon || d > r.sun) return;  // 今週以外はスキップ
+
+    // 達成した課題のポイントを TASKS_JSON から引く
+    var task = TASKS_JSON.find(function(t) { return t.id === e.id; });
+    var pts  = task ? task.points : 5;  // 見つからなければデフォルト5pt
+
+    if (!map[STUDENT.id]) map[STUDENT.id] = 0;
+    map[STUDENT.id] += pts;
+  });
+
+  return map;  // { "1I001": 12, "1I002": 3, ... }
+}
+
+// ============================================================
 //  ポイント表示・アニメーション
 // ============================================================
 function updatePointDisplay() {
@@ -296,14 +328,12 @@ function topWithTies(arr, key) {
 }
 
 function buildRankData(wl) {
-  // 自分自身は必ずセッション情報の名前で登録
   nicknameMap[STUDENT.id] = STUDENT.nickname;
 
-  // 勉強時間マップ
+  // ── 勉強時間マップ ──────────────────────────────────
   var timeMap = {};
   wl.forEach(function(l) {
     if (!timeMap[l.student_id]) {
-      // ログにある名前を nicknameMap に追記（未登録の場合のみ）
       if (l.student_id && l.nickname) {
         nicknameMap[l.student_id] = nicknameMap[l.student_id] || l.nickname;
       }
@@ -312,20 +342,14 @@ function buildRankData(wl) {
     timeMap[l.student_id].min += l.minutes;
   });
 
-  // ポイントマップ（nicknameMap から名前を引く）
+  // ── 今週獲得ポイントマップ ──────────────────────────
+  var weekPtsRaw = calcWeeklyPoints(wl);
   var ptsMap = {};
-  Object.keys(allPoints).forEach(function(sid) {
+  Object.keys(weekPtsRaw).forEach(function(sid) {
     ptsMap[sid] = {
-      nickname: nicknameMap[sid] || sid,  // マップになければ student_id をそのまま表示せず空欄に
-      pts: allPoints[sid] || 0,
+      nickname: nicknameMap[sid] || sid,
+      pts: weekPtsRaw[sid],
     };
-  });
-
-  // 今週ログはあるがポイント0の人も追加
-  Object.keys(timeMap).forEach(function(sid) {
-    if (!ptsMap[sid]) {
-      ptsMap[sid] = { nickname: timeMap[sid].nickname, pts: 0 };
-    }
   });
 
   return {
@@ -349,7 +373,6 @@ function renderAll() {
   renderLogs();
 }
 
-// ── ランキング（勉強時間 / ポイント 完全2列分離） ─────
 function renderRankings(wl) {
   var rd = buildRankData(wl);
   document.getElementById("ranking-time").innerHTML =
@@ -397,8 +420,9 @@ function renderLogs() {
 // ── 課題一覧 ──────────────────────────────────────────
 function renderTasks() {
   var el = document.getElementById("task-list");
+  var doneIds = completedTasks.map(function(e) { return e.id; });
   el.innerHTML = TASKS_JSON.map(function(t) {
-    var done = completedTasks.includes(t.id);
+    var done = doneIds.includes(t.id);
     return '<div class="sl-task-row">' +
       '<div class="sl-task-body">' +
         '<div class="sl-task-title' + (done ? " done" : "") + '">' + esc(t.title) + '</div>' +
@@ -455,8 +479,10 @@ function saveManual() {
 //  課題達成
 // ============================================================
 function toggleTask(id) {
-  if (completedTasks.includes(id)) return;
-  completedTasks.push(id);  // 楽観的UI更新
+  var doneIds = completedTasks.map(function(e) { return e.id; });
+  if (doneIds.includes(id)) return;
+  // 楽観的UI更新（達成日は今日）
+  completedTasks.push({ id: id, date: todayStr() });
   renderTasks();
   var t = TASKS_JSON.find(function(x) { return x.id === id; });
   if (t) postTaskPoint(id, t.points);
@@ -626,13 +652,11 @@ function closeDrawer() {
 function renderSubjectDropdown() {
   const mSel = document.getElementById("m-subject");
   const cSel = document.getElementById("conf-subject");
-
   if (mSel) {
     mSel.innerHTML = SUBJECTS.map(sub =>
       `<option value="${sub}">${sub}</option>`
     ).join("");
   }
-
   if (cSel) {
     cSel.innerHTML = SUBJECTS.map(sub =>
       `<option value="${sub}">${sub}</option>`
