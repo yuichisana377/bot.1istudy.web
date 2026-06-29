@@ -157,8 +157,15 @@ function getFilteredPlans() {
     // カテゴリフィルタ
     if (filterCat !== 'all') {
       const { cat } = parsePlanContent(p.content);
-      if (cat !== filterCat) return false;
+
+      // 提出・宿題まとめフィルタ
+      if (filterCat === 'hw') {
+        if (cat !== '提出' && cat !== '宿題') return false;
+      } else {
+        if (cat !== filterCat) return false;
+      }
     }
+
     return true;
   });
 }
