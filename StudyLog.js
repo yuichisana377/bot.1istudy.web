@@ -88,12 +88,18 @@ window.addEventListener("load", function() {
   applySession();
   setTodayLabel();
   restoreTimer();
-  // ログ・ポイント・達成課題をサーバーから並列取得してから描画
-  Promise.all([loadLogs(), loadPoints(), loadCompletedTasks()]).then(function() {
+
+  Promise.all([
+    loadLogs(),
+    loadPoints(),
+    loadCompletedTasks(),
+    loadTasks()   // ← これを追加する
+  ]).then(function() {
     renderAll();
     renderTasks();
   });
 });
+
 
 // ── ヘッダーにセッション情報を反映 ─────────────────────
 function applySession() {
