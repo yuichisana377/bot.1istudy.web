@@ -598,6 +598,25 @@ function closeDrawer() {
   document.getElementById("drawer-overlay").classList.remove("open");
 }
 
+// ── 科目プルダウン描画 ───────────────────────────────
+function renderSubjectDropdown() {
+  const mSel = document.getElementById("m-subject");
+  const cSel = document.getElementById("conf-subject");
+
+  if (mSel) {
+    mSel.innerHTML = SUBJECTS.map(sub =>
+      `<option value="${sub}">${sub}</option>`
+    ).join("");
+  }
+
+  if (cSel) {
+    cSel.innerHTML = SUBJECTS.map(sub =>
+      `<option value="${sub}">${sub}</option>`
+    ).join("");
+  }
+}
+
+
 // ============================================================
 //  ユーティリティ
 // ============================================================
