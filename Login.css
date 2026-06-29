@@ -1,0 +1,179 @@
+/* ============================================================
+   Login.css — ログインページ専用スタイル
+   Style.css の変数・.field・.btn-primary・.error-bar を流用
+============================================================ */
+
+/* ── ページ全体 ── */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 3rem 1rem 4rem;
+  gap: 1.5rem;
+}
+
+/* ── ロゴ ── */
+.login-logo {
+  text-align: center;
+}
+.login-logo-icon {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: .5rem;
+}
+.login-logo-name {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+.login-logo-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* ── ログインカード ── */
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.5rem 1.25rem 1.75rem;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow);
+}
+
+.login-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+}
+
+/* パスワード入力 + 表示ボタン */
+.login-pw-wrap {
+  position: relative;
+}
+.login-pw-wrap input {
+  width: 100%;
+  padding-right: 42px;  /* ボタン分の余白 */
+}
+.login-pw-toggle {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 6px 10px;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+.login-pw-toggle:active { opacity: .6; }
+
+/* ログインボタン */
+.login-btn {
+  width: 100%;
+  margin-top: .5rem;
+  height: 48px;
+  font-size: 15px;
+}
+
+/* ヒント文 */
+.login-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 1rem;
+  text-align: center;
+  line-height: 1.5;
+}
+.login-hint code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text);
+}
+
+/* ── サンプルユーザー一覧 ── */
+.login-sample-wrap {
+  width: 100%;
+  max-width: 400px;
+}
+.login-sample-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  margin-bottom: .6rem;
+  padding-left: 2px;
+}
+.login-sample-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* サンプルカード（クリックで自動入力） */
+.sample-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: .75rem .9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: border-color .13s, background .13s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sample-card:hover  { border-color: #93c5fd; background: #eff6ff; }
+.sample-card:active { background: #dbeafe; }
+
+/* アバター */
+.sample-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sample-info { min-width: 0; }
+.sample-nickname {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sample-id {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+/* ローディングスピナー（ログインボタン内） */
+.login-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
