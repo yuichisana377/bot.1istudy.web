@@ -106,19 +106,18 @@ window.addEventListener("load", function() {
   restoreTimer();
 
   Promise.all([
-    loadSubjects(),        // ← ここに追加
+    loadSubjects(),        // ← 追加
     loadLogs(),
     loadPoints(),
     loadCompletedTasks(),
     loadTasks()
   ]).then(function() {
-    renderSubjectDropdown();  // ← ここに追加
+    renderSubjectDropdown();  // ← 追加
     renderAll();
     renderTasks();
   });
 
 });
-
 
 
 // ── ヘッダーにセッション情報を反映 ─────────────────────
