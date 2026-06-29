@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>勉強ログ — 1I勉強会</title>
+<link rel="stylesheet" href="/Style.css">
+<link rel="stylesheet" href="/StudyLog.css">
+</head>
+<body>
+
+<!-- ドロワーオーバーレイ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+<!-- ドロワー -->
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="app-name">📚 学習サポート</div>
+    <div class="app-sub">統合学習ツール</div>
+  </div>
+  <nav class="drawer-nav">
+    <a class="drawer-item" href="/index.html">
+      <span class="di-icon">📘</span>予定管理
+    </a>
+    <a class="drawer-item" href="/Timetable.html">
+      <span class="di-icon">📒</span>時間割
+    </a>
+    <a class="drawer-item" href="/Cardmaker.html">
+      <span class="di-icon">📇</span>CardMaker
+    </a>
+    <a class="drawer-item active" href="/StudyLog.html">
+      <span class="di-icon">📊</span>勉強ログ
+    </a>
+  </nav>
+</div>
+
+<!-- ヘッダー -->
+<header class="header">
+  <button class="menu-btn" onclick="openDrawer()">☰</button>
+  <!-- アバター + 名前（JS が applySession() で書き換える） -->
+  <div class="sl-header-user">
+    <div class="sl-header-avatar" id="header-avatar">--</div>
+    <div class="sl-header-names">
+      <div class="sl-header-nickname" id="header-nickname">…</div>
+      <div class="sl-header-id"       id="header-id"></div>
+    </div>
+  </div>
+  <!-- ポイントバッジ -->
+  <div class="sl-point-badge" id="point-wrap">
+    ⭐ <span id="point-display">0</span> pt
+  </div>
+  <!-- ログアウト -->
+  <button class="sl-logout-btn" onclick="doLogout()" title="ログアウト">⏏</button>
+</header>
+
+<!-- タブ -->
+<div class="sl-tabs">
+  <button class="sl-tab active" id="tab-btn-home"   onclick="showTab('home')">🏠 ホーム</button>
+  <button class="sl-tab"        id="tab-btn-manual" onclick="showTab('manual')">✏️ 手入力</button>
+  <button class="sl-tab"        id="tab-btn-timer"  onclick="showTab('timer')">⏱ タイマー</button>
+  <button class="sl-tab"        id="tab-btn-tasks"  onclick="showTab('tasks')">✅ 課題</button>
+</div>
+
+<!-- ════════ ホーム ════════ -->
+<div class="sl-screen active" id="tab-home">
+  <div class="sl-inner">
+
+    <!-- サマリー -->
+    <div class="sl-summary-grid">
+      <div class="sl-metric">
+        <div class="sl-metric-label">今週の1I合計</div>
+        <div class="sl-metric-value" id="total-week">0分</div>
+      </div>
+      <div class="sl-metric">
+        <div class="sl-metric-label">自分の今週</div>
+        <div class="sl-metric-value" id="my-week">0分</div>
+      </div>
+      <div class="sl-metric">
+        <div class="sl-metric-label">記録件数</div>
+        <div class="sl-metric-value" id="total-count">0件</div>
+      </div>
+    </div>
+
+    <!-- ランキング（2列完全分離） -->
+    <div class="sl-card">
+      <div class="sl-card-title">🏆 今週のランキング</div>
+      <div class="sl-rank-cols">
+
+        <!-- 勉強時間ランキング -->
+        <div class="sl-rank-col">
+          <div class="sl-rank-col-head">
+            <span class="sl-rank-col-icon">⏱</span>勉強時間
+          </div>
+          <div id="ranking-time">
+            <div class="sl-rank-empty">データなし</div>
+          </div>
+        </div>
+
+        <!-- ポイントランキング -->
+        <div class="sl-rank-col">
+          <div class="sl-rank-col-head">
+            <span class="sl-rank-col-icon">⭐</span>ポイント
+          </div>
+          <div id="ranking-pts">
+            <div class="sl-rank-empty">データなし</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ログ一覧 -->
+    <div class="sl-card">
+      <div class="sl-card-title">📋 ログ一覧</div>
+      <div id="log-list">
+        <div class="empty-msg">まだ記録がありません</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════ 手入力 ════════ -->
+<div class="sl-screen" id="tab-manual">
+  <div class="sl-inner">
+    <div class="sl-card">
+      <div class="sl-card-title">✏️ 手入力で記録</div>
+      <div class="field">
+        <label>教科</label>
+        <select id="m-subject">
+          <option>数学</option><option>英語</option><option>国語</option>
+          <option>理科</option><option>社会</option><option>情報</option><option>その他</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>勉強時間（分）</label>
+        <input type="number" id="m-minutes" min="1" max="600"
+               placeholder="例: 45" style="max-width:160px">
+      </div>
+      <div class="field">
+        <label>メモ（任意）</label>
+        <textarea id="m-memo" rows="3"
+                  placeholder="例：教科書p.30〜50を読んだ"></textarea>
+      </div>
+      <div class="success-bar" id="manual-ok">✓ 記録しました！</div>
+      <div class="error-bar"   id="manual-err"></div>
+      <button class="btn-primary" onclick="saveManual()">記録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ タイマー ════════ -->
+<div class="sl-screen" id="tab-timer">
+  <div class="sl-inner">
+
+    <!-- タイマー本体 -->
+    <div class="sl-card" id="timer-main">
+      <div class="sl-timer-display">
+        <div class="sl-timer-num" id="timer-display">00:00:00</div>
+        <div class="sl-timer-status" id="timer-status">準備完了</div>
+        <div class="sl-timer-pts"   id="timer-pts-hint"></div>
+      </div>
+      <div class="sl-timer-btns">
+        <button id="btn-start" class="sl-timer-btn sl-btn-start"
+                onclick="timerStart()">▶ スタート</button>
+        <button id="btn-pause" class="sl-timer-btn sl-btn-pause"
+                onclick="timerPauseResume()" disabled>⏸ 休憩</button>
+        <button id="btn-stop"  class="sl-timer-btn sl-btn-stop"
+                onclick="timerStop()" disabled>⏹ ストップ</button>
+      </div>
+      <div class="sl-timer-note">
+        最大3時間 ／ タブ離脱で自動一時停止 ／ 5分ごとに +1pt
+      </div>
+    </div>
+
+    <!-- 確認画面（ストップ後に表示） -->
+    <div class="sl-card sl-confirm-box" id="timer-confirm" style="display:none">
+      <div class="sl-card-title">📋 計測結果を確認</div>
+      <div class="sl-confirm-time-wrap">
+        <div class="sl-confirm-time" id="conf-time"></div>
+        <div class="sl-confirm-time-label">計測時間</div>
+      </div>
+      <div class="field">
+        <label>教科</label>
+        <select id="conf-subject">
+          <option>数学</option><option>英語</option><option>国語</option>
+          <option>理科</option><option>社会</option><option>情報</option><option>その他</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>メモ（任意）</label>
+        <textarea id="conf-memo" rows="3"
+                  placeholder="何を勉強しましたか？"></textarea>
+      </div>
+      <div class="success-bar" id="timer-ok">✓ 記録しました！</div>
+      <div class="error-bar"   id="timer-err"></div>
+      <div class="sl-confirm-btns">
+        <button class="btn-primary sl-confirm-btn-save"
+                onclick="saveTimer()">💾 記録する</button>
+        <button class="sl-btn-edit"
+                onclick="editTimer()">✎ 修正する</button>
+        <button class="btn-danger"
+                onclick="discardTimer()">🗑 破棄</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════ 課題 ════════ -->
+<div class="sl-screen" id="tab-tasks">
+  <div class="sl-inner">
+    <div class="sl-card">
+      <div class="sl-card-title">
+        ✅ 課題一覧
+        <span class="sl-tasks-hint">— 達成で +5pt</span>
+      </div>
+      <div id="task-list">
+        <div class="loading">読み込み中…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/StudyLog.js"></script>
+</body>
+</html>
