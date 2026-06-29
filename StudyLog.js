@@ -282,7 +282,7 @@ function floatPoints(txt) {
 //  ポイント:  allPoints から取得（GitHub 管理・全員分ある）
 // ============================================================
 function buildRankData(wl) {
-  // --- ログから student_id → nickname の辞書を作る ---
+  // --- ログ全体から student_id → nickname の辞書を作る ---
   var nameMap = {};
   logs.forEach(function(l) {
     if (!nameMap[l.student_id]) {
