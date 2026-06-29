@@ -18,43 +18,57 @@
     <div class="login-logo-sub">勉強ログ・予定管理・カード学習</div>
   </div>
 
-  <!-- ログインカード -->
-  <div class="login-card">
+  <!-- ══ STEP 1: 学籍番号入力 ══ -->
+  <div class="login-card login-step" id="step-id">
     <h1 class="login-title">ログイン</h1>
 
-    <div class="error-bar" id="login-err" style="display:none"></div>
+    <div class="error-bar" id="id-err" style="display:none"></div>
 
     <div class="field">
-      <label for="sel-user">アカウントを選択</label>
-      <select id="sel-user">
-        <option value="">— 選択してください —</option>
-      </select>
+      <label for="inp-student-id">学籍番号</label>
+      <input type="text" id="inp-student-id"
+             placeholder="例: 1I001"
+             autocomplete="username"
+             autocapitalize="characters"
+             maxlength="20">
     </div>
 
-    <div class="field">
-      <label for="inp-password">パスワード</label>
-      <div class="login-pw-wrap">
-        <input type="password" id="inp-password"
-               placeholder="パスワードを入力"
-               autocomplete="current-password"
-               onkeydown="if(event.key==='Enter')doLogin()">
-        <button class="login-pw-toggle" onclick="togglePw()" aria-label="表示切替">👁</button>
-      </div>
-    </div>
-
-    <button class="btn-primary login-btn" onclick="doLogin()">
-      ログイン
+    <button class="btn-primary login-btn" onclick="submitId()">
+      つぎへ →
     </button>
 
     <div class="login-hint">
-      ※ サンプルアカウントのパスワードはすべて <code>1234</code> です
+      初めての方はニックネーム登録に進みます。
     </div>
   </div>
 
-  <!-- サンプルユーザー一覧 -->
-  <div class="login-sample-wrap">
-    <div class="login-sample-title">サンプルアカウント</div>
-    <div class="login-sample-grid" id="sample-grid"></div>
+  <!-- ══ STEP 2: ニックネーム登録（初回のみ） ══ -->
+  <div class="login-card login-step" id="step-register" style="display:none">
+    <h1 class="login-title">はじめまして 👋</h1>
+    <p class="login-reg-desc">
+      学籍番号 <strong id="reg-student-id-label"></strong> は初めてのログインです。<br>
+      呼ばれたいニックネームを登録してください。
+    </p>
+
+    <input type="hidden" id="inp-student-id-hidden">
+
+    <div class="error-bar" id="reg-err" style="display:none"></div>
+
+    <div class="field">
+      <label for="inp-nickname">ニックネーム</label>
+      <input type="text" id="inp-nickname"
+             placeholder="例: Yuki（16文字以内）"
+             maxlength="16"
+             autocomplete="nickname">
+    </div>
+
+    <button class="btn-primary login-btn" onclick="submitRegister()">
+      登録してログイン ✓
+    </button>
+
+    <button class="login-back-btn" onclick="backToId()">
+      ← 学籍番号の入力に戻る
+    </button>
   </div>
 
 </main>
