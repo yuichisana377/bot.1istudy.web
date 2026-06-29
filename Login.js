@@ -1,155 +1,149 @@
 // ============================================================
-//  Login.js — ログインページ専用スクリプト
-//  Login.html から読み込む
+//  Login.js — ログインページ専用スクリプト（学籍番号のみ認証）
 //
 //  認証フロー:
-//    1. SAMPLE_USERS から student_id を選択
-//    2. password を照合（サンプルはすべて "1234"）
-//    3. 認証成功 → localStorage に SESSION_KEY で保存
-//    4. StudyLog.html へリダイレクト
+//    1. 学籍番号を入力
+//    2. localStorage に登録済み → セッション生成してリダイレクト
+//    3. 未登録 → ニックネーム入力画面へ遷移
+//    4. ニックネーム登録 → ユーザー保存 → リダイレクト
 //
-//  StudyLog.js 側での使い方:
+//  StudyLog.js 側での使い方（変更なし）:
 //    const session = JSON.parse(localStorage.getItem("sl_session") || "null");
 //    if (!session) location.href = "/Login.html";
-//    const STUDENT = { id: session.student_id, nickname: session.nickname };
 // ============================================================
 
-const SESSION_KEY   = "sl_session";
+const SESSION_KEY  = "sl_session";
+const USERS_KEY    = "sl_users";       // 登録ユーザー一覧
 const REDIRECT_PATH = "/StudyLog.html";
 
-// ── サンプルユーザー定義 ─────────────────────────────────
-// 実運用では API から取得する想定。password は必ずサーバーサイドで検証すること。
-const SAMPLE_USERS = [
-  { student_id: "1I001", nickname: "Yuki",   password: "1234", color: "#dbeafe", text: "#1e40af" },
-  { student_id: "1I002", nickname: "Hana",   password: "1234", color: "#dcfce7", text: "#166534" },
-  { student_id: "1I003", nickname: "Ren",    password: "1234", color: "#fce7f3", text: "#9d174d" },
-  { student_id: "1I004", nickname: "Sora",   password: "1234", color: "#ffedd5", text: "#9a3412" },
-  { student_id: "1I005", nickname: "Koharu", password: "1234", color: "#fef9c3", text: "#854d0e" },
-  { student_id: "1I006", nickname: "Kai",    password: "1234", color: "#ede9fe", text: "#6d28d9" },
+// アバターカラーパレット（登録順に自動割り当て）
+const AVATAR_COLORS = [
+  { color: "#dbeafe", text: "#1e40af" },
+  { color: "#dcfce7", text: "#166534" },
+  { color: "#fce7f3", text: "#9d174d" },
+  { color: "#ffedd5", text: "#9a3412" },
+  { color: "#fef9c3", text: "#854d0e" },
+  { color: "#ede9fe", text: "#6d28d9" },
+  { color: "#fee2e2", text: "#991b1b" },
+  { color: "#f0fdf4", text: "#15803d" },
 ];
 
-// ── 起動 ────────────────────────────────────────────────
+// ── 起動 ────────────────────────────────────────────────────
 window.addEventListener("load", () => {
-  // すでにログイン済みならリダイレクト
-  if (getSession()) {
-    location.href = REDIRECT_PATH;
-    return;
-  }
-  buildSelect();
-  buildSampleGrid();
+  if (getSession()) { location.href = REDIRECT_PATH; return; }
+  showStep("step-id");
 });
 
-// ── セッション取得 ───────────────────────────────────────
+// ── セッション ───────────────────────────────────────────────
 function getSession() {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY));
-  } catch(e) {
-    return null;
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
+// ── 登録ユーザー一覧 ─────────────────────────────────────────
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; } catch { return {}; }
+}
+function saveUsers(users) {
+  try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch {}
+}
+
+// ── ステップ切り替え ─────────────────────────────────────────
+function showStep(id) {
+  document.querySelectorAll(".login-step").forEach(el => {
+    el.style.display = el.id === id ? "" : "none";
+  });
+}
+
+// ============================================================
+//  STEP 1 — 学籍番号入力
+// ============================================================
+function submitId() {
+  const raw = document.getElementById("inp-student-id").value.trim().toUpperCase();
+  const errEl = document.getElementById("id-err");
+  errEl.style.display = "none";
+
+  // バリデーション（例: 英数字 3〜20文字）
+  if (!raw) { showIdErr("学籍番号を入力してください"); return; }
+  if (!/^[A-Z0-9]{2,20}$/.test(raw)) {
+    showIdErr("学籍番号は半角英数字で入力してください"); return;
+  }
+
+  const users = getUsers();
+
+  if (users[raw]) {
+    // 既存ユーザー → 即ログイン
+    createSession(raw, users[raw]);
+  } else {
+    // 新規 → ニックネーム登録ステップへ
+    document.getElementById("reg-student-id-label").textContent = raw;
+    document.getElementById("inp-student-id-hidden").value = raw;
+    document.getElementById("inp-nickname").value = "";
+    document.getElementById("reg-err").style.display = "none";
+    showStep("step-register");
+    document.getElementById("inp-nickname").focus();
   }
 }
 
-// ── プルダウン生成 ───────────────────────────────────────
-function buildSelect() {
-  const sel = document.getElementById("sel-user");
-  SAMPLE_USERS.forEach(u => {
-    const opt = document.createElement("option");
-    opt.value       = u.student_id;
-    opt.textContent = u.nickname + "（" + u.student_id + "）";
-    sel.appendChild(opt);
-  });
-}
-
-// ── サンプルカードグリッド生成 ───────────────────────────
-function buildSampleGrid() {
-  const grid = document.getElementById("sample-grid");
-  SAMPLE_USERS.forEach(u => {
-    const initials = u.nickname.slice(0, 2).toUpperCase();
-
-    const card = document.createElement("div");
-    card.className = "sample-card";
-    card.setAttribute("role", "button");
-    card.setAttribute("tabindex", "0");
-    card.setAttribute("aria-label", u.nickname + " でログイン");
-    card.innerHTML =
-      '<div class="sample-avatar" style="background:' + u.color + ';color:' + u.text + '">' + initials + '</div>' +
-      '<div class="sample-info">' +
-        '<div class="sample-nickname">' + esc(u.nickname) + '</div>' +
-        '<div class="sample-id">' + esc(u.student_id) + '</div>' +
-      '</div>';
-
-    card.addEventListener("click", () => quickLogin(u.student_id));
-    card.addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") quickLogin(u.student_id);
-    });
-
-    grid.appendChild(card);
-  });
-}
-
-// ── カードクリックで即ログイン ───────────────────────────
-function quickLogin(student_id) {
-  document.getElementById("sel-user").value    = student_id;
-  document.getElementById("inp-password").value = "1234";
-  doLogin();
-}
-
-// ── ログイン実行 ─────────────────────────────────────────
-function doLogin() {
-  const studentId = document.getElementById("sel-user").value;
-  const password  = document.getElementById("inp-password").value;
-  const errEl     = document.getElementById("login-err");
-  const btn       = document.querySelector(".login-btn");
-
-  errEl.style.display = "none";
-
-  if (!studentId) { showErr("アカウントを選択してください"); return; }
-  if (!password)  { showErr("パスワードを入力してください"); return; }
-
-  btn.disabled  = true;
-  btn.innerHTML = '<span class="login-spinner"></span>確認中…';
-
-  // サンプルなので setTimeout で疑似 async
-  setTimeout(() => {
-    const user = SAMPLE_USERS.find(u => u.student_id === studentId);
-
-    if (!user || user.password !== password) {
-      btn.disabled    = false;
-      btn.textContent = "ログイン";
-      showErr("student_id またはパスワードが正しくありません");
-      return;
-    }
-
-    const session = {
-      student_id:   user.student_id,
-      nickname:     user.nickname,
-      color:        user.color,
-      text_color:   user.text,
-      logged_in_at: new Date().toISOString(),
-    };
-    try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch(e) {}
-
-    location.href = REDIRECT_PATH;
-  }, 600);
-}
-
-// ── パスワード表示切替 ───────────────────────────────────
-function togglePw() {
-  const inp = document.getElementById("inp-password");
-  inp.type  = inp.type === "password" ? "text" : "password";
-}
-
-// ── エラー表示 ───────────────────────────────────────────
-function showErr(msg) {
-  const el = document.getElementById("login-err");
-  el.textContent   = "✕ " + msg;
+function showIdErr(msg) {
+  const el = document.getElementById("id-err");
+  el.textContent = "✕ " + msg;
   el.style.display = "block";
   setTimeout(() => { el.style.display = "none"; }, 4000);
 }
 
-// ── ユーティリティ ───────────────────────────────────────
-function esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+// ============================================================
+//  STEP 2 — ニックネーム登録
+// ============================================================
+function submitRegister() {
+  const studentId = document.getElementById("inp-student-id-hidden").value;
+  const nickname  = document.getElementById("inp-nickname").value.trim();
+  const errEl     = document.getElementById("reg-err");
+  errEl.style.display = "none";
+
+  if (!nickname) { showRegErr("ニックネームを入力してください"); return; }
+  if (nickname.length > 16) { showRegErr("16文字以内で入力してください"); return; }
+
+  const users = getUsers();
+  const palette = AVATAR_COLORS[Object.keys(users).length % AVATAR_COLORS.length];
+
+  const userEntry = { nickname, color: palette.color, text: palette.text };
+  users[studentId] = userEntry;
+  saveUsers(users);
+
+  createSession(studentId, userEntry);
 }
+
+function showRegErr(msg) {
+  const el = document.getElementById("reg-err");
+  el.textContent = "✕ " + msg;
+  el.style.display = "block";
+  setTimeout(() => { el.style.display = "none"; }, 4000);
+}
+
+function backToId() {
+  showStep("step-id");
+}
+
+// ============================================================
+//  セッション生成 → リダイレクト
+// ============================================================
+function createSession(studentId, userEntry) {
+  const session = {
+    student_id:   studentId,
+    nickname:     userEntry.nickname,
+    color:        userEntry.color,
+    text_color:   userEntry.text,
+    logged_in_at: new Date().toISOString(),
+  };
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
+  location.href = REDIRECT_PATH;
+}
+
+// ── Enter キー対応 ───────────────────────────────────────────
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const step1 = document.getElementById("step-id");
+  const step2 = document.getElementById("step-register");
+  if (step1 && step1.style.display !== "none") submitId();
+  else if (step2 && step2.style.display !== "none") submitRegister();
+});
