@@ -24,13 +24,10 @@ const STUDENT = {
   textColor: _s.text_color || "#1e40af",
 };
 
-// ── 課題 JSON ──────────────────────────────────────────
-// ── 削除：TASKS_JSON のハードコード ──────────────────────
-// const TASKS_JSON = [ ... ];  ← 丸ごと削除
+// ── 課題 JSON（動的に読み込む） ────────────────────────
+let TASKS_JSON = [];
 
-// ── 追加：APIから取得 ────────────────────────────────────
-let TASKS_JSON = [];  // 動的に読み込む
-// ── Discord科目一覧 ───────────────────────────────
+// ── Discord科目一覧 ───────────────────────────────────
 let SUBJECTS = [];
 
 async function loadSubjects() {
@@ -46,7 +43,6 @@ async function loadSubjects() {
   }
 }
 
-
 async function loadTasks() {
   try {
     const data = await api("/list_schedule?guild_id=" + GUILD_ID);
@@ -56,17 +52,14 @@ async function loadTasks() {
 
     TASKS_JSON = (data.plans || [])
       .filter(p => {
-        // カテゴリが【提出】か【宿題】のもの
         const isTarget = p.content.includes("【提出】") || p.content.includes("【宿題】");
-        // 締切が今日以降のもの（過去は除外）
         const due = new Date(p.date); due.setHours(0, 0, 0, 0);
         return isTarget && due >= today;
       })
       .map(p => ({
-        // list_schedule のフォーマットから課題形式に変換
-        id:      `${p.date}_${p.subject}_${p.content}`,  // ユニークID
+        id:      `${p.date}_${p.subject}_${p.content}`,
         subject: p.subject,
-        title:   p.content.replace(/【.*?】/, "").trim(), // 【宿題】などを除去
+        title:   p.content.replace(/【.*?】/, "").trim(),
         due:     p.date,
         points:  5,
       }));
@@ -78,16 +71,15 @@ async function loadTasks() {
   }
 }
 
-// ── LocalStorage キー（タイマー復元・達成済み課題のみ） ──
-// ポイントはサーバー管理なので localStorage には保存しない
-// LS_TASKS は削除（課題達成はサーバー管理）
+// ── LocalStorage キー（タイマー復元のみ） ──────────────
 const LS_TIMER = "sl_timer_" + STUDENT.id;
 
 // ── グローバル状態 ──────────────────────────────────────
 let logs           = [];   // 全ユーザーのログ
 let allPoints      = {};   // { "1I001": 12, "1I002": 7, ... } サーバーから取得
 let myPoints       = 0;    // 自分のポイント（表示用）
-let completedTasks = [];   // 達成済み課題ID（localStorage）
+let completedTasks = [];   // 達成済み課題ID
+let nicknameMap    = {};   // { "1I001": "太郎", ... } student_id → nickname
 
 let timerInterval   = null;
 let timerSec        = 0;
@@ -106,19 +98,17 @@ window.addEventListener("load", function() {
   restoreTimer();
 
   Promise.all([
-    loadSubjects(),        // ← 追加
+    loadSubjects(),
     loadLogs(),
     loadPoints(),
     loadCompletedTasks(),
     loadTasks()
   ]).then(function() {
-    renderSubjectDropdown();  // ← 追加
+    renderSubjectDropdown();
     renderAll();
     renderTasks();
   });
-
 });
-
 
 // ── ヘッダーにセッション情報を反映 ─────────────────────
 function applySession() {
@@ -141,7 +131,7 @@ function doLogout() {
   location.replace("/Login.html");
 }
 
-// ── 達成済み課題（GitHub 管理） ────────────────────────
+// ── 達成済み課題（サーバー管理） ──────────────────────
 async function loadCompletedTasks() {
   try {
     var data = await api(
@@ -162,11 +152,19 @@ async function api(path, opts) {
   return res.json();
 }
 
-// ── ログ取得 ───────────────────────────────────────────
+// ── ログ取得（nicknameMap も同時に構築） ───────────────
 async function loadLogs() {
   try {
     var data = await api("/list_study_logs?guild_id=" + GUILD_ID);
     logs = data.ok ? (data.logs || []) : [];
+    // ログからニックネームマップを構築
+    logs.forEach(function(l) {
+      if (l.student_id && l.nickname) {
+        nicknameMap[l.student_id] = l.nickname;
+      }
+    });
+    // 自分自身はセッション情報で必ず上書き（確実に正しい名前を使う）
+    nicknameMap[STUDENT.id] = STUDENT.nickname;
   } catch(e) { logs = []; }
 }
 
@@ -190,7 +188,6 @@ async function postLog(entry) {
       method: "POST",
       body: JSON.stringify(Object.assign({ guild_id: GUILD_ID }, entry)),
     });
-    // サーバー側で加算済みなのでローカルにも反映
     if (earned > 0) {
       allPoints[STUDENT.id] = (allPoints[STUDENT.id] || 0) + earned;
       myPoints = allPoints[STUDENT.id];
@@ -198,13 +195,14 @@ async function postLog(entry) {
       updatePointDisplay();
     }
   } catch(e) {
-    // API 未到達時はローカルのみ反映
     if (earned > 0) {
       myPoints += earned;
       floatPoints("+" + earned + "pt");
       updatePointDisplay();
     }
   }
+  // ニックネームマップに自分を追加（ログ投稿で初めてログが生まれるケース）
+  nicknameMap[STUDENT.id] = STUDENT.nickname;
   logs.push(entry);
   renderAll();
 }
@@ -225,7 +223,6 @@ async function postTaskPoint(taskId, pts) {
       updatePointDisplay();
     }
   } catch(e) {
-    // API 未到達時はローカルのみ
     allPoints[STUDENT.id] = (allPoints[STUDENT.id] || 0) + pts;
     myPoints = allPoints[STUDENT.id];
     updatePointDisplay();
@@ -278,48 +275,62 @@ function floatPoints(txt) {
 
 // ============================================================
 //  ランキング集計
-//  勉強時間: ログの minutes 合計（全員分ある）
-//  ポイント:  allPoints から取得（GitHub 管理・全員分ある）
 // ============================================================
-function buildRankData(wl) {
-  // --- ログ全体から student_id → nickname の辞書を作る ---
-  var nameMap = {};
-  logs.forEach(function(l) {
-    if (!nameMap[l.student_id]) {
-      nameMap[l.student_id] = l.nickname;
-    }
-  });
 
-  // --- 勉強時間マップ ---
+// 同率を考慮して上位3位相当のエントリを返す
+function topWithTies(arr, key) {
+  if (!arr.length) return [];
+  var sorted = arr.slice().sort(function(a, b) { return b[key] - a[key]; });
+  var result = [];
+  var rank = 0;
+  var prev = null;
+  for (var i = 0; i < sorted.length; i++) {
+    if (sorted[i][key] !== prev) {
+      rank = i + 1;
+      prev = sorted[i][key];
+    }
+    if (rank > 3) break;
+    result.push(Object.assign({ rank: rank }, sorted[i]));
+  }
+  return result;
+}
+
+function buildRankData(wl) {
+  // 自分自身は必ずセッション情報の名前で登録
+  nicknameMap[STUDENT.id] = STUDENT.nickname;
+
+  // 勉強時間マップ
   var timeMap = {};
   wl.forEach(function(l) {
-    if (!timeMap[l.student_id])
-      timeMap[l.student_id] = { nickname: l.nickname, min: 0 };
+    if (!timeMap[l.student_id]) {
+      // ログにある名前を nicknameMap に追記（未登録の場合のみ）
+      if (l.student_id && l.nickname) {
+        nicknameMap[l.student_id] = nicknameMap[l.student_id] || l.nickname;
+      }
+      timeMap[l.student_id] = { nickname: nicknameMap[l.student_id] || l.nickname, min: 0 };
+    }
     timeMap[l.student_id].min += l.minutes;
   });
 
-  // --- ポイントマップ ---
+  // ポイントマップ（nicknameMap から名前を引く）
   var ptsMap = {};
   Object.keys(allPoints).forEach(function(sid) {
     ptsMap[sid] = {
-      nickname: nameMap[sid] || sid,   // ← ログに名前があれば使う
+      nickname: nicknameMap[sid] || sid,  // マップになければ student_id をそのまま表示せず空欄に
       pts: allPoints[sid] || 0,
     };
   });
 
-  // --- 今週ログがあるがポイント0の人も追加 ---
+  // 今週ログはあるがポイント0の人も追加
   Object.keys(timeMap).forEach(function(sid) {
     if (!ptsMap[sid]) {
-      ptsMap[sid] = {
-        nickname: timeMap[sid].nickname,
-        pts: 0
-      };
+      ptsMap[sid] = { nickname: timeMap[sid].nickname, pts: 0 };
     }
   });
 
   return {
-    byTime: Object.values(timeMap).sort(function(a,b){ return b.min - a.min; }).slice(0,3),
-    byPts:  Object.values(ptsMap).sort(function(a,b){ return b.pts - a.pts; }).slice(0,3),
+    byTime: topWithTies(Object.values(timeMap), "min"),
+    byPts:  topWithTies(Object.values(ptsMap),  "pts"),
   };
 }
 
@@ -351,12 +362,14 @@ function rankHTML(sorted, valFn, valClass, nameKey) {
   if (!sorted.length)
     return '<div class="sl-rank-empty">データなし</div>';
   var medals = ["sl-r1","sl-r2","sl-r3"];
-  return sorted.map(function(u, i) {
+  return sorted.map(function(u) {
+    var rank     = u.rank || 1;
     var name     = u[nameKey] || u.nickname || "—";
     var isMe     = name === STUDENT.nickname;
     var youBadge = isMe ? '<span class="sl-you-badge">あなた</span>' : "";
+    var medalCls = medals[rank - 1] || "sl-rn";
     return '<div class="sl-rank-row">' +
-      '<div class="sl-rank-num ' + (medals[i]||"sl-rn") + '">' + (i+1) + '</div>' +
+      '<div class="sl-rank-num ' + medalCls + '">' + rank + '</div>' +
       '<div class="sl-rank-name">' + esc(name) + youBadge + '</div>' +
       '<div class="sl-rank-val ' + valClass + '">' + valFn(u) + '</div>' +
     '</div>';
@@ -446,7 +459,7 @@ function toggleTask(id) {
   completedTasks.push(id);  // 楽観的UI更新
   renderTasks();
   var t = TASKS_JSON.find(function(x) { return x.id === id; });
-  if (t) postTaskPoint(id, t.points);  // サーバーに保存＆ポイント加算
+  if (t) postTaskPoint(id, t.points);
 }
 
 // ============================================================
@@ -473,7 +486,6 @@ function startInterval() {
     var curMin = Math.floor(timerSec / 60);
     if (curMin > 0 && curMin % 5 === 0 && curMin > lastAwardedMin) {
       lastAwardedMin = curMin;
-      // タイマー中のポイントはフロントで即時表示、ログ保存時にサーバーへ反映
       myPoints++;
       allPoints[STUDENT.id] = (allPoints[STUDENT.id] || 0) + 1;
       floatPoints("+1pt");
@@ -627,7 +639,6 @@ function renderSubjectDropdown() {
     ).join("");
   }
 }
-
 
 // ============================================================
 //  ユーティリティ
