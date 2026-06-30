@@ -73,8 +73,8 @@ const LS_TIMER = "sl_timer_" + STUDENT.id;
 let logs              = [];   // 全ユーザーのログ
 let allPoints         = {};   // 累計ポイント { "1I001": 12, ... }（ヘッダーバッジ用）
 let myPoints          = 0;    // 自分の累計ポイント
-let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points}, ...]
-let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points}], ... }
+let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points, nickname}, ...]
+let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points,nickname}], ... }
 let nicknameMap       = {};   // { "1I001": "太郎", ... }
 
 let timerInterval   = null;
@@ -135,9 +135,9 @@ async function loadCompletedTasks() {
       "/get_completed_tasks?guild_id=" + GUILD_ID + "&student_id=" + STUDENT.id
     );
     if (data.ok) {
-      // サーバーは [{id, date, points}, ...] を返す（旧形式の null も含む）
+      // サーバーは [{id, date, points, nickname}, ...] を返す（旧形式の null も含む）
       completedTasks = (data.done || []).map(function(e) {
-        return typeof e === "string" ? { id: e, date: null, points: null } : e;
+        return typeof e === "string" ? { id: e, date: null, points: null, nickname: null } : e;
       });
     } else {
       completedTasks = [];
@@ -155,7 +155,12 @@ async function loadAllCompletedTasks() {
 
     // ★ ここで nicknameMap を補完する
     Object.keys(allCompletedTasks).forEach(function(sid) {
-      if (!nicknameMap[sid] && sid === STUDENT.id) {
+      var entries  = allCompletedTasks[sid] || [];
+      var withNick = entries.find(function(e) { return e && e.nickname; });
+      if (withNick) {
+        // サーバーに保存された nickname（課題達成のみのユーザーもこれで判明する）
+        nicknameMap[sid] = nicknameMap[sid] || withNick.nickname;
+      } else if (!nicknameMap[sid] && sid === STUDENT.id) {
         nicknameMap[sid] = STUDENT.nickname;
       }
     });
@@ -232,6 +237,7 @@ async function postTaskPoint(taskId, pts) {
       method: "POST",
       body: JSON.stringify({
         guild_id: GUILD_ID, student_id: STUDENT.id,
+        nickname: STUDENT.nickname,
         task_id: taskId, points: pts,
       }),
     });
@@ -586,7 +592,12 @@ function toggleTask(id) {
   if (doneIds.includes(id)) return;
 
   var t = TASKS_JSON.find(function(x) { return x.id === id; });
-  var entry = { id: id, date: todayStr(), points: t ? t.points : 5 };
+  var entry = {
+    id:       id,
+    date:     todayStr(),
+    points:   t ? t.points : 5,
+    nickname: STUDENT.nickname,
+  };
 
   // 楽観的UI更新（自分用リスト・全員用ランキングデータの両方に反映）
   completedTasks.push(entry);
