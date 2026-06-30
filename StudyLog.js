@@ -370,12 +370,13 @@ function buildRankData(wl) {
   // ── 今週獲得ポイントマップ（全ユーザー） ────────────
   var weekPtsRaw = calcWeeklyPoints(wl);
   var ptsMap = {};
-  Object.keys(weekPtsRaw).forEach(function(sid) {
-    ptsMap[sid] = {
-      nickname: nicknameMap[sid] || sid,
-      pts: weekPtsRaw[sid],
-    };
-  });
+    Object.keys(weekPtsRaw).forEach(function(sid) {
+      ptsMap[sid] = {
+        nickname: nicknameMap[sid] || (sid === STUDENT.id ? STUDENT.nickname : sid),
+        pts: weekPtsRaw[sid],
+      };
+    });
+
 
   return {
     byTime: topWithTies(Object.values(timeMap), "min"),
