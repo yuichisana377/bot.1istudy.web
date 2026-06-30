@@ -21,11 +21,12 @@ function getSession() {
 
 const _s = getSession() || {};
 const STUDENT = {
-  id:        _s.student_id || "1I001",
-  nickname:  _s.nickname   || "Guest",
-  color:     _s.color      || "#dbeafe",
-  textColor: _s.text_color || "#1e40af",
+  id:        _s.student_id,     // ★ 初期値を消す
+  nickname:  _s.nickname,
+  color:     _s.color,
+  textColor: _s.text_color,
 };
+
 
 // ── 課題 JSON（動的に読み込む） ────────────────────────
 let TASKS_JSON = [];
