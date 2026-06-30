@@ -4,7 +4,7 @@
 //  → 累計ポイントはヘッダーバッジに表示
 //  → ポイントランキングは「今週獲得分」のみ（毎週リセット）
 //     ・勉強ログ分: floor(minutes/5) pt  ← ログの日付でフィルタ
-//     ・課題達成分: +points pt            ← 達成日でフィルタ
+//     ・課題達成分: +points pt            ← 達成日でフィルタ（全ユーザー対象）
 // ============================================================
 
 const API_BASE    = "https://python-bot-1istudy.onrender.com/";
@@ -69,11 +69,12 @@ async function loadTasks() {
 const LS_TIMER = "sl_timer_" + STUDENT.id;
 
 // ── グローバル状態 ──────────────────────────────────────
-let logs           = [];   // 全ユーザーのログ
-let allPoints      = {};   // 累計ポイント { "1I001": 12, ... }（ヘッダーバッジ用）
-let myPoints       = 0;    // 自分の累計ポイント
-let completedTasks = [];   // 達成済み課題 [{id, date}, ...]（自分のみ）
-let nicknameMap    = {};   // { "1I001": "太郎", ... }
+let logs              = [];   // 全ユーザーのログ
+let allPoints         = {};   // 累計ポイント { "1I001": 12, ... }（ヘッダーバッジ用）
+let myPoints          = 0;    // 自分の累計ポイント
+let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points}, ...]
+let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points}], ... }
+let nicknameMap       = {};   // { "1I001": "太郎", ... }
 
 let timerInterval   = null;
 let timerSec        = 0;
@@ -95,7 +96,8 @@ window.addEventListener("load", function() {
     loadSubjects(),
     loadLogs(),
     loadPoints(),
-    loadCompletedTasks(),
+    loadCompletedTasks(),      // 自分用（課題タブの達成済み表示に必要）
+    loadAllCompletedTasks(),   // 全員用（週間ランキング集計に必要）
     loadTasks()
   ]).then(function() {
     renderSubjectDropdown();
@@ -125,22 +127,32 @@ function doLogout() {
   location.replace("/Login.html");
 }
 
-// ── 達成済み課題（サーバー管理・日付付き） ────────────
+// ── 達成済み課題（自分のみ・サーバー管理・日付付き） ───
 async function loadCompletedTasks() {
   try {
     var data = await api(
       "/get_completed_tasks?guild_id=" + GUILD_ID + "&student_id=" + STUDENT.id
     );
     if (data.ok) {
-      // サーバーは [{id, date}, ...] を返す（旧形式の null date も含む）
+      // サーバーは [{id, date, points}, ...] を返す（旧形式の null も含む）
       completedTasks = (data.done || []).map(function(e) {
-        // 万が一フロントに旧形式（文字列）が届いた場合も正規化
-        return typeof e === "string" ? { id: e, date: null } : e;
+        return typeof e === "string" ? { id: e, date: null, points: null } : e;
       });
     } else {
       completedTasks = [];
     }
   } catch(e) { completedTasks = []; }
+}
+
+// ── 達成済み課題（全ユーザー・週間ランキング集計用） ───
+async function loadAllCompletedTasks() {
+  try {
+    // student_id を省略して呼ぶと { student_id: [...] } の形で全員分返る
+    var data = await api("/get_completed_tasks?guild_id=" + GUILD_ID);
+    allCompletedTasks = (data.ok && data.done && typeof data.done === "object" && !Array.isArray(data.done))
+      ? data.done
+      : {};
+  } catch(e) { allCompletedTasks = {}; }
 }
 
 // ============================================================
@@ -253,11 +265,10 @@ function setTodayLabel() {
 
 // ============================================================
 //  今週の獲得ポイントを計算（ランキング用）
-//  ・勉強ログ分: floor(minutes/5) → 今週のログのみ対象
-//  ・課題達成分: task.points      → 今週達成したもののみ対象
-//    ※ 課題達成はログAPIに存在しないためcompletedTasks（自分のみ）
-//      で加算。他ユーザーの課題ポイントは現状APIから取得不可なので
-//      自分のみ反映される。
+//  ・勉強ログ分: floor(minutes/5) → 今週のログのみ対象（全ユーザー）
+//  ・課題達成分: 達成エントリに保存された points を最優先で使用
+//                （無ければ現在の TASKS_JSON、それも無ければ5ptに
+//                 フォールバック）→ 今週達成したもののみ対象（全ユーザー）
 // ============================================================
 function calcWeeklyPoints(wl) {
   var r   = getWeekRange();
@@ -269,18 +280,24 @@ function calcWeeklyPoints(wl) {
     map[l.student_id] += Math.floor(l.minutes / 5);
   });
 
-  // ② 課題達成分（自分のみ・今週達成したもの）
-  completedTasks.forEach(function(e) {
-    if (!e.date) return;  // 旧データ（date=null）はスキップ
-    var d = new Date(e.date); d.setHours(0, 0, 0, 0);
-    if (d < r.mon || d > r.sun) return;  // 今週以外はスキップ
+  // ② 課題達成分（全ユーザー・今週達成したもの）
+  Object.keys(allCompletedTasks).forEach(function(sid) {
+    (allCompletedTasks[sid] || []).forEach(function(e) {
+      if (!e.date) return;  // 旧データ（date=null）はスキップ
+      var d = new Date(e.date); d.setHours(0, 0, 0, 0);
+      if (d < r.mon || d > r.sun) return;  // 今週以外はスキップ
 
-    // 達成した課題のポイントを TASKS_JSON から引く
-    var task = TASKS_JSON.find(function(t) { return t.id === e.id; });
-    var pts  = task ? task.points : 5;  // 見つからなければデフォルト5pt
+      var pts;
+      if (e.points != null) {
+        pts = e.points;  // サーバー保存値（達成時点のポイント・最も正確）
+      } else {
+        var task = TASKS_JSON.find(function(t) { return t.id === e.id; });
+        pts = task ? task.points : 5;
+      }
 
-    if (!map[STUDENT.id]) map[STUDENT.id] = 0;
-    map[STUDENT.id] += pts;
+      if (!map[sid]) map[sid] = 0;
+      map[sid] += pts;
+    });
   });
 
   return map;  // { "1I001": 12, "1I002": 3, ... }
@@ -342,7 +359,7 @@ function buildRankData(wl) {
     timeMap[l.student_id].min += l.minutes;
   });
 
-  // ── 今週獲得ポイントマップ ──────────────────────────
+  // ── 今週獲得ポイントマップ（全ユーザー） ────────────
   var weekPtsRaw = calcWeeklyPoints(wl);
   var ptsMap = {};
   Object.keys(weekPtsRaw).forEach(function(sid) {
@@ -481,10 +498,18 @@ function saveManual() {
 function toggleTask(id) {
   var doneIds = completedTasks.map(function(e) { return e.id; });
   if (doneIds.includes(id)) return;
-  // 楽観的UI更新（達成日は今日）
-  completedTasks.push({ id: id, date: todayStr() });
-  renderTasks();
+
   var t = TASKS_JSON.find(function(x) { return x.id === id; });
+  var entry = { id: id, date: todayStr(), points: t ? t.points : 5 };
+
+  // 楽観的UI更新（自分用リスト・全員用ランキングデータの両方に反映）
+  completedTasks.push(entry);
+  if (!allCompletedTasks[STUDENT.id]) allCompletedTasks[STUDENT.id] = [];
+  allCompletedTasks[STUDENT.id].push(entry);
+
+  renderTasks();
+  renderAll();  // ランキングにも即時反映
+
   if (t) postTaskPoint(id, t.points);
 }
 
