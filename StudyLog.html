@@ -109,10 +109,28 @@
       </div>
     </div>
 
-    <!-- ログ一覧 -->
+    <!-- ログ一覧（自分のみ） -->
     <div class="sl-card">
       <div class="sl-card-title">📋 ログ一覧</div>
       <div id="log-list">
+        <div class="empty-msg">まだ記録がありません</div>
+      </div>
+    </div>
+
+    <!-- みんなの記録 -->
+    <div class="sl-card">
+      <div class="sl-card-title">👥 みんなの記録</div>
+      <div class="sl-summary-grid" style="margin-bottom:16px">
+        <div class="sl-metric">
+          <div class="sl-metric-label">今週の勉強時間</div>
+          <div class="sl-metric-value" id="everyone-week-min">0分</div>
+        </div>
+        <div class="sl-metric">
+          <div class="sl-metric-label">今週のポイント</div>
+          <div class="sl-metric-value" id="everyone-week-pts">0pt</div>
+        </div>
+      </div>
+      <div id="everyone-log-list">
         <div class="empty-msg">まだ記録がありません</div>
       </div>
     </div>
