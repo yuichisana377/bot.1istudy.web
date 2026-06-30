@@ -147,13 +147,21 @@ async function loadCompletedTasks() {
 // ── 達成済み課題（全ユーザー・週間ランキング集計用） ───
 async function loadAllCompletedTasks() {
   try {
-    // student_id を省略して呼ぶと { student_id: [...] } の形で全員分返る
     var data = await api("/get_completed_tasks?guild_id=" + GUILD_ID);
     allCompletedTasks = (data.ok && data.done && typeof data.done === "object" && !Array.isArray(data.done))
       ? data.done
       : {};
+
+    // ★ ここで nicknameMap を補完する
+    Object.keys(allCompletedTasks).forEach(function(sid) {
+      if (!nicknameMap[sid] && sid === STUDENT.id) {
+        nicknameMap[sid] = STUDENT.nickname;
+      }
+    });
+
   } catch(e) { allCompletedTasks = {}; }
 }
+
 
 // ============================================================
 //  API ヘルパー
