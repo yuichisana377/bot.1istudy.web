@@ -212,6 +212,60 @@ function toggleCatFilter(btn) {
 }
 
 // ============================================================
+//  時間割（曜日ごとの教科順）
+// ============================================================
+const TIMETABLE = {
+  mon: [
+    { subject: "コンピュータリテラシ", items: ["教科書"] },
+    { subject: "情報技術概論",         items: ["教科書", "プリント"] },
+    { subject: "国語1乙a",             items: ["教科書", "資料集", "辞書"] },
+  ],
+  tue: [
+    { subject: "化学1a",     items: ["教科書", "ワーク"] },
+    { subject: "情報基礎",   items: ["教科書"] },
+    { subject: "線形数学1a", items: ["教科書", "ノート", "ワーク"] },
+    { subject: "地理a",      items: ["教科書", "資料集", "地図帳"] },
+  ],
+  wed: [
+    { subject: "物理1a",     items: ["教科書", "プリント"] },
+    { subject: "体育1a",     items: ["体操服", "教科書"] },
+    { subject: "英語会話a",  items: ["教科書", "多読手帳"] },
+    { subject: "その他",     items: [] },
+  ],
+  thu: [
+    { subject: "情報工学ゼミ1", items: [] },
+    { subject: "公共a",         items: ["教科書", "資料集", "プリント"] },
+    { subject: "基礎解析1a",    items: ["教科書", "ワーク", "ノート"] },
+    { subject: "国語1甲a",      items: ["国語ノート"] },
+  ],
+  fri: [
+    { subject: "英語表現基礎a",           items: ["英語教科書", "辞書"] },
+    { subject: "基礎解析",                items: ["教科書", "ノート"] },
+    { subject: "英語コミュニケーション1a", items: ["英語教科書"] },
+  ],
+};
+
+const WDAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
+
+/** 日付文字列(YYYY-MM-DD)からその曜日の時間割上の教科順インデックスを返す */
+function timetableOrderIndex(dateStr, subject) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const key = WDAY_KEYS[d.getDay()];
+  const list = TIMETABLE[key];
+  if (!list) return Infinity; // 土日など時間割がない曜日は元の順序のまま末尾扱い
+  const idx = list.findIndex(item => item.subject === subject);
+  return idx === -1 ? Infinity : idx; // 時間割にない教科は末尾
+}
+
+/** 同じ日付内の予定配列を、その曜日の時間割順に安定ソートする */
+function sortByTimetable(dateStr, dayPlans) {
+  return dayPlans
+    .map((p, i) => ({ p, i, order: timetableOrderIndex(dateStr, p.subject) }))
+    .sort((a, b) => (a.order - b.order) || (a.i - b.i))
+    .map(x => x.p);
+}
+
+// ============================================================
 //  予定一覧 描画
 // ============================================================
 const WDAYS = ['日','月','火','水','木','金','土'];
@@ -244,7 +298,10 @@ function renderPlans() {
     const isToday = date === today;
     const isPast  = date < today;
 
-    const rows = grouped[date].map(p => {
+    // ★ 時間割順に並べ替え
+    const dayPlans = sortByTimetable(date, grouped[date]);
+
+    const rows = dayPlans.map(p => {
       const { cat, text } = parsePlanContent(p.content);
       return `<div class="plan-row">
         <span class="subject">${p.subject}</span>
