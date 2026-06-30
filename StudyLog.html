@@ -65,19 +65,19 @@
 <div class="sl-screen active" id="tab-home">
   <div class="sl-inner">
 
-    <!-- サマリー -->
+    <!-- サマリー（自分） -->
     <div class="sl-summary-grid">
       <div class="sl-metric">
-        <div class="sl-metric-label">今週の1I合計</div>
-        <div class="sl-metric-value" id="total-week">0分</div>
+        <div class="sl-metric-label">今週の勉強時間</div>
+        <div class="sl-metric-value" id="my-week-time">0分</div>
       </div>
       <div class="sl-metric">
-        <div class="sl-metric-label">自分の今週</div>
-        <div class="sl-metric-value" id="my-week">0分</div>
+        <div class="sl-metric-label">今週のポイント</div>
+        <div class="sl-metric-value" id="my-week-pts">0pt</div>
       </div>
       <div class="sl-metric">
-        <div class="sl-metric-label">記録件数</div>
-        <div class="sl-metric-value" id="total-count">0件</div>
+        <div class="sl-metric-label">累計勉強時間</div>
+        <div class="sl-metric-value" id="my-total-time">0分</div>
       </div>
     </div>
 
@@ -120,7 +120,10 @@
     <!-- みんなの記録 -->
     <div class="sl-card">
       <div class="sl-card-title">👥 みんなの記録</div>
-      <div class="sl-summary-grid" style="margin-bottom:16px">
+
+      <!-- ① 1I勉強会 全体の今週合計 -->
+      <div style="font-weight:700;font-size:14px;color:#475569;margin:4px 0 10px">📊 1I勉強会 今週の合計</div>
+      <div class="sl-summary-grid" style="margin-bottom:18px">
         <div class="sl-metric">
           <div class="sl-metric-label">今週の勉強時間</div>
           <div class="sl-metric-value" id="everyone-week-min">0分</div>
@@ -130,6 +133,15 @@
           <div class="sl-metric-value" id="everyone-week-pts">0pt</div>
         </div>
       </div>
+
+      <!-- ② メンバーごとの今週の記録 -->
+      <div style="font-weight:700;font-size:14px;color:#475569;margin:4px 0 10px;padding-top:4px;border-top:1px solid #e2e8f0">👤 メンバー別 今週の記録</div>
+      <div id="member-week-list" style="margin-bottom:18px">
+        <div class="empty-msg">データなし</div>
+      </div>
+
+      <!-- ③ みんなの勉強ログ -->
+      <div style="font-weight:700;font-size:14px;color:#475569;margin:4px 0 10px;padding-top:4px;border-top:1px solid #e2e8f0">📋 みんなの勉強ログ</div>
       <div id="everyone-log-list">
         <div class="empty-msg">まだ記録がありません</div>
       </div>
