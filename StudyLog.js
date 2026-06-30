@@ -674,7 +674,6 @@ function timerStop() {
   document.getElementById("timer-confirm").style.display = "block";
   document.getElementById("conf-time").textContent       = mins + "分 " + pad(timerSec % 60) + "秒";
   document.getElementById("conf-time").dataset.min       = mins;
-  try { localStorage.removeItem(LS_TIMER); } catch(e) {}
 }
 
 function saveTimer() {
@@ -713,7 +712,6 @@ function timerReset() {
   document.getElementById("timer-main").style.display    = "block";
   document.getElementById("timer-confirm").style.display = "none";
   document.getElementById("conf-memo").value = "";
-  try { localStorage.removeItem(LS_TIMER); } catch(e) {}
 }
 
 
