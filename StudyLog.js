@@ -478,7 +478,7 @@ function renderEveryone(wl, totMin) {
   var members = Object.keys(memberIds).map(function(id) {
     return {
       id:       id,
-      nickname: nicknameMap[id] || id,
+      nickname: nicknameMap[id] || (id === STUDENT.id ? STUDENT.nickname : id),
       min:      weekMinMap[id] || 0,
       pts:      weekPtsRaw[id] || 0,
     };
