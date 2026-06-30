@@ -653,7 +653,6 @@ function timerPauseResume() {
     document.getElementById("btn-pause").textContent      = "▶ 再開";
     document.getElementById("timer-status").textContent   = "休憩中...";
     document.getElementById("timer-pts-hint").textContent = "";
-    try { localStorage.removeItem(LS_TIMER); } catch(e) {}
   } else {
     timerIsPaused   = false; timerRunning = true;
     timerStartEpoch = Date.now() - elapsedAtPause * 1000;
