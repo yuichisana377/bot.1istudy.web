@@ -20,6 +20,18 @@ let filterSubject = 'all';  // 'all' or channel name
 let filterCat     = 'all';  // 'all' or category string
 
 // ============================================================
+//  日付ユーティリティ（ローカル時刻＝日本時間で YYYY-MM-DD を返す）
+//  ※ toISOString() はUTC基準になるため使わない
+// ============================================================
+function todayLocalStr() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// ============================================================
 //  起動
 // ============================================================
 window.addEventListener('load', () => {
@@ -112,7 +124,7 @@ function scrollToToday() {
   const filtered = getFilteredPlans();
   if (!filtered.length) return;
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalStr();
   const futureDates = filtered.map(p => p.date).filter(d => d >= today).sort();
 
   let targetDate = null;
@@ -221,7 +233,7 @@ function renderPlans() {
     return;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalStr();
   const grouped = {};
   filtered.forEach(p => { (grouped[p.date] = grouped[p.date] || []).push(p); });
 
