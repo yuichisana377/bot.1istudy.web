@@ -708,18 +708,6 @@ function timerReset() {
   try { localStorage.removeItem(LS_TIMER); } catch(e) {}
 }
 
-document.addEventListener("visibilitychange", function() {
-  if (!timerRunning || timerIsPaused) return;
-  if (document.hidden) {
-    clearInterval(timerInterval); timerInterval = null;
-    elapsedAtPause = timerSec; timerRunning = false; timerIsPaused = true;
-    document.getElementById("btn-pause").textContent      = "▶ 再開";
-    document.getElementById("btn-start").disabled         = true;
-    document.getElementById("timer-status").textContent   = "タブ離脱で一時停止中";
-    document.getElementById("timer-pts-hint").textContent = "";
-    try { localStorage.removeItem(LS_TIMER); } catch(e) {}
-  }
-});
 
 function restoreTimer() {
   try {
