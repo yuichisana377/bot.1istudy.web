@@ -381,11 +381,17 @@ function buildRankData(wl) {
 function renderAll() {
   var wl  = getThisWeekLogs();
   var tot = wl.reduce(function(s,l){ return s+l.minutes; }, 0);
-  var my  = wl.filter(function(l){ return l.student_id === STUDENT.id; })
-              .reduce(function(s,l){ return s+l.minutes; }, 0);
-  document.getElementById("total-week").textContent  = tot + "分";
-  document.getElementById("my-week").textContent     = my  + "分";
-  document.getElementById("total-count").textContent = logs.length + "件";
+
+  // ── 自分のサマリー ────────────────────────────────
+  var myWeekMin = wl.filter(function(l){ return l.student_id === STUDENT.id; })
+                     .reduce(function(s,l){ return s+l.minutes; }, 0);
+  var myWeekPts = calcWeeklyPoints(wl)[STUDENT.id] || 0;
+  var myTotalMin = logs.filter(function(l){ return l.student_id === STUDENT.id; })
+                        .reduce(function(s,l){ return s+l.minutes; }, 0);
+  document.getElementById("my-week-time").textContent  = myWeekMin + "分";
+  document.getElementById("my-week-pts").textContent   = myWeekPts + "pt";
+  document.getElementById("my-total-time").textContent = myTotalMin + "分";
+
   renderRankings(wl);
   renderLogs();
   renderEveryone(wl, tot);
@@ -436,9 +442,9 @@ function renderLogs() {
   }).join("");
 }
 
-// ── みんなの記録（今週の合計時間・ポイント＋全員のログ一覧） ──
+// ── みんなの記録（①全体合計 ②メンバー別 ③全員のログ） ──
 function renderEveryone(wl, totMin) {
-  // 今週の全員合計ポイント
+  // ① 1I勉強会 全体の今週合計
   var weekPtsRaw  = calcWeeklyPoints(wl);
   var totPts      = Object.values(weekPtsRaw).reduce(function(s, v) { return s + v; }, 0);
 
@@ -447,6 +453,46 @@ function renderEveryone(wl, totMin) {
   if (minEl) minEl.textContent = totMin + "分";
   if (ptsEl) ptsEl.textContent = totPts + "pt";
 
+  // ② メンバーごとの今週の記録（アカウントが存在する人＝
+  //    ログ・累計ポイント・課題達成のいずれかに登場した student_id 全員）
+  var weekMinMap = {};
+  wl.forEach(function(l) {
+    weekMinMap[l.student_id] = (weekMinMap[l.student_id] || 0) + l.minutes;
+  });
+
+  var memberIds = {};
+  Object.keys(nicknameMap).forEach(function(id) { memberIds[id] = true; });
+  Object.keys(allPoints).forEach(function(id) { memberIds[id] = true; });
+  Object.keys(allCompletedTasks).forEach(function(id) { memberIds[id] = true; });
+  memberIds[STUDENT.id] = true;
+
+  var members = Object.keys(memberIds).map(function(id) {
+    return {
+      id:       id,
+      nickname: nicknameMap[id] || id,
+      min:      weekMinMap[id] || 0,
+      pts:      weekPtsRaw[id] || 0,
+    };
+  }).sort(function(a, b) {
+    return (b.min - a.min) || (b.pts - a.pts) || a.nickname.localeCompare(b.nickname, "ja");
+  });
+
+  var memberListEl = document.getElementById("member-week-list");
+  if (memberListEl) {
+    memberListEl.innerHTML = members.length
+      ? members.map(function(m) {
+          var isMe     = m.id === STUDENT.id;
+          var youBadge = isMe ? '<span class="sl-you-badge">あなた</span>' : "";
+          return '<div class="sl-rank-row">' +
+            '<div class="sl-rank-name">' + esc(m.nickname) + youBadge + '</div>' +
+            '<div class="sl-rank-val sl-rank-val-time">' + m.min + '分</div>' +
+            '<div class="sl-rank-val sl-rank-val-pts">' + m.pts + 'pt</div>' +
+          '</div>';
+        }).join("")
+      : '<div class="sl-rank-empty">データなし</div>';
+  }
+
+  // ③ みんなの勉強ログ
   var el = document.getElementById("everyone-log-list");
   if (!el) return;
   if (!logs.length) {
