@@ -388,6 +388,7 @@ function renderAll() {
   document.getElementById("total-count").textContent = logs.length + "件";
   renderRankings(wl);
   renderLogs();
+  renderEveryone(wl, tot);
 }
 
 function renderRankings(wl) {
@@ -416,9 +417,38 @@ function rankHTML(sorted, valFn, valClass, nameKey) {
   }).join("");
 }
 
-// ── ログ一覧 ──────────────────────────────────────────
+// ── ログ一覧（自分のみ） ───────────────────────────────
 function renderLogs() {
-  var el = document.getElementById("log-list");
+  var el     = document.getElementById("log-list");
+  var myLogs = logs.filter(function(l) { return l.student_id === STUDENT.id; });
+  if (!myLogs.length) {
+    el.innerHTML = '<div class="empty-msg">まだ記録がありません</div>'; return;
+  }
+  el.innerHTML = myLogs.slice().reverse().map(function(l) {
+    return '<div class="sl-log-item">' +
+      '<div class="sl-log-header">' +
+        '<span class="sl-log-subject">' + esc(l.subject) + '</span>' +
+        '<span class="sl-log-min">' + l.minutes + '分</span>' +
+      '</div>' +
+      '<div class="sl-log-meta">' + l.date + ' · ' + esc(l.nickname) + '</div>' +
+      (l.memo ? '<div class="sl-log-memo">' + esc(l.memo) + '</div>' : '') +
+    '</div>';
+  }).join("");
+}
+
+// ── みんなの記録（今週の合計時間・ポイント＋全員のログ一覧） ──
+function renderEveryone(wl, totMin) {
+  // 今週の全員合計ポイント
+  var weekPtsRaw  = calcWeeklyPoints(wl);
+  var totPts      = Object.values(weekPtsRaw).reduce(function(s, v) { return s + v; }, 0);
+
+  var minEl = document.getElementById("everyone-week-min");
+  var ptsEl = document.getElementById("everyone-week-pts");
+  if (minEl) minEl.textContent = totMin + "分";
+  if (ptsEl) ptsEl.textContent = totPts + "pt";
+
+  var el = document.getElementById("everyone-log-list");
+  if (!el) return;
   if (!logs.length) {
     el.innerHTML = '<div class="empty-msg">まだ記録がありません</div>'; return;
   }
