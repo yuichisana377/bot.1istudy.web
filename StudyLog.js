@@ -21,7 +21,7 @@ function getSession() {
 
 const _s = getSession() || {};
 const STUDENT = {
-  id:        _s.student_id,     // ★ 初期値を消す
+  id:        _s.student_id,
   nickname:  _s.nickname,
   color:     _s.color,
   textColor: _s.text_color,
@@ -73,8 +73,8 @@ const LS_TIMER = "sl_timer_" + STUDENT.id;
 let logs              = [];   // 全ユーザーのログ
 let allPoints         = {};   // 累計ポイント { "1I001": 12, ... }（ヘッダーバッジ用）
 let myPoints          = 0;    // 自分の累計ポイント
-let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points}, ...]
-let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points}], ... }
+let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points, nickname}, ...]
+let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points,nickname}], ... }
 let nicknameMap       = {};   // { "1I001": "太郎", ... }
 
 let timerInterval   = null;
@@ -135,9 +135,11 @@ async function loadCompletedTasks() {
       "/get_completed_tasks?guild_id=" + GUILD_ID + "&student_id=" + STUDENT.id
     );
     if (data.ok) {
-      // サーバーは [{id, date, points}, ...] を返す（旧形式の null も含む）
+      // サーバーは [{id, date, points, nickname}, ...] を返す（旧形式の null も含む）
       completedTasks = (data.done || []).map(function(e) {
-        return typeof e === "string" ? { id: e, date: null, points: null } : e;
+        return typeof e === "string"
+          ? { id: e, date: null, points: null, nickname: null }
+          : e;
       });
     } else {
       completedTasks = [];
@@ -153,10 +155,20 @@ async function loadAllCompletedTasks() {
       ? data.done
       : {};
 
-    // ★ ここで nicknameMap を補完する
+    // ★ 各ユーザーの nickname を nicknameMap に反映する
     Object.keys(allCompletedTasks).forEach(function(sid) {
-      if (!nicknameMap[sid] && sid === STUDENT.id) {
+      // 自分自身は SESSION から確実に取得
+      if (sid === STUDENT.id) {
         nicknameMap[sid] = STUDENT.nickname;
+        return;
+      }
+      // 他のユーザーは達成エントリに保存された nickname を使う
+      if (!nicknameMap[sid]) {
+        var entries = allCompletedTasks[sid] || [];
+        var withNick = entries.find(function(e) { return e.nickname; });
+        if (withNick) {
+          nicknameMap[sid] = withNick.nickname;
+        }
       }
     });
 
@@ -231,8 +243,11 @@ async function postTaskPoint(taskId, pts) {
     var data = await api("/complete_task", {
       method: "POST",
       body: JSON.stringify({
-        guild_id: GUILD_ID, student_id: STUDENT.id,
-        task_id: taskId, points: pts,
+        guild_id:   GUILD_ID,
+        student_id: STUDENT.id,
+        nickname:   STUDENT.nickname,  // ★ ニックネームを送信
+        task_id:    taskId,
+        points:     pts,
       }),
     });
     if (data.ok) {
@@ -371,13 +386,12 @@ function buildRankData(wl) {
   // ── 今週獲得ポイントマップ（全ユーザー） ────────────
   var weekPtsRaw = calcWeeklyPoints(wl);
   var ptsMap = {};
-    Object.keys(weekPtsRaw).forEach(function(sid) {
-      ptsMap[sid] = {
-        nickname: nicknameMap[sid] || (sid === STUDENT.id ? STUDENT.nickname : sid),
-        pts: weekPtsRaw[sid],
-      };
-    });
-
+  Object.keys(weekPtsRaw).forEach(function(sid) {
+    ptsMap[sid] = {
+      nickname: nicknameMap[sid] || (sid === STUDENT.id ? STUDENT.nickname : sid),
+      pts: weekPtsRaw[sid],
+    };
+  });
 
   return {
     byTime: topWithTies(Object.values(timeMap), "min"),
@@ -586,12 +600,20 @@ function toggleTask(id) {
   if (doneIds.includes(id)) return;
 
   var t = TASKS_JSON.find(function(x) { return x.id === id; });
-  var entry = { id: id, date: todayStr(), points: t ? t.points : 5 };
+  var entry = {
+    id:       id,
+    date:     todayStr(),
+    points:   t ? t.points : 5,
+    nickname: STUDENT.nickname,  // ★ ニックネームを楽観的更新にも含める
+  };
 
   // 楽観的UI更新（自分用リスト・全員用ランキングデータの両方に反映）
   completedTasks.push(entry);
   if (!allCompletedTasks[STUDENT.id]) allCompletedTasks[STUDENT.id] = [];
   allCompletedTasks[STUDENT.id].push(entry);
+
+  // ★ nicknameMap にも即時反映（課題のみ達成した場合の表示崩れを防ぐ）
+  nicknameMap[STUDENT.id] = STUDENT.nickname;
 
   renderTasks();
   renderAll();  // ランキングにも即時反映
@@ -653,6 +675,7 @@ function timerPauseResume() {
     document.getElementById("btn-pause").textContent      = "▶ 再開";
     document.getElementById("timer-status").textContent   = "休憩中...";
     document.getElementById("timer-pts-hint").textContent = "";
+    try { localStorage.removeItem(LS_TIMER); } catch(e) {}
   } else {
     timerIsPaused   = false; timerRunning = true;
     timerStartEpoch = Date.now() - elapsedAtPause * 1000;
