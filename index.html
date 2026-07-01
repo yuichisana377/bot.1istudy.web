@@ -135,13 +135,18 @@
             <option value="その他">その他</option>
             <option value="__custom__">自由入力…</option>
           </select>
-          <input type="text" id="add-category-inp" placeholder="カテゴリを入力" style="display:none">
+          <input type="text" id="add-category-inp" placeholder="カテゴリを入力" style="display:none" oninput="updatePointsVisibility('add')">
         </div>
       </div>
       <div class="field">
         <label>内容</label>
         <input type="text" id="add-content" placeholder="例: p.10 問1〜5">
       </div>
+    </div>
+    <!-- ★ ポイント入力欄（カテゴリが「提出」「宿題」のときだけ表示） -->
+    <div class="field" id="add-points-wrap" style="display:none">
+      <label>ポイント</label>
+      <input type="number" id="add-points" min="1" value="5">
     </div>
     <button class="btn-primary" onclick="submitAdd()">追加する</button>
   </div>
@@ -190,13 +195,18 @@
             <option value="その他">その他</option>
             <option value="__custom__">自由入力…</option>
           </select>
-          <input type="text" id="edit-category-inp" placeholder="カテゴリを入力" style="display:none">
+          <input type="text" id="edit-category-inp" placeholder="カテゴリを入力" style="display:none" oninput="updatePointsVisibility('edit')">
         </div>
       </div>
       <div class="field">
         <label>新しい内容</label>
         <input type="text" id="edit-content" placeholder="変更しない場合は空欄">
       </div>
+    </div>
+    <!-- ★ ポイント入力欄（カテゴリが「提出」「宿題」のときだけ表示） -->
+    <div class="field" id="edit-points-wrap" style="display:none">
+      <label>新しいポイント（変更しない場合は空欄）</label>
+      <input type="number" id="edit-points" min="1" placeholder="変更しない">
     </div>
     <button class="btn-primary" onclick="submitEdit()">保存する</button>
   </div>
