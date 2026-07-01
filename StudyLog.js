@@ -5,11 +5,16 @@
 //  → ポイントランキングは「今週獲得分」のみ（毎週リセット）
 //     ・勉強ログ分: floor(minutes/5) pt  ← ログの日付でフィルタ
 //     ・課題達成分: +points pt            ← 達成日でフィルタ（全ユーザー対象）
+//
+//  ★ 課題のポイントは Plan.js（予定管理ページ）の追加・編集画面で
+//     設定可能。plans に points フィールドがあればそれを使用し、
+//     無ければデフォルト 5pt にフォールバックする。
 // ============================================================
 
 const API_BASE    = "https://python-bot-1istudy.onrender.com/";
 const GUILD_ID    = "1509880344806162544";
 const SESSION_KEY = "sl_session";
+const DEFAULT_TASK_POINTS = 5;
 
 // ── セッション取得・チェック ────────────────────────────
 function getSession() {
@@ -59,7 +64,9 @@ async function loadTasks() {
         subject: p.subject,
         title:   p.content.replace(/【.*?】/, "").trim(),
         due:     p.date,
-        points:  5,
+        // ★ サーバー側（予定管理の追加・編集画面）で設定したポイントを優先。
+        //    未設定の予定は従来どおりデフォルト5ptにフォールバック。
+        points:  (p.points != null) ? p.points : DEFAULT_TASK_POINTS,
       }));
 
     renderTasks();
@@ -311,7 +318,7 @@ function calcWeeklyPoints(wl) {
         pts = e.points;
       } else {
         var task = TASKS_JSON.find(function(t) { return t.id === e.id; });
-        pts = task ? task.points : 5;
+        pts = task ? task.points : DEFAULT_TASK_POINTS;
       }
 
       if (!map[sid]) map[sid] = 0;
@@ -592,7 +599,7 @@ function toggleTask(id) {
   var entry = {
     id:       id,
     date:     todayStr(),
-    points:   t ? t.points : 5,
+    points:   t ? t.points : DEFAULT_TASK_POINTS,
     nickname: STUDENT.nickname,
   };
 
