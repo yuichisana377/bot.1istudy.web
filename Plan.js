@@ -6,6 +6,9 @@
 const API_BASE = "https://python-bot-1istudy.onrender.com/";
 const GUILD_ID = "1509880344806162544";
 
+// ★ ポイント付与対象カテゴリ
+const POINT_CATEGORIES = ['提出', '宿題'];
+
 // ============================================================
 //  グローバル状態
 // ============================================================
@@ -303,10 +306,14 @@ function renderPlans() {
 
     const rows = dayPlans.map(p => {
       const { cat, text } = parsePlanContent(p.content);
+      const ptsBadge = (p.points != null)
+        ? `<span class="badge badge-pts">⭐ ${p.points}pt</span>`
+        : '';
       return `<div class="plan-row">
         <span class="subject">${p.subject}</span>
         <span class="badge badge-${cat}">${cat}</span>
         <span class="content">${text}</span>
+        ${ptsBadge}
       </div>`;
     }).join('');
 
@@ -368,6 +375,23 @@ function selectPlan(el, mode) {
   el.classList.add('selected');
   if (mode === 'edit') {
     editTarget = el.dataset.label;
+
+    // ★ 選択した予定に既にポイントがあれば編集欄のヒントとして反映
+    const label = el.dataset.label;
+    const plan = plans.find(p => `${p.date}/${p.subject}${p.content}` === label);
+    const ptsInput = document.getElementById('edit-points');
+    const ptsWrap  = document.getElementById('edit-points-wrap');
+    if (plan) {
+      const { cat } = parsePlanContent(plan.content);
+      if (POINT_CATEGORIES.includes(cat)) {
+        ptsWrap.style.display = 'block';
+        ptsInput.placeholder = (plan.points != null)
+          ? `現在: ${plan.points}pt（変更しない場合は空欄）`
+          : '変更しない場合は空欄';
+      } else {
+        ptsWrap.style.display = 'none';
+      }
+    }
   } else {
     delTarget = el.dataset.label;
     document.getElementById('del-label').textContent = el.dataset.label;
@@ -393,8 +417,14 @@ function closeFab() {
 function openModal(name) {
   closeFab();
   document.getElementById('modal-' + name).classList.add('open');
-  if (name === 'add')    initCal('add', false);
-  if (name === 'edit')   { initCal('edit', true); editTarget = null; renderSelectList('edit-list', 'edit'); }
+  if (name === 'add')    { initCal('add', false); updatePointsVisibility('add'); }
+  if (name === 'edit')   {
+    initCal('edit', true);
+    editTarget = null;
+    renderSelectList('edit-list', 'edit');
+    document.getElementById('edit-points-wrap').style.display = 'none';
+    document.getElementById('edit-points').value = '';
+  }
   if (name === 'delete') { delTarget = null; renderSelectList('del-list', 'delete'); document.getElementById('del-confirm').style.display = 'none'; }
 }
 function closeModal(name) {
@@ -403,6 +433,15 @@ function closeModal(name) {
 }
 function onBgClick(e, name) {
   if (e.target === document.getElementById('modal-' + name)) closeModal(name);
+}
+
+// ============================================================
+//  ★ ポイント入力欄の表示切り替え
+// ============================================================
+function updatePointsVisibility(prefix) {
+  const cat  = getCatValue(prefix);
+  const wrap = document.getElementById(prefix + '-points-wrap');
+  if (wrap) wrap.style.display = POINT_CATEGORIES.includes(cat) ? 'block' : 'none';
 }
 
 // ============================================================
@@ -416,17 +455,28 @@ async function submitAdd() {
   const content  = document.getElementById('add-content').value.trim();
   if (!date || !subject || !content) { showErr('add-err', '日付・科目・内容は必須です'); return; }
 
+  const body = { guild_id: GUILD_ID, date, subject, category, content };
+
+  if (POINT_CATEGORIES.includes(category)) {
+    const points = parseInt(document.getElementById('add-points')?.value);
+    if (!points || points < 1) { showErr('add-err', 'ポイントを入力してください'); return; }
+    body.points = points;
+  }
+
   const btn = document.querySelector('#modal-add .btn-primary');
   setLoading(btn, '登録中…');
   try {
     const res = await api('/add_schedule', {
       method: 'POST',
-      body: JSON.stringify({ guild_id: GUILD_ID, date, subject, category, content })
+      body: JSON.stringify(body)
     });
     resetLoading(btn, '追加する');
     if (res.ok) {
       showOk('add-ok');
       document.getElementById('add-content').value = '';
+      const ptsEl = document.getElementById('add-points');
+      if (ptsEl) ptsEl.value = '5';
+      document.getElementById('add-points-wrap').style.display = 'none';
       resetCal('add', '日付を選択');
       await loadPlans();
     } else {
@@ -446,6 +496,9 @@ async function submitEdit() {
   const c = getCatValue('edit'); if (c) body.category = c;
   const t = document.getElementById('edit-content').value.trim(); if (t) body.content = t;
 
+  const pointsVal = document.getElementById('edit-points')?.value.trim();
+  if (pointsVal) body.points = parseInt(pointsVal);
+
   const btn = document.querySelector('#modal-edit .btn-primary');
   setLoading(btn, '保存中…');
   try {
@@ -458,6 +511,8 @@ async function submitEdit() {
       document.getElementById('edit-category-sel').value = '';
       document.getElementById('edit-category-inp').style.display = 'none';
       document.getElementById('edit-subject').value = '';
+      document.getElementById('edit-points').value = '';
+      document.getElementById('edit-points-wrap').style.display = 'none';
       resetCal('edit', '変更しない場合は空欄');
       await loadPlans();
       renderSelectList('edit-list', 'edit');
@@ -528,6 +583,7 @@ function onCatSel(prefix) {
   const inp = document.getElementById(prefix + '-category-inp');
   if (sel.value === '__custom__') { inp.style.display = 'block'; inp.focus(); }
   else { inp.style.display = 'none'; }
+  updatePointsVisibility(prefix);
 }
 
 // ============================================================
