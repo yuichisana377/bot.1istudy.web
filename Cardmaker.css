@@ -92,6 +92,7 @@
   -webkit-appearance: none; appearance: none;
 }
 
+.btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; width: auto; margin-top: 0; }
 /* ── 新規作成 ── */
 .welcome-wrap {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
