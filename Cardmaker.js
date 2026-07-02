@@ -5,11 +5,18 @@
 
 const API_BASE = "https://python-bot-1istudy.onrender.com/";
 const GUILD_ID = "1509880344806162544";
+const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 
 const STORE_KEY = 'cardmaker_decks_v1';
 function loadDecks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
 function saveDecks(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+// ── ログインセッション（Login.js と共通） ──────
+const SESSION_KEY = 'sl_session';
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
 
 let decks = loadDecks();
 let currentDeckId  = null;
@@ -55,7 +62,7 @@ function renderDeckListUI() {
     const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
     const unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
     const pubBadge = d.filename
-      ? `<span class="pub-badge published">🔵 公開済み</span>`
+      ? `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
       : `<span class="pub-badge local">🔴 非公開</span>`;
     return `
     <div class="deck-card">
@@ -88,7 +95,15 @@ async function renderDeckList() {
     if (!data.ok) return;
     const fetched = data.sets.map(s => {
       const existing = decks.find(d => d.filename === s.filename);
-      return { id: existing ? existing.id : genId(), name: s.name, cards: s.cards, filename: s.filename, count: s.count };
+      return {
+        id: existing ? existing.id : genId(),
+        name: s.name,
+        cards: s.cards,
+        filename: s.filename,
+        count: s.count,
+        subject: s.subject || (existing && existing.subject) || null,
+        published_by: s.published_by || (existing && existing.published_by) || null,
+      };
     });
     const publishedNames = new Set(fetched.map(f => f.name));
     const localOnly = decks.filter(d => !d.filename && !publishedNames.has(d.name));
@@ -124,7 +139,7 @@ async function menuUnpublish() {
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '削除失敗');
-    deck.filename = null; deck.count = undefined;
+    deck.filename = null; deck.count = undefined; deck.published_by = null;
     saveDecks(decks); renderDeckListUI();
     showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
   } catch(e) {
@@ -212,6 +227,20 @@ function saveCard(mode) {
     document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
   }
   if (mode === 'publish') {
+    // ★ 未ログインチェック（公開ボタンを押した時だけ）
+    if (!getLoginSession()) {
+      const goLogin = confirm(
+        '⚠ ログインしていません。\n' +
+        'このまま公開すると「匿名」として公開されます。\n\n' +
+        'OK → 匿名のまま公開する\n' +
+        'キャンセル → ログイン画面に移動する'
+      );
+      if (!goLogin) {
+        sessionStorage.setItem('post_login_redirect', location.href); // ログイン後に戻ってくる先を記憶
+        location.href = LOGIN_PATH;
+        return;
+      }
+    }
     publishDeck(deck);
   } else if (mode === 'local') {
     saveDecks(decks); showScreen('list');
@@ -224,11 +253,19 @@ function saveCard(mode) {
 
 async function publishDeck(deck) {
   saveDecks(decks); showScreen('list');
+  const session = getLoginSession();
   const cards = deck.cards.map(c => ({
     id: c.id, // サーバーが対応していれば id を保持したまま返してもらうため付与
     question: c.question, answer: c.answer, explanation: c.explanation || ''
   }));
-  const body = { name: deck.name, cards };
+  const body = {
+    name: deck.name,
+    cards,
+    guild_id: GUILD_ID,
+    subject: deck.subject || null,                       // ★ 科目ごとのチャンネル振り分け用
+    publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
+    publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
+  };
   if (deck.filename) body.filename = deck.filename;
   try {
     const controller = new AbortController();
@@ -241,6 +278,7 @@ async function publishDeck(deck) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
     deck.filename = data.filename; deck.count = deck.cards.length;
+    deck.published_by = session ? session.nickname : '匿名';
     saveDecks(decks); renderDeckListUI();
     showBanner('✓ 保存して公開しました！', '#dcfce7', '#166534');
   } catch(e) {
