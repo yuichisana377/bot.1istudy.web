@@ -376,16 +376,47 @@ async function openRename(id) {
   }
   setTimeout(() => document.getElementById('modal-rename-input').focus(), 150);
 }
-function saveRename() {
+async function saveRename() {
   const subject = document.getElementById('modal-rename-subject').value;
   const input   = document.getElementById('modal-rename-input').value.trim();
   if (!input) return;
   const deck = decks.find(d => d.id === renamingDeckId);
+  const newName = subject ? `${subject} ${input}` : input;
   deck.subject = subject;
-  deck.name    = subject ? `${subject} ${input}` : input;
-  saveDecks(decks); closeModal('modal-rename'); renderDeckListUI();
-}
+  deck.name    = newName;
+  saveDecks(decks);
+  closeModal('modal-rename');
+  renderDeckListUI();
 
+  // ★ 公開済みならサーバー側のファイルも更新する（通知はしない）
+  if (deck.filename) {
+    try {
+      const cards = deck.cards.map(c => ({
+        id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || ''
+      }));
+      const session = getLoginSession();
+      const res = await fetch(`${API_BASE}save_cards`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName,
+          cards,
+          filename: deck.filename,
+          guild_id: GUILD_ID,
+          subject: subject || null,
+          publisher_id: session ? session.student_id : null,
+          publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
+          silent: true, // ★ 名前変更だけなら通知しない
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '不明なエラー');
+    } catch (e) {
+      showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
+    }
+  }
+}
 // ── 学習 ─────────────────────────────
 function getUnsureSet(deckId) {
   try { const raw = localStorage.getItem('unsure_' + deckId); return new Set(raw ? JSON.parse(raw) : []); }
