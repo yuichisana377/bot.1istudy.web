@@ -591,3 +591,38 @@ function shake(id) {
 
 // ── 起動 ──────────────────────────────
 renderDeckList();
+
+// ===== JSON変更監視（公開デッキ list_cards のみ） =====
+let lastCardsHash = null;
+
+// SHA-256 ハッシュ計算
+async function digestMessage(message) {
+  const msgUint8 = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// 公開デッキJSONの変更チェック
+async function checkCardsUpdate() {
+  try {
+    const res = await fetch(`${API_BASE}list_cards`);
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
+
+    // 初回は保存だけ
+    if (lastCardsHash === null) {
+      lastCardsHash = hash;
+      return;
+    }
+
+    // ハッシュが変わったらリロード
+    if (hash !== lastCardsHash) {
+      location.reload();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkCardsUpdate, 10000);
+
