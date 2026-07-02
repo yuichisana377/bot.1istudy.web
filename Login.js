@@ -4,10 +4,15 @@
 //  フロー:
 //    1. localStorage に student_id があれば自動ログイン
 //    2. 学籍番号を入力 → GET /get_users で照合
-//       - 存在する → セッション保存 → StudyLog.html
+//       - 存在する → セッション保存 → 遷移先へ
 //       - 存在しない → 新規登録ステップへ
 //    3. 新規登録: 学籍番号 + ニックネーム → POST /add_user
-//       → セッション保存 → StudyLog.html
+//       → セッション保存 → 遷移先へ
+//
+//  遷移先:
+//    sessionStorage に 'post_login_redirect' が保存されていれば
+//    ログイン後にそのページへ戻る（例: Cardmaker.htmlから来た場合）。
+//    無ければ通常通り REDIRECT_PATH（StudyLog.html）へ遷移する。
 // ============================================================
 
 const API_BASE      = "https://python-bot-1istudy.onrender.com";
@@ -57,6 +62,18 @@ function saveSession(user, colorPalette) {
   return session;
 }
 
+// ── 遷移先の決定 ─────────────────────────────────────────────
+// Cardmaker.html など他ページから「未ログイン警告→ログインへ」で来た場合、
+// sessionStorage に戻り先が記憶されているのでそちらを優先する。
+function getRedirectTarget() {
+  const savedRedirect = sessionStorage.getItem('post_login_redirect');
+  if (savedRedirect) {
+    sessionStorage.removeItem('post_login_redirect');
+    return savedRedirect;
+  }
+  return REDIRECT_PATH;
+}
+
 // ── 自動ログイン ─────────────────────────────────────────────
 async function autoLogin(session) {
   showStep("step-loading");
@@ -67,7 +84,7 @@ async function autoLogin(session) {
     const user  = users.find(u => u.id === session.student_id);
     if (user) {
       // ユーザーが引き続き users.json に存在 → そのまま遷移
-      location.href = REDIRECT_PATH;
+      location.href = getRedirectTarget();
     } else {
       // users.json から削除されていた場合はセッションをクリア
       localStorage.removeItem(SESSION_KEY);
@@ -76,7 +93,7 @@ async function autoLogin(session) {
     }
   } catch {
     // サーバーエラーでも、既存セッションを信頼してそのまま遷移
-    location.href = REDIRECT_PATH;
+    location.href = getRedirectTarget();
   }
 }
 
@@ -147,7 +164,7 @@ async function submitId() {
       // 既存ユーザー → ログイン
       const palette = AVATAR_COLORS[users.indexOf(user) % AVATAR_COLORS.length];
       saveSession(user, palette);
-      location.href = REDIRECT_PATH;
+      location.href = getRedirectTarget();
     } else {
       // 未登録 → 新規登録ステップへ
       document.getElementById("reg-id-label").textContent    = raw;
@@ -192,7 +209,7 @@ async function submitRegister() {
       const user    = users.find(u => u.id === id);
       const palette = AVATAR_COLORS[users.indexOf(user) % AVATAR_COLORS.length];
       saveSession(user, palette);
-      location.href = REDIRECT_PATH;
+      location.href = getRedirectTarget();
       return;
     }
 
@@ -204,7 +221,7 @@ async function submitRegister() {
       const user    = updated.find(u => u.id === id) || { id, nickname };
       const palette = AVATAR_COLORS[(updated.length - 1) % AVATAR_COLORS.length];
       saveSession(user, palette);
-      location.href = REDIRECT_PATH;
+      location.href = getRedirectTarget();
     } else if (result.error === "already_exists") {
       showRegErr("この学籍番号はすでに登録されています。ログイン画面に戻ってください。");
     } else {
