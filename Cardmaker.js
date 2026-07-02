@@ -18,6 +18,20 @@ let menuTargetId   = null;
 let imgBuf = { q:[], a:[], e:[] };
 let studyCards = [], studyIdx = 0;
 
+// ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
+// id が無いカード（例：公開後にサーバーから取り込まれたカード）でも
+// 配列のインデックスに依存せず、内容から一意なキーを作る。
+function hashStr(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (h * 31 + str.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+function cardKey(c) {
+  return c.id || ('h_' + hashStr((c.question || '') + '||' + (c.answer || '')));
+}
+
 // ── ルーター ──────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -38,7 +52,7 @@ function renderDeckListUI() {
   empty.style.display='none'; grid.style.display='flex';
   grid.innerHTML = decks.map(d => {
     const unsureSet   = getUnsureSet(d.id);
-    const unsureCount = d.cards.filter((c, i) => unsureSet.has(c.id || ('idx_' + i))).length;
+    const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
     const unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
     const pubBadge = d.filename
       ? `<span class="pub-badge published">🔵 公開済み</span>`
@@ -210,7 +224,10 @@ function saveCard(mode) {
 
 async function publishDeck(deck) {
   saveDecks(decks); showScreen('list');
-  const cards = deck.cards.map(c => ({ question: c.question, answer: c.answer, explanation: c.explanation || '' }));
+  const cards = deck.cards.map(c => ({
+    id: c.id, // サーバーが対応していれば id を保持したまま返してもらうため付与
+    question: c.question, answer: c.answer, explanation: c.explanation || ''
+  }));
   const body = { name: deck.name, cards };
   if (deck.filename) body.filename = deck.filename;
   try {
@@ -348,7 +365,7 @@ function openPlayMode(deckId) {
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
   const unsure = getUnsureSet(deckId);
-  const unsureCount = deck.cards.filter((c, i) => unsure.has(c.id || ('idx_' + i))).length;
+  const unsureCount = deck.cards.filter(c => unsure.has(cardKey(c))).length;
   const unsureItem = document.getElementById('play-mode-unsure-item');
   if (unsureCount > 0) {
     document.getElementById('play-mode-unsure-sub').textContent = `${unsureCount} 問`;
@@ -364,7 +381,7 @@ function startStudyMode(mode) {
   const deck = decks.find(d => d.id === studyDeckId);
   if (mode === 'unsure') {
     const unsure = getUnsureSet(studyDeckId);
-    studyCards = deck.cards.filter((c, i) => unsure.has(c.id || ('idx_' + i)));
+    studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
   } else {
     studyCards = [...deck.cards];
   }
@@ -413,7 +430,7 @@ function revealAnswer() {
 
 function updateUnsureBtn() {
   const card = studyCards[studyIdx]; if (!card) return;
-  const key = card.id || ('idx_' + studyIdx);
+  const key = cardKey(card);
   const unsure = getUnsureSet(studyDeckId);
   const btn = document.getElementById('unsure-btn');
   btn.textContent = 'わからない';
@@ -422,7 +439,7 @@ function updateUnsureBtn() {
 
 function toggleUnsure() {
   const card = studyCards[studyIdx]; if (!card) return;
-  const key = card.id || ('idx_' + studyIdx);
+  const key = cardKey(card);
   const unsure = getUnsureSet(studyDeckId);
   if (unsure.has(key)) unsure.delete(key); else unsure.add(key);
   saveUnsureSet(studyDeckId, unsure);
