@@ -729,6 +729,7 @@ function timerReset() {
   document.getElementById("timer-main").style.display    = "block";
   document.getElementById("timer-confirm").style.display = "none";
   document.getElementById("conf-memo").value = "";
+  try { localStorage.removeItem(LS_TIMER); } catch(e) {}
 }
 
 function restoreTimer() {
