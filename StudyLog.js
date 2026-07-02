@@ -782,3 +782,38 @@ function renderSubjectDropdown() {
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
+
+// ===== JSON変更監視（予定だけ） =====
+let lastScheduleHash = null;
+
+// SHA-256 ハッシュ計算
+async function digestMessage(message) {
+  const msgUint8 = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// 予定JSONの変更チェック
+async function checkScheduleUpdate() {
+  try {
+    const res = await fetch(API_BASE + "/list_schedule?guild_id=" + GUILD_ID);
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
+
+    // 初回は保存だけ
+    if (lastScheduleHash === null) {
+      lastScheduleHash = hash;
+      return;
+    }
+
+    // ハッシュが変わったらリロード
+    if (hash !== lastScheduleHash) {
+      location.reload();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkScheduleUpdate, 10000);
+
