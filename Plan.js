@@ -9,6 +9,9 @@ const GUILD_ID = "1509880344806162544";
 // ★ ポイント付与対象カテゴリ
 const POINT_CATEGORIES = ['提出', '宿題'];
 
+// ★ ポイント選択肢
+const POINT_OPTIONS = [3, 5, 10, 15];
+
 // ============================================================
 //  グローバル状態
 // ============================================================
@@ -17,6 +20,9 @@ let channels = [];
 let calState = {};
 let editTarget = null;
 let delTarget  = null;
+
+// ★ ポイント選択状態（'add' / 'edit' ごとに選択中のポイント値を保持）
+let selectedPoints = { add: null, edit: null };
 
 // ★ 絞り込み状態
 let filterSubject = 'all';  // 'all' or channel name
@@ -379,15 +385,20 @@ function selectPlan(el, mode) {
     // ★ 選択した予定に既にポイントがあれば編集欄のヒントとして反映
     const label = el.dataset.label;
     const plan = plans.find(p => `${p.date}/${p.subject}${p.content}` === label);
-    const ptsInput = document.getElementById('edit-points');
     const ptsWrap  = document.getElementById('edit-points-wrap');
     if (plan) {
       const { cat } = parsePlanContent(plan.content);
       if (POINT_CATEGORIES.includes(cat)) {
         ptsWrap.style.display = 'block';
-        ptsInput.placeholder = (plan.points != null)
-          ? `現在: ${plan.points}pt（変更しない場合は空欄）`
-          : '変更しない場合は空欄';
+        // 既存のポイントが選択肢内にあればプリセット、なければ未選択のまま
+        selectedPoints['edit'] = POINT_OPTIONS.includes(plan.points) ? plan.points : null;
+        renderPointsChips('edit');
+        const label = ptsWrap.querySelector('.pts-label');
+        if (label) {
+          label.textContent = (plan.points != null)
+            ? `ポイント（現在: ${plan.points}pt・変更しない場合は未選択のまま）`
+            : 'ポイント（変更しない場合は未選択のまま）';
+        }
       } else {
         ptsWrap.style.display = 'none';
       }
@@ -417,13 +428,17 @@ function closeFab() {
 function openModal(name) {
   closeFab();
   document.getElementById('modal-' + name).classList.add('open');
-  if (name === 'add')    { initCal('add', false); updatePointsVisibility('add'); }
+  if (name === 'add')    {
+    initCal('add', false);
+    selectedPoints['add'] = null;
+    updatePointsVisibility('add');
+  }
   if (name === 'edit')   {
     initCal('edit', true);
     editTarget = null;
     renderSelectList('edit-list', 'edit');
+    selectedPoints['edit'] = null;
     document.getElementById('edit-points-wrap').style.display = 'none';
-    document.getElementById('edit-points').value = '';
   }
   if (name === 'delete') { delTarget = null; renderSelectList('del-list', 'delete'); document.getElementById('del-confirm').style.display = 'none'; }
 }
@@ -436,12 +451,39 @@ function onBgClick(e, name) {
 }
 
 // ============================================================
-//  ★ ポイント入力欄の表示切り替え
+//  ★ ポイント入力欄の表示切り替え・選択肢描画
 // ============================================================
 function updatePointsVisibility(prefix) {
   const cat  = getCatValue(prefix);
   const wrap = document.getElementById(prefix + '-points-wrap');
-  if (wrap) wrap.style.display = POINT_CATEGORIES.includes(cat) ? 'block' : 'none';
+  if (!wrap) return;
+  const show = POINT_CATEGORIES.includes(cat);
+  wrap.style.display = show ? 'block' : 'none';
+  if (show) renderPointsChips(prefix);
+}
+
+/** ポイント選択チップ（3 / 5 / 10 / 15）を描画する */
+function renderPointsChips(prefix) {
+  const wrap = document.getElementById(prefix + '-points-wrap');
+  if (!wrap) return;
+  const current = selectedPoints[prefix];
+  const chips = POINT_OPTIONS.map(v =>
+    `<button type="button" class="chip pts-chip${current === v ? ' chip-active' : ''}" data-pts="${v}" onclick="pickPoints('${prefix}', ${v})">${v}pt</button>`
+  ).join('');
+  wrap.innerHTML = `
+    <div class="pts-label">ポイント</div>
+    <div class="filter-chips pts-chips">${chips}</div>
+  `;
+}
+
+/** ポイントチップがクリックされたとき */
+function pickPoints(prefix, val) {
+  selectedPoints[prefix] = val;
+  const wrap = document.getElementById(prefix + '-points-wrap');
+  if (!wrap) return;
+  wrap.querySelectorAll('.pts-chip').forEach(b => {
+    b.classList.toggle('chip-active', parseInt(b.dataset.pts, 10) === val);
+  });
 }
 
 // ============================================================
@@ -458,8 +500,8 @@ async function submitAdd() {
   const body = { guild_id: GUILD_ID, date, subject, category, content };
 
   if (POINT_CATEGORIES.includes(category)) {
-    const points = parseInt(document.getElementById('add-points')?.value);
-    if (!points || points < 1) { showErr('add-err', 'ポイントを入力してください'); return; }
+    const points = selectedPoints['add'];
+    if (!points) { showErr('add-err', 'ポイントを選択してください'); return; }
     body.points = points;
   }
 
@@ -474,8 +516,7 @@ async function submitAdd() {
     if (res.ok) {
       showOk('add-ok');
       document.getElementById('add-content').value = '';
-      const ptsEl = document.getElementById('add-points');
-      if (ptsEl) ptsEl.value = '5';
+      selectedPoints['add'] = null;
       document.getElementById('add-points-wrap').style.display = 'none';
       resetCal('add', '日付を選択');
       await loadPlans();
@@ -496,8 +537,7 @@ async function submitEdit() {
   const c = getCatValue('edit'); if (c) body.category = c;
   const t = document.getElementById('edit-content').value.trim(); if (t) body.content = t;
 
-  const pointsVal = document.getElementById('edit-points')?.value.trim();
-  if (pointsVal) body.points = parseInt(pointsVal);
+  if (selectedPoints['edit']) body.points = selectedPoints['edit'];
 
   const btn = document.querySelector('#modal-edit .btn-primary');
   setLoading(btn, '保存中…');
@@ -511,7 +551,7 @@ async function submitEdit() {
       document.getElementById('edit-category-sel').value = '';
       document.getElementById('edit-category-inp').style.display = 'none';
       document.getElementById('edit-subject').value = '';
-      document.getElementById('edit-points').value = '';
+      selectedPoints['edit'] = null;
       document.getElementById('edit-points-wrap').style.display = 'none';
       resetCal('edit', '変更しない場合は空欄');
       await loadPlans();
