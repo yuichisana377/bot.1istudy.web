@@ -518,7 +518,7 @@ function openModal(name) {
   document.getElementById('modal-' + name).classList.add('open');
   if (name === 'add')    {
     initCal('add', false);
-    selectedPoints['add'] = null;
+    selectedPoints['add'] = 5;
     updatePointsVisibility('add');
   }
   if (name === 'edit')   {
@@ -555,6 +555,10 @@ function updatePointsVisibility(prefix) {
 function renderPointsChips(prefix) {
   const wrap = document.getElementById(prefix + '-points-wrap');
   if (!wrap) return;
+  // ★ 追加時は未選択なら5ptをデフォルトで選択状態にする
+  if (prefix === 'add' && selectedPoints[prefix] == null) {
+    selectedPoints[prefix] = 5;
+  }
   const current = selectedPoints[prefix];
   const chips = POINT_OPTIONS.map(v =>
     `<button type="button" class="chip pts-chip${current === v ? ' chip-active' : ''}" data-pts="${v}" onclick="pickPoints('${prefix}', ${v})">${v}pt</button>`
@@ -602,7 +606,7 @@ async function submitAdd() {
     if (res.ok) {
       showOk('add-ok');
       document.getElementById('add-content').value = '';
-      selectedPoints['add'] = null;
+      selectedPoints['add'] = 5;
       const wrap = document.getElementById('add-points-wrap');
       if (wrap) wrap.style.display = 'none';
       resetCal('add', '日付を選択');
