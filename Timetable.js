@@ -32,12 +32,12 @@ const TIMETABLE = {
     { subject: "情報工学ゼミ1", items: [] },
     { subject: "公共a",         items: ["教科書", "資料集", "プリント"] },
     { subject: "基礎解析1a",    items: ["教科書", "ワーク", "ノート"] },
-    { subject: "国語1甲a",      items: ["国語ノート"] },
+    { subject: "国語1甲a",      items: ["教科書", "便覧", "漢字"] },
   ],
   fri: [
-    { subject: "英語表現基礎a",           items: ["英語教科書", "辞書"] },
+    { subject: "英語表現基礎a",           items: ["教科書", "Vision Quest", "ワーク"] },
     { subject: "基礎解析",                items: ["教科書", "ノート"] },
-    { subject: "英語コミュニケーション1a", items: ["英語教科書"] },
+    { subject: "英語コミュニケーション1a", items: ["教科書", "ワーク", "単語"] },
   ],
 };
 
