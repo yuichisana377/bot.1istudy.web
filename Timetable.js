@@ -790,3 +790,73 @@ function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('drawer-overlay').classList.remove('open');
 }
+
+// ============================================================
+//  ★ JSON変更監視（予定・課題JSON・時間割オーバーライド）
+//     いずれかに変化があったら、データだけ再取得して
+//     時間割を再描画する（フルリロードはしない）
+// ============================================================
+
+// SHA-256 ハッシュ計算
+async function digestMessage(message) {
+  const msgUint8 = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// 指定URLのレスポンス本文からハッシュを計算
+async function hashOfUrl(url) {
+  const res = await fetch(url);
+  const txt = await res.text();
+  return digestMessage(txt);
+}
+
+// 監視対象3種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
+let watchHashes = {
+  schedule:  null, // 予定・課題（list_schedule）
+  homeworks: null, // 課題JSON（JSON_URL）
+  overrides: null, // 時間割変更・休校（list_timetable）
+};
+
+// 監視対象データをまとめて再取得＆再描画
+async function refreshWatchedData() {
+  await Promise.all([
+    loadTTHomeworks(),
+    loadTTOverrides(),
+    loadPlans(),
+  ]);
+  renderTimetable();
+}
+
+// 変更チェック本体
+async function checkForUpdates() {
+  try {
+    const [scheduleHash, homeworksHash, overridesHash] = await Promise.all([
+      hashOfUrl(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`),
+      hashOfUrl(JSON_URL),
+      hashOfUrl(`${API_BASE}${TT_API.LIST}?guild_id=${GUILD_ID}`),
+    ]);
+
+    const isFirstCheck = watchHashes.schedule === null;
+
+    const changed = !isFirstCheck && (
+      scheduleHash  !== watchHashes.schedule  ||
+      homeworksHash !== watchHashes.homeworks ||
+      overridesHash !== watchHashes.overrides
+    );
+
+    watchHashes = {
+      schedule:  scheduleHash,
+      homeworks: homeworksHash,
+      overrides: overridesHash,
+    };
+
+    if (changed) {
+      await refreshWatchedData();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkForUpdates, 10000);
