@@ -783,8 +783,11 @@ function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
-// ===== JSON変更監視（予定だけ） =====
-let lastScheduleHash = null;
+// ============================================================
+//  ★ JSON変更監視（予定・ログ・ポイント・達成状況）
+//     いずれかに変化があったら、タイマーを止めずにデータだけ
+//     再取得してランキング等を再描画する（ソフトリフレッシュ）
+// ============================================================
 
 // SHA-256 ハッシュ計算
 async function digestMessage(message) {
@@ -794,26 +797,68 @@ async function digestMessage(message) {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// 予定JSONの変更チェック
-async function checkScheduleUpdate() {
+// 指定パスのレスポンス本文からハッシュを計算
+async function hashOfEndpoint(path) {
+  const res = await fetch(API_BASE + path);
+  const txt = await res.text();
+  return digestMessage(txt);
+}
+
+// 監視対象4種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
+let watchHashes = {
+  schedule:  null, // 予定・課題（list_schedule）
+  logs:      null, // 勉強ログ（list_study_logs）
+  points:    null, // 累計ポイント（get_points）
+  completed: null, // 課題達成状況（get_completed_tasks・全ユーザー）
+};
+
+// 監視対象データをまとめて再取得＆再描画（タイマーには触れない）
+async function refreshWatchedData() {
+  await Promise.all([
+    loadUsers(),
+    loadSubjects(),
+    loadLogs(),
+    loadPoints(),
+    loadCompletedTasks(),
+    loadAllCompletedTasks(),
+    loadTasks()
+  ]);
+  renderSubjectDropdown();
+  renderAll();
+  renderTasks();
+}
+
+// 変更チェック本体
+async function checkForUpdates() {
   try {
-    const res = await fetch(API_BASE + "/list_schedule?guild_id=" + GUILD_ID);
-    const txt = await res.text();
-    const hash = await digestMessage(txt);
+    const [scheduleHash, logsHash, pointsHash, completedHash] = await Promise.all([
+      hashOfEndpoint("/list_schedule?guild_id=" + GUILD_ID),
+      hashOfEndpoint("/list_study_logs?guild_id=" + GUILD_ID),
+      hashOfEndpoint("/get_points?guild_id=" + GUILD_ID),
+      hashOfEndpoint("/get_completed_tasks?guild_id=" + GUILD_ID),
+    ]);
 
-    // 初回は保存だけ
-    if (lastScheduleHash === null) {
-      lastScheduleHash = hash;
-      return;
-    }
+    const isFirstCheck = watchHashes.schedule === null;
 
-    // ハッシュが変わったらリロード
-    if (hash !== lastScheduleHash) {
-      location.reload();
+    const changed = !isFirstCheck && (
+      scheduleHash  !== watchHashes.schedule  ||
+      logsHash      !== watchHashes.logs      ||
+      pointsHash    !== watchHashes.points    ||
+      completedHash !== watchHashes.completed
+    );
+
+    watchHashes = {
+      schedule:  scheduleHash,
+      logs:      logsHash,
+      points:    pointsHash,
+      completed: completedHash,
+    };
+
+    if (changed) {
+      await refreshWatchedData();
     }
   } catch(e) {}
 }
 
 // 10秒ごとにチェック
-setInterval(checkScheduleUpdate, 10000);
-
+setInterval(checkForUpdates, 10000);
