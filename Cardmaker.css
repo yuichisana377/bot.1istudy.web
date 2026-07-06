@@ -12,6 +12,11 @@ html, body {
   height: 100%;
   overscroll-behavior: none;
 }
+.scroll-body,
+.study-top,
+.study-answer-panel {
+  overscroll-behavior: contain;
+}
 
 /* CardMaker内のbodyはstyle.cssのbodyを上書きしない */
 /* 以下はCardMakerページ固有のスタイル */
