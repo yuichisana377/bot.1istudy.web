@@ -5,6 +5,13 @@
 
 /* CardMaker固有のCSS変数（style.cssと衝突しないようにプレフィックス付き） */
 
+html, body {
+  position: fixed;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  overscroll-behavior: none;
+}
 
 /* CardMaker内のbodyはstyle.cssのbodyを上書きしない */
 /* 以下はCardMakerページ固有のスタイル */
