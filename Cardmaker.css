@@ -46,6 +46,11 @@
 .btn-ghost   { background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); }
 .btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; }
 .btn-sm      { height: 36px; padding: 0 .9rem; font-size: 13px; border-radius: 6px; }
+.topbar {
+  padding: env(safe-area-inset-top, 0px) 1rem 0;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+}
+.screen { display: none; min-height: 100dvh; flex-direction: column; }
 
 /* ── カードブロック（編集） ── */
 .card-block {
