@@ -175,6 +175,7 @@ function getFilteredPlans() {
   return plans.filter(p => {
     // 教科フィルタ
     if (filterSubject !== 'all' && p.subject !== filterSubject) return false;
+
     // カテゴリフィルタ
     if (filterCat !== 'all') {
       const { cat } = parsePlanContent(p.content);
@@ -185,7 +186,12 @@ function getFilteredPlans() {
       } else {
         if (cat !== filterCat) return false;
       }
-  }
+    }
+
+    return true;
+  });
+}
+
 
 
     return true;
