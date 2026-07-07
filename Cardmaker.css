@@ -22,16 +22,11 @@ html, body {
 /* 以下はCardMakerページ固有のスタイル */
 
 /* ── 画面 ── */
-.screen {
-  display: none;
-  min-height: 100dvh;
-  flex-direction: column;
-  overflow-y: hidden;          /* ← これ追加 */
-}
-.screen.active {
-  display: flex;
-}
-
+/* 高さを固定してこの中の .scroll-body が確実に内部スクロールするようにする
+   （min-height だと画面が中身の分だけ縦に伸びてしまい、
+     position:fixed な body の overflow:hidden で下側が見えなくなるため） */
+.screen { display: none; height: 100vh; flex-direction: column; overflow: hidden; }
+.screen.active { display: flex; }
 
 .topbar {
   background: var(--surface);
@@ -48,7 +43,7 @@ html, body {
 }
 .topbar-back:active { background: var(--bg); }
 
-.scroll-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; height: auto;}
+.scroll-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .inner { max-width: 520px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
 
 /* ── ボタン ── */
@@ -70,7 +65,7 @@ html, body {
   padding: env(safe-area-inset-top, 0px) 1rem 0;
   height: calc(56px + env(safe-area-inset-top, 0px));
 }
-.screen { display: none; min-height: 100dvh; flex-direction: column; }
+.screen { display: none; height: 100dvh; flex-direction: column; overflow: hidden; }
 
 /* ── カードブロック（編集） ── */
 .card-block {
@@ -214,10 +209,15 @@ html, body {
 .study-q-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
 .study-q-imgs img { height: 80px; border-radius: 6px; object-fit: cover; }
 .study-bottom { flex-shrink: 0; background: var(--bg); display: flex; flex-direction: column; }
+
+/* 答えを見る前のバー（前へ + 答えを見る） */
 .study-reveal-bar {
   padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom, 0px));
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center; gap: .5rem;
 }
+.study-reveal-bar .btn { flex: 1; }
+.study-reveal-bar .btn-ghost { flex: 0 0 auto; }
+
 .study-answer-panel {
   background: var(--surface);
   border-top: 2px solid #2563EB;
