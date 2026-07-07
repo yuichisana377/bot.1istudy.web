@@ -192,12 +192,6 @@ function getFilteredPlans() {
   });
 }
 
-
-
-    return true;
-  });
-}
-
 /** 教科チップを描画（チャンネル読み込み後に呼ぶ） */
 function renderSubjectFilterChips() {
   const wrap = document.getElementById('filter-subject-chips');
