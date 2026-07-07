@@ -13,12 +13,12 @@ html, body {
 
 
 .scroll-body {
-  position: absolute;
-  inset: 0;
+  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
 
 /* CardMaker内のbodyはstyle.cssのbodyを上書きしない */
 /* 以下はCardMakerページ固有のスタイル */
