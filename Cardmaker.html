@@ -173,9 +173,12 @@
           <div class="expl-text" id="study-e-text"></div>
         </div>
       </div>
+      <!-- 答えを見る前：前へ + 答えを見る -->
       <div class="study-reveal-bar" id="study-reveal-bar">
-        <button class="btn btn-blue" style="width:100%;max-width:360px" onclick="revealAnswer()">答えを見る</button>
+        <button class="btn btn-ghost" id="study-prev-pre" onclick="studyMove(-1)" disabled>← 前へ</button>
+        <button class="btn btn-blue" onclick="revealAnswer()">答えを見る</button>
       </div>
+      <!-- 答えを見た後：前へ / わからない / 次へ -->
       <div class="study-nav" id="study-nav" style="display:none">
         <button class="btn btn-ghost" id="study-prev" onclick="studyMove(-1)" disabled>← 前へ</button>
         <button class="unsure-btn" id="unsure-btn" onclick="toggleUnsure()">？ わからない</button>
