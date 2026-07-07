@@ -33,51 +33,57 @@
   </nav>
 </div>
 
-<!-- ヘッダー -->
-<header class="header">
-  <button class="menu-btn" onclick="openDrawer()">☰</button>
-  <span class="header-title">予定管理</span>
-  <div class="view-toggle">
-    <button class="view-btn active" onclick="switchPlanView('plan')">予定一覧</button>
-    <button class="view-btn" onclick="switchPlanView('log')">ログ</button>
-  </div>
-  <button class="today-btn-plan" onclick="onTodayButton()">今日</button>
-  <button class="filter-toggle-btn" id="filter-toggle-btn" onclick="toggleFilterBar()" title="絞り込み">🔍</button>
-</header>
+<!-- ★スクロールする範囲をラップ -->
+<div class="scroll-body">
 
-<!-- メインコンテンツ -->
-<main class="plan-main">
-  <div class="plan-sub-view active" id="plan-sub-plan">
-
-    <!-- ★ 絞り込みバー（折りたたみ） -->
-    <div class="filter-bar" id="filter-bar">
-      <div class="filter-row">
-        <span class="filter-label">教科</span>
-        <div class="filter-chips" id="filter-subject-chips">
-          <!-- JSで生成 -->
-        </div>
-      </div>
-      <div class="filter-row">
-        <span class="filter-label">カテゴリ</span>
-        <div class="filter-chips">
-          <button class="chip chip-active" data-cat="all"    onclick="toggleCatFilter(this)">すべて</button>
-          <button class="chip" data-cat="hw" onclick="toggleCatFilter(this)">提出・宿題</button>
-          <button class="chip" data-cat="持ち物" onclick="toggleCatFilter(this)">持ち物</button>
-          <button class="chip" data-cat="テスト" onclick="toggleCatFilter(this)">テスト</button>
-          <button class="chip" data-cat="連絡"  onclick="toggleCatFilter(this)">連絡</button>
-          <button class="chip" data-cat="その他" onclick="toggleCatFilter(this)">その他</button>
-        </div>
-      </div>
+  <!-- ヘッダー -->
+  <header class="header">
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
+    <span class="header-title">予定管理</span>
+    <div class="view-toggle">
+      <button class="view-btn active" onclick="switchPlanView('plan')">予定一覧</button>
+      <button class="view-btn" onclick="switchPlanView('log')">ログ</button>
     </div>
+    <button class="today-btn-plan" onclick="onTodayButton()">今日</button>
+    <button class="filter-toggle-btn" id="filter-toggle-btn" onclick="toggleFilterBar()" title="絞り込み">🔍</button>
+  </header>
 
-    <div class="loading" id="plan-loading">読み込み中…</div>
-    <div id="plan-content"></div>
-  </div>
-  <div class="plan-sub-view" id="plan-sub-log">
-    <div class="loading" id="log-loading" style="display:none">読み込み中…</div>
-    <div class="timeline" id="log-content"></div>
-  </div>
-</main>
+  <!-- メインコンテンツ -->
+  <main class="plan-main">
+    <div class="plan-sub-view active" id="plan-sub-plan">
+
+      <!-- ★ 絞り込みバー（折りたたみ） -->
+      <div class="filter-bar" id="filter-bar">
+        <div class="filter-row">
+          <span class="filter-label">教科</span>
+          <div class="filter-chips" id="filter-subject-chips">
+            <!-- JSで生成 -->
+          </div>
+        </div>
+        <div class="filter-row">
+          <span class="filter-label">カテゴリ</span>
+          <div class="filter-chips">
+            <button class="chip chip-active" data-cat="all"    onclick="toggleCatFilter(this)">すべて</button>
+            <button class="chip" data-cat="hw" onclick="toggleCatFilter(this)">提出・宿題</button>
+            <button class="chip" data-cat="持ち物" onclick="toggleCatFilter(this)">持ち物</button>
+            <button class="chip" data-cat="テスト" onclick="toggleCatFilter(this)">テスト</button>
+            <button class="chip" data-cat="連絡"  onclick="toggleCatFilter(this)">連絡</button>
+            <button class="chip" data-cat="その他" onclick="toggleCatFilter(this)">その他</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="loading" id="plan-loading">読み込み中…</div>
+      <div id="plan-content"></div>
+    </div>
+    <div class="plan-sub-view" id="plan-sub-log">
+      <div class="loading" id="log-loading" style="display:none">読み込み中…</div>
+      <div class="timeline" id="log-content"></div>
+    </div>
+  </main>
+
+</div>
+<!-- ★scroll-body ここまで -->
 
 <!-- FAB -->
 <div class="fab-overlay" id="fab-overlay" onclick="closeFab()"></div>
