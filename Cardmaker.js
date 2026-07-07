@@ -318,10 +318,27 @@ function confirmLeaveEdit() {
 }
 
 // ── カード編集モーダル ─────────────────
+// ── カード編集モーダル ─────────────────
+let editingDeckId  = null;
+let editingCardKey = null;
+let editingContext = 'editor'; // 'editor'（デッキ編集画面）| 'study'（プレイ中）
+
 function openCardEditModal(idx) {
   const deck = decks.find(d => d.id === currentDeckId);
-  const c = deck.cards[idx];
-  editingCardIdx = idx;
+  openCardEditModalCommon(deck.id, deck.cards[idx], 'editor');
+}
+
+// ★ プレイ中に今表示しているカードを編集する
+function editCurrentStudyCard() {
+  const c = studyCards[studyIdx];
+  if (!c) return;
+  openCardEditModalCommon(studyDeckId, c, 'study');
+}
+
+function openCardEditModalCommon(deckId, c, context) {
+  editingDeckId  = deckId;
+  editingCardKey = cardKey(c);
+  editingContext = context;
   document.getElementById('modal-edit-q').value = c.question;
   document.getElementById('modal-edit-a').value = c.answer;
   document.getElementById('modal-edit-e').value = c.explanation||'';
@@ -330,7 +347,8 @@ function openCardEditModal(idx) {
   document.getElementById('card-edit-err').style.display = 'none';
   openModal('modal-card-edit');
 }
-function saveCardEdit() {
+
+async function saveCardEdit() {
   const q = document.getElementById('modal-edit-q').value.trim();
   const a = document.getElementById('modal-edit-a').value.trim();
   const errBar = document.getElementById('card-edit-err');
@@ -340,17 +358,48 @@ function saveCardEdit() {
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
   }
-  const deck = decks.find(d => d.id === currentDeckId);
-  deck.cards[editingCardIdx] = {
-    ...deck.cards[editingCardIdx],
-    question: q, answer: a,
-    explanation: document.getElementById('modal-edit-e').value.trim()
-  };
+  const deck = decks.find(d => d.id === editingDeckId);
+  if (!deck) { closeModal('modal-card-edit'); return; }
+  const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
+  if (idx === -1) { closeModal('modal-card-edit'); return; }
+
+  // 既存オブジェクトを直接書き換える
+  // → studyCards 側も同じ参照を持っているので、これだけで学習画面にも反映される
+  const card = deck.cards[idx];
+  card.question    = q;
+  card.answer      = a;
+  card.explanation = document.getElementById('modal-edit-e').value.trim();
+
   saveDecks(decks);
   closeModal('modal-card-edit');
-  renderCreatedList();
+
+  if (editingContext === 'study') {
+    refreshStudyCardDisplay(card);
+  } else {
+    renderCreatedList();
+  }
+
+  // ★ 公開済みならサーバー側にも反映する（通知はしない）
+  if (deck.filename) {
+    const ok = await syncDeckToServer(deck);
+    if (!ok) showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+  }
 }
 
+// プレイ中の表示だけを更新（めくり状態はそのまま維持）
+function refreshStudyCardDisplay(c) {
+  document.getElementById('study-q-text').textContent = c.question;
+  document.getElementById('study-q-imgs').innerHTML = (c.imgs_q||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  document.getElementById('study-a-text').textContent = c.answer;
+  document.getElementById('study-a-imgs').innerHTML = (c.imgs_a||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  const explWrap = document.getElementById('study-expl-wrap');
+  if (c.explanation) {
+    document.getElementById('study-e-text').textContent = c.explanation;
+    explWrap.style.display = '';
+  } else {
+    explWrap.style.display = 'none';
+  }
+}
 // ── デッキ名変更 ──────────────────────
 let renamingDeckId = null;
 async function openRename(id) {
@@ -390,31 +439,40 @@ async function saveRename() {
 
   // ★ 公開済みならサーバー側のファイルも更新する（通知はしない）
   if (deck.filename) {
-    try {
-      const cards = deck.cards.map(c => ({
-        id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || ''
-      }));
-      const session = getLoginSession();
-      const res = await fetch(`${API_BASE}save_cards`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newName,
-          cards,
-          filename: deck.filename,
-          guild_id: GUILD_ID,
-          subject: subject || null,
-          publisher_id: session ? session.student_id : null,
-          publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
-          silent: true, // ★ 名前変更だけなら通知しない
-        }),
-        signal: AbortSignal.timeout(10000),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || '不明なエラー');
-    } catch (e) {
-      showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
-    }
+    const ok = await syncDeckToServer(deck);
+    if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
+  }
+}
+
+// ★ 公開済みデッキの内容をサーバーに反映する共通処理（通知なし）
+async function syncDeckToServer(deck) {
+  try {
+    const cards = deck.cards.map(c => ({
+      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || ''
+    }));
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}save_cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: deck.name,
+        cards,
+        filename: deck.filename,
+        guild_id: GUILD_ID,
+        subject: deck.subject || null,
+        publisher_id: session ? session.student_id : null,
+        publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
+        silent: true, // ★ 通知しない
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    deck.count = deck.cards.length;
+    saveDecks(decks);
+    return true;
+  } catch (e) {
+    return false;
   }
 }
 // ── 学習 ─────────────────────────────
