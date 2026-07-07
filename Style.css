@@ -25,7 +25,9 @@
   --thu: #ffedd5; --thu-t: #9a3412;
   --fri: #fef9c3; --fri-t: #854d0e;
 }
-
+html {
+  overflow-x: hidden;
+}
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
   background: var(--bg);
@@ -33,7 +35,6 @@ body {
   font-size: 14px;
   min-height: 100vh;
   -webkit-tap-highlight-color: transparent;
-  overflow-x: hidden;
 }
 
 /* ============================
