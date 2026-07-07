@@ -9,6 +9,18 @@
 //  ★ 課題のポイントは Plan.js（予定管理ページ）の追加・編集画面で
 //     設定可能。plans に points フィールドがあればそれを使用し、
 //     無ければデフォルト 5pt にフォールバックする。
+//
+//  ★★ 課題達成の修正点（今回のアップデート） ★★
+//     ① サーバーへの送信が成功したことを確認してから
+//        ローカル表示（completedTasks等）を更新するように変更。
+//        以前は送信に失敗してもローカルだけ成功扱いにしていたため、
+//        10秒ごとのポーリングでサーバーの本当の状態に上書きされ、
+//        「たまに未達成に戻る」現象が発生していた。
+//     ② 達成済みタスクはリストの下側に並ぶよう renderTasks() で
+//        ソートするように変更。
+//     ③ 達成済みボタンをもう一度押すと「未達成」に戻せるように変更。
+//        これには新しいサーバーエンドポイント /uncomplete_task が
+//        必要（バックエンド側の対応が必要）。
 // ============================================================
 
 const API_BASE    = "https://python-bot-1istudy.onrender.com/";
@@ -83,6 +95,9 @@ let myPoints          = 0;    // 自分の累計ポイント
 let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points, nickname}, ...]
 let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points,nickname}], ... }
 let nicknameMap       = {};   // { "1I001": "太郎", ... }
+
+// ★ 現在サーバーに送信中のタスクID（二重送信・ポーリング競合防止）
+let pendingTaskIds = new Set();
 
 let timerInterval   = null;
 let timerSec        = 0;
@@ -241,32 +256,6 @@ async function postLog(entry) {
   nicknameMap[STUDENT.id] = STUDENT.nickname;
   logs.push(entry);
   renderAll();
-}
-
-// ── 課題達成ポイントをサーバーに送る ──────────────────
-async function postTaskPoint(taskId, pts) {
-  try {
-    var data = await api("/complete_task", {
-      method: "POST",
-      body: JSON.stringify({
-        guild_id:   GUILD_ID,
-        student_id: STUDENT.id,
-        nickname:   STUDENT.nickname,
-        task_id:    taskId,
-        points:     pts,
-      }),
-    });
-    if (data.ok) {
-      allPoints[STUDENT.id] = data.total;
-      myPoints = data.total;
-      updatePointDisplay();
-    }
-  } catch(e) {
-    allPoints[STUDENT.id] = (allPoints[STUDENT.id] || 0) + pts;
-    myPoints = allPoints[STUDENT.id];
-    updatePointDisplay();
-  }
-  floatPoints("+" + pts + "pt");
 }
 
 // ============================================================
@@ -531,12 +520,28 @@ function renderEveryone(wl, totMin) {
 }
 
 // ── 課題一覧 ──────────────────────────────────────────
+// ★② 達成済みは下に並ぶようソートする
+// ★① pendingTaskIds に含まれるタスクは「送信中」表示にしてボタンを無効化
 function renderTasks() {
   var el = document.getElementById("task-list");
   var doneIds = completedTasks.map(function(e) { return e.id; });
-  el.innerHTML = TASKS_JSON.map(function(t) {
-    var done = doneIds.includes(t.id);
-    return '<div class="sl-task-row">' +
+
+  var sorted = TASKS_JSON.slice().sort(function(a, b) {
+    var aDone = doneIds.includes(a.id) ? 1 : 0;
+    var bDone = doneIds.includes(b.id) ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone; // 未達成が先、達成済みが後ろ
+    // 同じ達成状態同士は締切が近い順
+    return new Date(a.due) - new Date(b.due);
+  });
+
+  el.innerHTML = sorted.map(function(t) {
+    var done    = doneIds.includes(t.id);
+    var pending = pendingTaskIds.has(t.id);
+
+    var btnLabel = pending ? "送信中…" : (done ? "✓ 達成済み（タップで取消）" : "達成する");
+    var btnClass = "sl-task-btn" + (done ? " sl-task-btn-done" : "");
+
+    return '<div class="sl-task-row' + (done ? " done-row" : "") + '">' +
       '<div class="sl-task-body">' +
         '<div class="sl-task-title' + (done ? " done" : "") + '">' + esc(t.title) + '</div>' +
         '<div class="sl-task-meta">' +
@@ -545,9 +550,10 @@ function renderTasks() {
           '<span class="sl-pts-badge">⭐ +' + t.points + 'pt</span>' +
         '</div>' +
       '</div>' +
-      '<button class="sl-task-btn" onclick="toggleTask(\'' + t.id + '\')"' +
-        (done ? ' disabled' : '') + '>' +
-        (done ? '✓ 達成済み' : '達成する') +
+      '<button class="' + btnClass + '" data-task-id="' + t.id + '"' +
+        (pending ? ' disabled' : '') +
+        ' onclick="toggleTask(\'' + t.id + '\')">' +
+        btnLabel +
       '</button>' +
     '</div>';
   }).join("");
@@ -589,29 +595,92 @@ function saveManual() {
 }
 
 // ============================================================
-//  課題達成
+//  課題達成 / 取り消し
 // ============================================================
-function toggleTask(id) {
-  var doneIds = completedTasks.map(function(e) { return e.id; });
-  if (doneIds.includes(id)) return;
+// ★①②③ 対応版
+//   ・サーバーへの送信が成功したのを確認してからローカル状態を更新する
+//     （失敗時はローカルを変更しない＝ポーリングで勝手に戻る現象を防止）
+//   ・送信中は多重クリックを防ぐため pendingTaskIds でボタンを無効化
+//   ・達成済みをもう一度押すと /uncomplete_task を呼んで未達成に戻す
+//     （★このエンドポイントはバックエンド側に新規実装が必要）
+async function toggleTask(id) {
+  if (pendingTaskIds.has(id)) return; // 二重送信防止
 
-  var t = TASKS_JSON.find(function(x) { return x.id === id; });
-  var entry = {
-    id:       id,
-    date:     todayStr(),
-    points:   t ? t.points : DEFAULT_TASK_POINTS,
-    nickname: STUDENT.nickname,
-  };
+  var entryIndex = completedTasks.findIndex(function(e) { return e.id === id; });
+  var isDone = entryIndex !== -1;
 
-  completedTasks.push(entry);
-  if (!allCompletedTasks[STUDENT.id]) allCompletedTasks[STUDENT.id] = [];
-  allCompletedTasks[STUDENT.id].push(entry);
-  nicknameMap[STUDENT.id] = STUDENT.nickname;
+  pendingTaskIds.add(id);
+  renderTasks();
 
+  if (!isDone) {
+    // ── 達成にする ──────────────────────────────────
+    var t   = TASKS_JSON.find(function(x) { return x.id === id; });
+    var pts = t ? t.points : DEFAULT_TASK_POINTS;
+
+    try {
+      var data = await api("/complete_task", {
+        method: "POST",
+        body: JSON.stringify({
+          guild_id:   GUILD_ID,
+          student_id: STUDENT.id,
+          nickname:   STUDENT.nickname,
+          task_id:    id,
+          points:     pts,
+        }),
+      });
+      if (!data || data.ok === false) throw new Error("server rejected complete_task");
+
+      // ★ サーバーが成功を返してから、初めてローカルに反映する
+      var entry = { id: id, date: todayStr(), points: pts, nickname: STUDENT.nickname };
+      completedTasks.push(entry);
+      if (!allCompletedTasks[STUDENT.id]) allCompletedTasks[STUDENT.id] = [];
+      allCompletedTasks[STUDENT.id].push(entry);
+      nicknameMap[STUDENT.id] = STUDENT.nickname;
+
+      allPoints[STUDENT.id] = (data.total != null) ? data.total : (allPoints[STUDENT.id] || 0) + pts;
+      myPoints = allPoints[STUDENT.id];
+      updatePointDisplay();
+      floatPoints("+" + pts + "pt");
+    } catch (e) {
+      alert("通信エラーのため達成にできませんでした。もう一度お試しください。");
+    }
+  } else {
+    // ── 未達成に戻す ────────────────────────────────
+    var removed = completedTasks[entryIndex];
+
+    try {
+      var data2 = await api("/uncomplete_task", {
+        method: "POST",
+        body: JSON.stringify({
+          guild_id:   GUILD_ID,
+          student_id: STUDENT.id,
+          task_id:    id,
+        }),
+      });
+      if (!data2 || data2.ok === false) throw new Error("server rejected uncomplete_task");
+
+      // ★ サーバーが成功を返してから、初めてローカルに反映する
+      completedTasks.splice(entryIndex, 1);
+      if (allCompletedTasks[STUDENT.id]) {
+        allCompletedTasks[STUDENT.id] = allCompletedTasks[STUDENT.id].filter(function(e) {
+          return e.id !== id;
+        });
+      }
+
+      var revertedTotal = (data2.total != null)
+        ? data2.total
+        : Math.max(0, (allPoints[STUDENT.id] || 0) - (removed ? removed.points : 0));
+      allPoints[STUDENT.id] = revertedTotal;
+      myPoints = revertedTotal;
+      updatePointDisplay();
+    } catch (e) {
+      alert("通信エラーのため未達成に戻せませんでした。もう一度お試しください。\n（サーバー側に /uncomplete_task が実装されていない可能性があります）");
+    }
+  }
+
+  pendingTaskIds.delete(id);
   renderTasks();
   renderAll();
-
-  if (t) postTaskPoint(id, t.points);
 }
 
 // ============================================================
@@ -814,6 +883,10 @@ let watchHashes = {
 
 // 監視対象データをまとめて再取得＆再描画（タイマーには触れない）
 async function refreshWatchedData() {
+  // ★ 送信中のタスクがある間はポーリングでの上書きを避ける
+  //   （送信完了後にtoggleTask内でrenderAll()するので取りこぼしは無い）
+  if (pendingTaskIds.size > 0) return;
+
   await Promise.all([
     loadUsers(),
     loadSubjects(),
