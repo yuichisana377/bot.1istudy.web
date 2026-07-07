@@ -22,7 +22,13 @@ html, body {
 /* 以下はCardMakerページ固有のスタイル */
 
 /* ── 画面 ── */
-.screen { display: none; min-height: 100vh; flex-direction: column; }
+.screen {
+  display: none;
+  min-height: 100dvh;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .screen.active { display: flex; }
 
 .topbar {
