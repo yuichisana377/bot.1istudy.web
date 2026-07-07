@@ -72,7 +72,6 @@ html, body {
   padding: env(safe-area-inset-top, 0px) 1rem 0;
   height: calc(56px + env(safe-area-inset-top, 0px));
 }
-.screen { display: none; height: 100dvh; flex-direction: column; overflow: hidden; }
 
 /* ── カードブロック（編集） ── */
 .card-block {
