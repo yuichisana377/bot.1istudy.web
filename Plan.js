@@ -148,9 +148,16 @@ function scrollToToday() {
   const targetEl = document.querySelector(`.date-group[data-date="${targetDate}"]`);
   if (!targetEl) return;
 
+  const scrollBody = document.querySelector('.scroll-body');
   const rect = targetEl.getBoundingClientRect();
-  const offset = window.pageYOffset + rect.top - 70;
-  window.scrollTo({ top: offset, behavior: 'auto' });
+  const bodyRect = scrollBody.getBoundingClientRect();
+
+  const offset = scrollBody.scrollTop + (rect.top - bodyRect.top) - 70;
+
+  scrollBody.scrollTo({
+    top: offset,
+    behavior: 'auto'
+  });
 }
 
 // ============================================================
