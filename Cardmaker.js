@@ -202,6 +202,9 @@ function openEditDeck(deckId) {
   currentDeckId = deckId;
   const deck = decks.find(d => d.id === deckId);
   document.getElementById('edit-deck-title').textContent = deck.name;
+  // ★ 公開済みデッキは「保存」（ローカルのみ）ボタンを隠し、「保存して公開」だけにする
+  document.getElementById('btn-save-local').style.display = deck.filename ? 'none' : '';
+  document.getElementById('btn-done').textContent = deck.filename ? '公開して保存' : '保存して公開';
   clearEditor(); renderCreatedList(); showScreen('edit');
   setTimeout(() => document.getElementById('ta-q').focus(), 200);
 }
