@@ -20,7 +20,6 @@ function getLoginSession() {
 
 let decks = loadDecks();
 let currentDeckId  = null;
-let editingCardIdx = null;
 let menuTargetId   = null;
 let imgBuf = { q:[], a:[], e:[] };
 let studyCards = [], studyIdx = 0;
@@ -320,8 +319,7 @@ function confirmLeaveEdit() {
   if (confirm('編集を終了して一覧に戻りますか？')) showScreen('list');
 }
 
-// ── カード編集モーダル ─────────────────
-// ── カード編集モーダル ─────────────────
+// ── カード編集モーダル（デッキ編集画面 / 学習画面 共通） ─────
 let editingDeckId  = null;
 let editingCardKey = null;
 let editingContext = 'editor'; // 'editor'（デッキ編集画面）| 'study'（プレイ中）
@@ -403,6 +401,7 @@ function refreshStudyCardDisplay(c) {
     explWrap.style.display = 'none';
   }
 }
+
 // ── デッキ名変更 ──────────────────────
 let renamingDeckId = null;
 async function openRename(id) {
@@ -478,6 +477,7 @@ async function syncDeckToServer(deck) {
     return false;
   }
 }
+
 // ── 学習 ─────────────────────────────
 function getUnsureSet(deckId) {
   try { const raw = localStorage.getItem('unsure_' + deckId); return new Set(raw ? JSON.parse(raw) : []); }
@@ -536,7 +536,7 @@ function renderStudyCard() {
   document.getElementById('study-q-text').textContent = c.question;
   document.getElementById('study-q-imgs').innerHTML = (c.imgs_q||[]).map(s=>`<img src="${s}" alt="">`).join('');
   document.getElementById('study-answer-panel').classList.remove('show');
-  document.getElementById('study-reveal-bar').style.display = '';
+  document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
   document.getElementById('study-a-text').textContent = c.answer;
   document.getElementById('study-a-imgs').innerHTML = (c.imgs_a||[]).map(s=>`<img src="${s}" alt="">`).join('');
@@ -546,7 +546,9 @@ function renderStudyCard() {
   const pct = studyCards.length > 1 ? (studyIdx/(studyCards.length-1))*100 : 100;
   document.getElementById('study-prog-fill').style.width  = pct + '%';
   document.getElementById('study-prog-label').textContent = `${studyIdx+1} / ${studyCards.length}`;
-  document.getElementById('study-prev').disabled = studyIdx === 0;
+  // ★ 答えを見る前・見た後、両方の「前へ」ボタンの有効/無効を同期
+  document.getElementById('study-prev').disabled     = studyIdx === 0;
+  document.getElementById('study-prev-pre').disabled = studyIdx === 0;
   document.getElementById('study-next').textContent = studyIdx === studyCards.length-1 ? '完了 ✓' : '次へ →';
   updateUnsureBtn();
 }
@@ -686,4 +688,3 @@ async function checkCardsUpdate() {
 
 // 10秒ごとにチェック
 setInterval(checkCardsUpdate, 10000);
-
