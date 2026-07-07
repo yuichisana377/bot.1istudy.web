@@ -33,20 +33,26 @@
   </nav>
 </div>
 
-<!-- ヘッダー -->
-<header class="header">
-  <button class="menu-btn" onclick="openDrawer()">☰</button>
-  <span class="header-title">時間割</span>
-  <div class="week-nav">
-    <button onclick="moveWeek(-1)">‹</button>
-    <span class="week-label" id="week-label">—</span>
-    <button onclick="moveWeek(1)">›</button>
-    <button class="today-btn" onclick="goToday()">今日</button>
-  </div>
-</header>
+<!-- ★スクロールする範囲をラップ -->
+<div class="scroll-body">
 
-<!-- 時間割メイン -->
-<main class="tt-main" id="tt-main-content"></main>
+  <!-- ヘッダー -->
+  <header class="header">
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
+    <span class="header-title">時間割</span>
+    <div class="week-nav">
+      <button onclick="moveWeek(-1)">‹</button>
+      <span class="week-label" id="week-label">—</span>
+      <button onclick="moveWeek(1)">›</button>
+      <button class="today-btn" onclick="goToday()">今日</button>
+    </div>
+  </header>
+
+  <!-- 時間割メイン -->
+  <main class="tt-main" id="tt-main-content"></main>
+
+</div>
+<!-- ★scroll-body ここまで -->
 
 <!-- FAB -->
 <div class="fab-overlay" id="tt-fab-overlay" onclick="closeTTFab()"></div>
