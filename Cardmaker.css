@@ -12,9 +12,12 @@ html, body {
   height: 100%;
   overscroll-behavior: none;
 }
-.scroll-body,
-.study-top,
-.study-answer-panel {
+
+.scroll-body {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 
