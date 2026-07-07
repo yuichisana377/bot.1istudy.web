@@ -8,6 +8,12 @@
 /* ══════════════════════════════════════════
    ポイントバッジ（ヘッダー右端）
 ══════════════════════════════════════════ */
+html, body {
+  width: 100%;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
 .sl-point-badge {
   position: relative;
   display: inline-flex;
