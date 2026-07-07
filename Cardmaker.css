@@ -26,10 +26,12 @@ html, body {
   display: none;
   min-height: 100dvh;
   flex-direction: column;
-  overflow-y: auto;
+  overflow-y: auto;          /* ← これ追加 */
+}
+.screen.active {
+  display: flex;
 }
 
-.screen.active { display: flex; }
 
 .topbar {
   background: var(--surface);
