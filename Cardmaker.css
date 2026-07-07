@@ -28,12 +28,13 @@ html, body {
    （min-height だと画面が中身の分だけ縦に伸びてしまい、
      position:fixed な body の overflow:hidden で下側が見えなくなるため） */
 .screen {
+  display: none;
   min-height: 100dvh;
-  display: flex;
   flex-direction: column;
 }
-
-.screen.active { display: flex; }
+.screen.active {
+  display: flex;
+}
 
 .topbar {
   background: var(--surface);
