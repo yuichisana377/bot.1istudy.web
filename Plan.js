@@ -148,17 +148,14 @@ function scrollToToday() {
   const targetEl = document.querySelector(`.date-group[data-date="${targetDate}"]`);
   if (!targetEl) return;
 
-  const scrollBody = document.querySelector('.scroll-body');
-  const rect = targetEl.getBoundingClientRect();
-  const bodyRect = scrollBody.getBoundingClientRect();
+  const offset = targetEl.getBoundingClientRect().top + window.pageYOffset - 70;
 
-  const offset = scrollBody.scrollTop + (rect.top - bodyRect.top) - 70;
-
-  scrollBody.scrollTo({
+  window.scrollTo({
     top: offset,
     behavior: 'auto'
   });
 }
+
 
 // ============================================================
 //  ログ読み込み
