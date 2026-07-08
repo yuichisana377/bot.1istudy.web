@@ -27,6 +27,7 @@
 }
 html {
   overflow-x: hidden;
+  overscroll-behavior-y: none;
 }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
@@ -35,6 +36,7 @@ body {
   font-size: 14px;
   min-height: 100vh;
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 /* ============================
