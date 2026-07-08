@@ -6,10 +6,12 @@
 /* CardMaker固有のCSS変数（style.cssと衝突しないようにプレフィックス付き） */
 
 html, body {
-  height: auto;
-  overflow-x: hidden;
-  overflow-y: auto;
-  position: static;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
 }
 
 /* width:100% + padding を使う要素がはみ出さないよう、
