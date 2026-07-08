@@ -36,6 +36,12 @@ html, body {
   display: none;
   height: 100dvh;
   flex-direction: column;
+  /* 画面そのものはスクロールさせない。
+     スクロールが必要な画面は内部の .cm-scroll-body や .study-top 側で
+     overflow-y: auto を持たせること。こうしないと中身が
+     ビューポート高さを超えたときに body 側までスクロールが波及し、
+     sticky指定の .topbar まで一緒に動いてしまう。 */
+  overflow: hidden;
 }
 .screen.active {
   display: flex;
@@ -197,7 +203,7 @@ html, body {
 .empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
 
 /* ── 学習画面 ── */
-#screen-study { overflow: hidden; }
+/* overflow:hidden は共通の .screen ルールに統合済み */
 .study-top {
   flex: 1; display: flex; flex-direction: column;
   background: var(--surface);
