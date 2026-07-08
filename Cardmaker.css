@@ -12,6 +12,12 @@ html, body {
   position: static;
 }
 
+/* width:100% + padding を使う要素がはみ出さないよう、
+   CardMakerページ全体でborder-boxに統一する */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 .cm-scroll-body {
   flex: 1;
   overflow-y: auto;
@@ -35,11 +41,19 @@ html, body {
   display: flex;
 }
 
+/* ── 上部タブ（トップバー） ──
+   position: sticky + top: 0 でスクロールしても常に画面上部に固定表示される。
+   ※ height と padding-top の両方に safe-area-inset-top を加えると、
+      box-sizing が content-box のままでは分の高さが二重に加算されてしまうため、
+      box-sizing: border-box を明示して正しい高さ(56px + セーフエリア)に収める。 */
 .topbar {
+  box-sizing: border-box;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  height: 56px; display: flex; align-items: center;
-  padding: 0 1rem; gap: .75rem;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center;
+  padding: env(safe-area-inset-top, 0px) 1rem 0;
+  gap: .75rem;
   position: sticky; top: 0; z-index: 100; flex-shrink: 0;
 }
 .topbar-title { font-size: 16px; font-weight: 700; flex: 1; }
@@ -65,12 +79,8 @@ html, body {
 .btn-blue    { background: #2563EB; color: #fff; }
 .btn-outline { background: var(--surface); color: #2563EB; border: 1.5px solid #2563EB; }
 .btn-ghost   { background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); }
-.btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; }
+.btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; width: auto; margin-top: 0; }
 .btn-sm      { height: 36px; padding: 0 .9rem; font-size: 13px; border-radius: 6px; }
-.topbar {
-  padding: env(safe-area-inset-top, 0px) 1rem 0;
-  height: calc(56px + env(safe-area-inset-top, 0px));
-}
 
 /* ── カードブロック（編集） ── */
 .card-block {
@@ -117,7 +127,6 @@ html, body {
   -webkit-appearance: none; appearance: none;
 }
 
-.btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; width: auto; margin-top: 0; }
 /* ── 新規作成 ── */
 .welcome-wrap {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
