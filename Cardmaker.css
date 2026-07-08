@@ -28,7 +28,7 @@ html, body {
      position:fixed な body の overflow:hidden で下側が見えなくなるため） */
 .screen {
   display: none;
-  min-height: 100dvh;
+  height: 100dvh;
   flex-direction: column;
 }
 .screen.active {
@@ -50,7 +50,6 @@ html, body {
 }
 .topbar-back:active { background: var(--bg); }
 
-.scroll-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .inner { max-width: 520px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
 
 /* ── ボタン ── */
