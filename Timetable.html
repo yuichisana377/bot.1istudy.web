@@ -283,15 +283,26 @@
       </div>
     </div>
 
-    <!-- 曜日ごと（1日分まとめて）変更 -->
+    <!-- 曜日変更（例: 金曜日だけど月曜日の時間割で授業をする） -->
     <div id="tt-edit-day-change-fields" style="display:none">
-      <div class="modal-section-label">この日の各コマを変更（変更しないコマはそのまま）</div>
-      <div id="tt-day-change-periods">
-        <div style="font-size:13px;color:var(--text-tertiary)">先に日付を選択してください</div>
+      <div class="field">
+        <label>コピー元の曜日</label>
+        <select id="tt-day-change-source" onchange="onDayChangeSourceSelect()">
+          <option value="">曜日を選択</option>
+          <option value="mon">月曜日</option>
+          <option value="tue">火曜日</option>
+          <option value="wed">水曜日</option>
+          <option value="thu">木曜日</option>
+          <option value="fri">金曜日</option>
+        </select>
+      </div>
+      <div class="modal-section-label">入れ替え内容プレビュー</div>
+      <div id="tt-day-change-preview">
+        <div style="font-size:13px;color:var(--text-tertiary)">先に日付とコピー元の曜日を選択してください</div>
       </div>
       <div class="field">
-        <label>備考（変更した全コマ共通・任意）</label>
-        <input type="text" id="tt-day-change-note" placeholder="例: 台風接近のため午後は自習">
+        <label>備考（任意）</label>
+        <input type="text" id="tt-day-change-note" placeholder="例: 台風接近のため月曜日の時間割で実施">
       </div>
     </div>
 
