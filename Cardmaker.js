@@ -82,32 +82,39 @@ function renderDeckListUI() {
   }).join('');
 }
 
+// ★ list_cards を取得して decks にマージする共通処理（画面描画はしない）
+async function fetchAndMergeDecks() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  const res  = await fetch(`${API_BASE}list_cards`, { signal: controller.signal });
+  clearTimeout(timer);
+  const txt = await res.text();
+  const data = JSON.parse(txt);
+  if (!data.ok) return { changed: false, txt };
+  const fetched = data.sets.map(s => {
+    const existing = decks.find(d => d.filename === s.filename);
+    return {
+      id: existing ? existing.id : genId(),
+      name: s.name,
+      cards: s.cards,
+      filename: s.filename,
+      count: s.count,
+      subject: s.subject || (existing && existing.subject) || null,
+      published_by: s.published_by || (existing && existing.published_by) || null,
+    };
+  });
+  const publishedNames = new Set(fetched.map(f => f.name));
+  const localOnly = decks.filter(d => !d.filename && !publishedNames.has(d.name));
+  decks = [...localOnly, ...fetched];
+  saveDecks(decks);
+  return { changed: true, txt };
+}
+
 async function renderDeckList() {
   decks = loadDecks();
   renderDeckListUI();
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res  = await fetch(`${API_BASE}list_cards`, { signal: controller.signal });
-    clearTimeout(timer);
-    const data = await res.json();
-    if (!data.ok) return;
-    const fetched = data.sets.map(s => {
-      const existing = decks.find(d => d.filename === s.filename);
-      return {
-        id: existing ? existing.id : genId(),
-        name: s.name,
-        cards: s.cards,
-        filename: s.filename,
-        count: s.count,
-        subject: s.subject || (existing && existing.subject) || null,
-        published_by: s.published_by || (existing && existing.published_by) || null,
-      };
-    });
-    const publishedNames = new Set(fetched.map(f => f.name));
-    const localOnly = decks.filter(d => !d.filename && !publishedNames.has(d.name));
-    decks = [...localOnly, ...fetched];
-    saveDecks(decks);
+    await fetchAndMergeDecks();
     renderDeckListUI();
   } catch(e) {}
 }
@@ -667,9 +674,17 @@ async function digestMessage(message) {
 }
 
 // 公開デッキJSONの変更チェック
+// ★ 変更点：location.reload() をやめ、画面を邪魔しない更新に変更。
+//   ・一覧画面を見ている時だけ、その場で表示を更新
+//   ・編集中／プレイ中の画面はそのままにして、リロードもしない
+//     （データはバックグラウンドで decks / localStorage に反映されるので、
+//       次に一覧へ戻った時には最新の状態になっている）
 async function checkCardsUpdate() {
   try {
-    const res = await fetch(`${API_BASE}list_cards`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE}list_cards`, { signal: controller.signal });
+    clearTimeout(timer);
     const txt = await res.text();
     const hash = await digestMessage(txt);
 
@@ -679,9 +694,17 @@ async function checkCardsUpdate() {
       return;
     }
 
-    // ハッシュが変わったらリロード
-    if (hash !== lastCardsHash) {
-      location.reload();
+    // ハッシュが変わっていなければ何もしない
+    if (hash === lastCardsHash) return;
+    lastCardsHash = hash;
+
+    // データをバックグラウンドでマージ（プレイ中・編集中の画面はそのまま）
+    await fetchAndMergeDecks();
+
+    // 一覧画面を見ている時だけ、その場で再描画する
+    const activeScreen = document.querySelector('.screen.active')?.id;
+    if (activeScreen === 'screen-list') {
+      renderDeckListUI();
     }
   } catch(e) {}
 }
