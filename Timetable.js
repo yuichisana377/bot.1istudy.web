@@ -384,8 +384,10 @@ function resetTTEditForm() {
 
   const dcNote = document.getElementById('tt-day-change-note');
   if (dcNote) dcNote.value = '';
-  const dcContainer = document.getElementById('tt-day-change-periods');
-  if (dcContainer) dcContainer.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary)">先に日付を選択してください</div>';
+  const dcSource = document.getElementById('tt-day-change-source');
+  if (dcSource) dcSource.value = '';
+  const dcPreview = document.getElementById('tt-day-change-preview');
+  if (dcPreview) dcPreview.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary)">先に日付とコピー元の曜日を選択してください</div>';
 
   resetCal('tt-edit', '日付を選択');
 }
@@ -404,41 +406,55 @@ function switchTTMode(mode) {
   // 時限セレクトは「授業変更」と「1コマ休み」で使う
   document.getElementById('tt-edit-period-field').style.display          = (mode === 'change' || mode === 'period-holiday') ? '' : 'none';
 
-  // ★ 曜日変更モードに切り替えたとき、すでに日付が選択済みならその日の教科一覧を再描画
+  // ★ 曜日変更モードに切り替えたとき、すでに日付が選択済みならプレビューを再描画
   if (mode === 'day-change') {
     const d = calState['tt-edit']?.selected;
-    if (d) renderDayChangeFields(d);
+    if (d) renderDayChangePreview(d);
   }
 }
 
-// ★ 「曜日ごと変更」モード: 選択した日付の全時限を一度に変更できるフォームを描画
-function renderDayChangeFields(dateStr) {
-  const container = document.getElementById('tt-day-change-periods');
+// ★ コピー元の曜日セレクトが変更されたときに呼ばれる
+function onDayChangeSourceSelect() {
+  const d = calState['tt-edit']?.selected;
+  if (d) renderDayChangePreview(d);
+}
+
+const DAY_KEY_LABEL = { mon: '月', tue: '火', wed: '水', thu: '木', fri: '金' };
+
+// ★ 「曜日変更」モード: 対象日を、選んだ別の曜日の時間割にまるごと入れ替えるプレビューを描画
+//    （例: 今日は金曜日だけど、月曜日の時間割で授業をする）
+function renderDayChangePreview(dateStr) {
+  const container = document.getElementById('tt-day-change-preview');
   if (!container) return;
 
-  const dayKey = dateToDayKey(dateStr);
-  if (!dayKey) {
+  const targetDayKey = dateToDayKey(dateStr);
+  if (!targetDayKey) {
     container.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary)">土日は選択できません</div>';
     return;
   }
 
-  const basePeriods = TIMETABLE[dayKey] || [];
-  const subjectOptions = channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  const sourceSel = document.getElementById('tt-day-change-source');
+  const sourceDayKey = sourceSel ? sourceSel.value : '';
+  if (!sourceDayKey) {
+    container.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary)">コピー元の曜日を選択してください</div>';
+    return;
+  }
 
-  container.innerHTML = basePeriods.map((p, i) => {
+  const targetPeriods = TIMETABLE[targetDayKey] || [];
+  const sourcePeriods = TIMETABLE[sourceDayKey] || [];
+
+  const rows = targetPeriods.map((_, i) => {
     const periodNum = i + 1;
-    const changeOv = ttOverrides[`change:${dateStr}:${periodNum}`];
-    const currentSubject = changeOv ? changeOv.subject : p.subject;
-    const currentItems   = changeOv && changeOv.items ? changeOv.items.join(', ') : '';
-    return `<div class="day-change-row" style="margin-bottom:10px;padding:8px;border:1px solid var(--border);border-radius:8px">
-      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px">${periodNum}限（元: ${currentSubject || 'ー'}）</div>
-      <select id="tt-day-change-subject-${periodNum}" class="form-select">
-        <option value="">— 変更しない —</option>
-        ${subjectOptions}
-      </select>
-      <input type="text" id="tt-day-change-items-${periodNum}" class="form-input" style="margin-top:4px" placeholder="持ち物（カンマ区切り）" value="${currentItems}">
+    const src = sourcePeriods[i];
+    const subjectText = src ? src.subject : '（コマなし・空きコマ扱い）';
+    return `<div class="day-change-row" style="margin-bottom:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;display:flex;justify-content:space-between">
+      <span>${periodNum}限</span><span style="color:var(--text)">${subjectText}</span>
     </div>`;
   }).join('');
+
+  container.innerHTML = `<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">
+    ${DAY_KEY_LABEL[targetDayKey]}曜日（${dateStr}）が ${DAY_KEY_LABEL[sourceDayKey]}曜日の時間割になります
+  </div>${rows}`;
 }
 
 async function submitTTEdit() {
@@ -466,33 +482,43 @@ async function submitTTEdit() {
       ttOverrides[key] = { key, type: 'period_holiday', date, period, reason, note };
 
     } else if (ttEditMode === 'day-change') {
-      // ★ 曜日ごと（1日分まとめて）変更
-      const dayKey = dateToDayKey(date);
-      if (!dayKey) { resetLoading(btn, '保存する'); showErr('tt-edit-err', '土日は選択できません'); return; }
+      // ★ 曜日変更: 対象日を、選んだ別の曜日の時間割にまるごと入れ替える
+      //    （例: 今日は金曜日だけど、月曜日の時間割で授業をする）
+      const targetDayKey = dateToDayKey(date);
+      if (!targetDayKey) { resetLoading(btn, '保存する'); showErr('tt-edit-err', '土日は選択できません'); return; }
 
-      const basePeriods = TIMETABLE[dayKey] || [];
+      const sourceDayKey = document.getElementById('tt-day-change-source').value;
+      if (!sourceDayKey) { resetLoading(btn, '保存する'); showErr('tt-edit-err', 'コピー元の曜日を選択してください'); return; }
+
+      const targetPeriods = TIMETABLE[targetDayKey] || [];
+      const sourcePeriods = TIMETABLE[sourceDayKey] || [];
       const note = document.getElementById('tt-day-change-note').value.trim();
-      let changedCount = 0;
 
-      for (let i = 0; i < basePeriods.length; i++) {
+      // まずこの日の既存の change / period_holiday オーバーライドをクリアしてから入れ替える
+      for (let i = 0; i < targetPeriods.length; i++) {
         const periodNum = i + 1;
-        const subjSel  = document.getElementById(`tt-day-change-subject-${periodNum}`);
-        const itemsInp = document.getElementById(`tt-day-change-items-${periodNum}`);
-        if (!subjSel || !subjSel.value) continue; // 「変更しない」はスキップ
-
-        const subject  = subjSel.value;
-        const itemsRaw = itemsInp ? itemsInp.value.trim() : '';
-        const items    = itemsRaw ? itemsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
-        const key = `change:${date}:${periodNum}`;
-        try { await api(TT_API.UPDATE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period: periodNum, subject, items, note, key }) }); } catch(_) {}
-        ttOverrides[key] = { key, type: 'change', date, period: periodNum, subject, items, note };
-        changedCount++;
+        delete ttOverrides[`change:${date}:${periodNum}`];
+        delete ttOverrides[`period_holiday:${date}:${periodNum}`];
       }
 
-      if (changedCount === 0) {
-        resetLoading(btn, '保存する');
-        showErr('tt-edit-err', '変更する時限を1つ以上選んでください');
-        return;
+      for (let i = 0; i < targetPeriods.length; i++) {
+        const periodNum = i + 1;
+        const src = sourcePeriods[i];
+
+        if (src) {
+          // コピー元の曜日にこのコマがある → 授業を入れ替え
+          const subject = src.subject;
+          const items   = src.items || [];
+          const key = `change:${date}:${periodNum}`;
+          try { await api(TT_API.UPDATE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period: periodNum, subject, items, note, key }) }); } catch(_) {}
+          ttOverrides[key] = { key, type: 'change', date, period: periodNum, subject, items, note };
+        } else {
+          // コピー元の曜日にこのコマが無い → 空きコマ（1コマ休み）扱い
+          const reason = 'コマなし';
+          const key = `period_holiday:${date}:${periodNum}`;
+          try { await api(TT_API.PERIOD_HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period: periodNum, reason, note, key }) }); } catch(_) {}
+          ttOverrides[key] = { key, type: 'period_holiday', date, period: periodNum, reason, note };
+        }
       }
 
     } else {
@@ -579,10 +605,6 @@ function renderChannelOptions() {
   // ★ 時間割編集モーダルの科目プルダウンもDiscordチャンネルで更新
   const ttSubjectEl = document.getElementById('tt-edit-subject');
   if (ttSubjectEl) ttSubjectEl.innerHTML = '<option value="">科目を選択</option>' + opts;
-
-  // ★ 曜日変更モードが開いていて日付選択済みなら、その場でも更新
-  const d = calState['tt-edit']?.selected;
-  if (ttEditMode === 'day-change' && d) renderDayChangeFields(d);
 }
 
 function parsePlanContent(raw) {
@@ -883,8 +905,8 @@ function pickDate(e, id, ds) {
   document.getElementById('cal-' + id).classList.remove('open');
   renderCal(id);
 
-  // ★ 曜日変更モードで日付を選んだら、その日の教科一覧を描画
-  if (id === 'tt-edit' && ttEditMode === 'day-change') renderDayChangeFields(ds);
+  // ★ 曜日変更モードで日付を選んだら、入れ替えプレビューを更新
+  if (id === 'tt-edit' && ttEditMode === 'day-change') renderDayChangePreview(ds);
 }
 function toggleCal(e, id) {
   e.stopPropagation();
