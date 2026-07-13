@@ -750,6 +750,10 @@ async function digestMessage(message) {
 }
 
 // 予定JSONの変更チェック
+// ★ 変更点：location.reload() をやめ、データだけ更新してその場で再描画する。
+//   ・スクロール位置を保ったまま renderPlans() を再実行
+//   ・編集／削除モーダルが開いていれば、その選択リストも最新化
+//   ・入力中のフォーム（追加モーダルなど）やカレンダーの状態は一切触らない
 async function checkScheduleUpdate() {
   try {
     const res = await fetch(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`);
@@ -762,9 +766,27 @@ async function checkScheduleUpdate() {
       return;
     }
 
-    // ハッシュが変わったらリロード
-    if (hash !== lastScheduleHash) {
-      location.reload();
+    // ハッシュが変わっていなければ何もしない
+    if (hash === lastScheduleHash) return;
+    lastScheduleHash = hash;
+
+    // データだけ差し替える
+    let data;
+    try { data = JSON.parse(txt); } catch(e) { return; }
+    if (!data.ok) return;
+    plans = data.plans;
+
+    // スクロール位置を保ったまま予定一覧を再描画
+    const scrollY = window.scrollY;
+    renderPlans();
+    window.scrollTo(0, scrollY);
+
+    // 編集／削除モーダルが開いていれば、その選択リストも最新化
+    if (document.getElementById('modal-edit')?.classList.contains('open')) {
+      renderSelectList('edit-list', 'edit');
+    }
+    if (document.getElementById('modal-delete')?.classList.contains('open')) {
+      renderSelectList('del-list', 'delete');
     }
   } catch(e) {}
 }
