@@ -56,10 +56,13 @@ function renderDeckListUI() {
   const empty = document.getElementById('deck-list-empty');
   if (!decks.length) { grid.style.display='none'; empty.style.display='block'; return; }
   empty.style.display='none'; grid.style.display='flex';
+
+  // ★ 非公開・公開のグループ位置はそのまま、各グループ内だけ新しい順（下が古い）に反転
   const unpublished = decks.filter(d => !d.filename).slice().reverse();
   const published    = decks.filter(d =>  d.filename).slice().reverse();
   const orderedDecks = [...unpublished, ...published];
-  grid.innerHTML = decks.map(d => {
+
+  grid.innerHTML = orderedDecks.map(d => {
     const unsureSet   = getUnsureSet(d.id);
     const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
     const unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
