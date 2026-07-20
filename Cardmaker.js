@@ -56,6 +56,9 @@ function renderDeckListUI() {
   const empty = document.getElementById('deck-list-empty');
   if (!decks.length) { grid.style.display='none'; empty.style.display='block'; return; }
   empty.style.display='none'; grid.style.display='flex';
+  const unpublished = decks.filter(d => !d.filename).slice().reverse();
+  const published    = decks.filter(d =>  d.filename).slice().reverse();
+  const orderedDecks = [...unpublished, ...published];
   grid.innerHTML = decks.map(d => {
     const unsureSet   = getUnsureSet(d.id);
     const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
