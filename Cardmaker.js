@@ -23,6 +23,7 @@ let currentDeckId  = null;
 let menuTargetId   = null;
 let imgBuf = { q:[], a:[], e:[] };
 let studyCards = [], studyIdx = 0;
+let studyReverse = false; // ★ 追加：問題と解答を逆にするモードかどうか
 
 // ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
 // id が無いカード（例：公開後にサーバーから取り込まれたカード）でも
@@ -402,10 +403,16 @@ async function saveCardEdit() {
 
 // プレイ中の表示だけを更新（めくり状態はそのまま維持）
 function refreshStudyCardDisplay(c) {
-  document.getElementById('study-q-text').textContent = c.question;
-  document.getElementById('study-q-imgs').innerHTML = (c.imgs_q||[]).map(s=>`<img src="${s}" alt="">`).join('');
-  document.getElementById('study-a-text').textContent = c.answer;
-  document.getElementById('study-a-imgs').innerHTML = (c.imgs_a||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  // ★ 反転モードなら問題⇔解答を入れ替えて表示する（データ自体は変えない）
+  const qText = studyReverse ? c.answer   : c.question;
+  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
+  const aText = studyReverse ? c.question : c.answer;
+  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
+
+  document.getElementById('study-q-text').textContent = qText;
+  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  document.getElementById('study-a-text').textContent = aText;
+  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) {
     document.getElementById('study-e-text').textContent = c.explanation;
@@ -505,6 +512,7 @@ let studyDeckId = null;
 function openPlayMode(deckId) {
   const deck = decks.find(d => d.id === deckId);
   studyDeckId = deckId;
+  document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
   const unsure = getUnsureSet(deckId);
@@ -520,6 +528,7 @@ function openPlayMode(deckId) {
 }
 
 function startStudyMode(mode) {
+  studyReverse = document.getElementById('reverse-mode-checkbox').checked; // ★ 反転モードかどうかを取得
   closeModal('modal-play-mode');
   const deck = decks.find(d => d.id === studyDeckId);
   if (mode === 'unsure') {
@@ -529,7 +538,7 @@ function startStudyMode(mode) {
     studyCards = [...deck.cards];
   }
   studyIdx = 0;
-  document.getElementById('study-title').textContent = deck.name;
+  document.getElementById('study-title').textContent = deck.name + (studyReverse ? ' 🔄' : ''); // ★ 反転中はタイトルに目印
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
   showScreen('study');
   document.getElementById('study-done').style.display    = 'none';
@@ -546,13 +555,20 @@ function renderStudyCard() {
     return;
   }
   const c = studyCards[studyIdx];
-  document.getElementById('study-q-text').textContent = c.question;
-  document.getElementById('study-q-imgs').innerHTML = (c.imgs_q||[]).map(s=>`<img src="${s}" alt="">`).join('');
+
+  // ★ 反転モードなら「問題」欄に解答、「解答」欄に問題文を出す（解説はそのまま解答側に表示）
+  const qText = studyReverse ? c.answer   : c.question;
+  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
+  const aText = studyReverse ? c.question : c.answer;
+  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
+
+  document.getElementById('study-q-text').textContent = qText;
+  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
   document.getElementById('study-answer-panel').classList.remove('show');
   document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
-  document.getElementById('study-a-text').textContent = c.answer;
-  document.getElementById('study-a-imgs').innerHTML = (c.imgs_a||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  document.getElementById('study-a-text').textContent = aText;
+  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) { document.getElementById('study-e-text').textContent = c.explanation; explWrap.style.display = ''; }
   else { explWrap.style.display = 'none'; }
