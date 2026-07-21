@@ -1,735 +1,285 @@
-// ============================================================
-//  Cardmaker.js — CardMaker専用スクリプト
-//  Cardmaker.html から読み込む
-// ============================================================
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>CardMaker — 1I勉強会</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/Style.css">
+<link rel="stylesheet" href="/Cardmaker.css">
+</head>
+<body>
 
-const API_BASE = "https://python-bot-1istudy.onrender.com/";
-const GUILD_ID = "1509880344806162544";
-const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
+<!-- ドロワーオーバーレイ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
 
-const STORE_KEY = 'cardmaker_decks_v1';
-function loadDecks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
-function saveDecks(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
-function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+<!-- ドロワー -->
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="app-name">📚 1I 勉強会web</div>
+    <div class="app-sub">統合学習ツール</div>
+  </div>
+  <nav class="drawer-nav">
+    <a class="drawer-item" href="/index.html">
+      <span class="di-icon">📘</span>予定管理
+    </a>
+    <a class="drawer-item" href="/Timetable.html">
+      <span class="di-icon">📒</span>時間割
+    </a>
+    <a class="drawer-item active" href="/Cardmaker.html">
+      <span class="di-icon">📇</span>CardMaker
+    </a>
+    <a class="drawer-item" href="/StudyLog.html">
+      <span class="di-icon">📊</span>勉強ログ
+    </a>
+  </nav>
+</div>
 
-// ── ログインセッション（Login.js と共通） ──────
-const SESSION_KEY = 'sl_session';
-function getLoginSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
+<!-- ══════════ デッキ一覧 ══════════ -->
+<div class="screen active" id="screen-list">
+  <div class="topbar">
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
+    <div class="topbar-title">📇 CardMaker</div>
+  </div>
+  <div class="cm-scroll-body">
+    <div class="inner">
+      <div id="save-ok-banner" style="display:none;background:#dcfce7;color:#166534;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:600;margin-bottom:1rem;text-align:center">✓ 保存しました！</div>
+      <div id="deck-list-empty" class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div>まだデッキがありません</div>
+        <div style="margin-top:.5rem;font-size:13px">右下の ＋ からデッキを作成</div>
+      </div>
+      <div class="deck-grid" id="deck-grid" style="display:none"></div>
+    </div>
+  </div>
+  <button class="add-deck-btn" onclick="openNewSet()" aria-label="デッキ作成">＋</button>
+</div>
 
-let decks = loadDecks();
-let currentDeckId  = null;
-let menuTargetId   = null;
-let imgBuf = { q:[], a:[], e:[] };
-let studyCards = [], studyIdx = 0;
-let studyReverse = false; // ★ 追加：問題と解答を逆にするモードかどうか
+<!-- ══════════ セット名入力 ══════════ -->
+<div class="screen" id="screen-new">
+  <div class="topbar">
+    <button class="topbar-back" onclick="showScreen('list')">←</button>
+    <div class="topbar-title">新しいデッキ</div>
+  </div>
+  <div class="cm-scroll-body">
+    <div class="welcome-wrap">
+      <div class="welcome-icon">✍️</div>
+      <div class="welcome-title">新しいデッキを作成</div>
+      <div class="welcome-sub">科目を選んでセット名を入力してください。</div>
+      <select id="new-subject" style="width:100%;max-width:360px;padding:12px 14px;border:2px solid var(--border);border-radius:var(--r-md);font-family:inherit;font-size:16px;color:var(--text);background:var(--surface);outline:none;-webkit-appearance:none;margin-bottom:.75rem;transition:border-color .15s">
+        <option value="">科目を選択（任意）</option>
+      </select>
+      <input class="set-name-input" id="new-set-name" type="text"
+             placeholder="セット名を入力" maxlength="60"
+             onkeydown="if(event.key==='Enter')startEdit()">
+      <button class="btn btn-blue" style="width:100%;max-width:360px" onclick="startEdit()">作成 →</button>
+    </div>
+  </div>
+</div>
 
-// ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
-// id が無いカード（例：公開後にサーバーから取り込まれたカード）でも
-// 配列のインデックスに依存せず、内容から一意なキーを作る。
-function hashStr(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = (h * 31 + str.charCodeAt(i)) | 0;
-  }
-  return h.toString(36);
-}
-function cardKey(c) {
-  return c.id || ('h_' + hashStr((c.question || '') + '||' + (c.answer || '')));
-}
+<!-- ══════════ カード編集 ══════════ -->
+<div class="screen" id="screen-edit">
+  <div class="topbar">
+    <button class="topbar-back" onclick="confirmLeaveEdit()">←</button>
+    <div class="topbar-title" id="edit-deck-title">デッキ名</div>
+    <div class="editor-counter" id="edit-counter">0枚</div>
+  </div>
+  <div class="cm-scroll-body" id="edit-scroll">
+    <div class="inner">
 
-// ── ルーター ──────────────────────────
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById('screen-' + id).classList.add('active');
-  window.scrollTo(0, 0);
-  if (id === 'list') {
-    decks = loadDecks();
-    renderDeckListUI();
-    setTimeout(() => renderDeckList(), 0);
-  }
-}
-
-// ── デッキ一覧 ────────────────────────
-function renderDeckListUI() {
-  const grid  = document.getElementById('deck-grid');
-  const empty = document.getElementById('deck-list-empty');
-  if (!decks.length) { grid.style.display='none'; empty.style.display='block'; return; }
-  empty.style.display='none'; grid.style.display='flex';
-
-  // ★ 非公開・公開のグループ位置はそのまま、各グループ内だけ新しい順（下が古い）に反転
-  const unpublished = decks.filter(d => !d.filename).slice().reverse();
-  const published    = decks.filter(d =>  d.filename).slice().reverse();
-  const orderedDecks = [...unpublished, ...published];
-
-  grid.innerHTML = orderedDecks.map(d => {
-    const unsureSet   = getUnsureSet(d.id);
-    const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
-    const unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
-    const pubBadge = d.filename
-      ? `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
-      : `<span class="pub-badge local">🔴 非公開</span>`;
-    return `
-    <div class="deck-card">
-      <div class="deck-card-info">
-        <div class="deck-card-title">${esc(d.name)}</div>
-        <div class="deck-card-meta">
-          ${d.filename ? (d.count ?? d.cards.length) : d.cards.length} 問
-          ${pubBadge}
-          ${unsureBadge}
+      <div class="card-block">
+        <div class="block-header">
+          <span class="block-label">問題文 <span class="block-label-sub">Question</span></span>
+        </div>
+        <textarea class="auto-textarea" id="ta-q" placeholder="問題文を入力してください…" oninput="autoResize(this)"></textarea>
+        <div class="img-strip" id="imgs-q"></div>
+        <div class="block-actions">
+          <button class="block-action-btn" onclick="addImage('q')">🖼 画像を追加</button>
         </div>
       </div>
-      <div class="deck-card-actions">
-        <button class="btn btn-blue btn-sm" onclick="openPlayMode('${d.id}')"
-          ${d.cards.length===0?'disabled':''}>▶ プレイ</button>
-        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー">✏️</button>
+
+      <div class="card-block">
+        <div class="block-header">
+          <span class="block-label">解答 <span class="block-label-sub">Answer</span></span>
+        </div>
+        <textarea class="auto-textarea" id="ta-a" placeholder="解答を入力してください…" oninput="autoResize(this)"></textarea>
+        <div class="img-strip" id="imgs-a"></div>
+        <div class="block-actions">
+          <button class="block-action-btn" onclick="addImage('a')">🖼 画像を追加</button>
+        </div>
       </div>
-    </div>`;
-  }).join('');
-}
 
-// ★ list_cards を取得して decks にマージする共通処理（画面描画はしない）
-async function fetchAndMergeDecks() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-  const res  = await fetch(`${API_BASE}list_cards`, { signal: controller.signal });
-  clearTimeout(timer);
-  const txt = await res.text();
-  const data = JSON.parse(txt);
-  if (!data.ok) return { changed: false, txt };
-  const fetched = data.sets.map(s => {
-    const existing = decks.find(d => d.filename === s.filename);
-    return {
-      id: existing ? existing.id : genId(),
-      name: s.name,
-      cards: s.cards,
-      filename: s.filename,
-      count: s.count,
-      subject: s.subject || (existing && existing.subject) || null,
-      published_by: s.published_by || (existing && existing.published_by) || null,
-    };
-  });
-  const publishedNames = new Set(fetched.map(f => f.name));
-  const localOnly = decks.filter(d => !d.filename && !publishedNames.has(d.name));
-  decks = [...localOnly, ...fetched];
-  saveDecks(decks);
-  return { changed: true, txt };
-}
-
-async function renderDeckList() {
-  decks = loadDecks();
-  renderDeckListUI();
-  try {
-    await fetchAndMergeDecks();
-    renderDeckListUI();
-  } catch(e) {}
-}
-
-// ── デッキメニュー ─────────────────────
-function openDeckMenu(id) {
-  menuTargetId = id;
-  const deck = decks.find(d => d.id === id);
-  document.getElementById('menu-deck-name').textContent = deck.name;
-  document.getElementById('menu-unpublish-item').style.display = deck.filename ? '' : 'none';
-  openModal('modal-deck-menu');
-}
-function menuEdit()   { closeModal('modal-deck-menu'); openEditDeck(menuTargetId); }
-function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId); }
-
-async function menuUnpublish() {
-  closeModal('modal-deck-menu');
-  const deck = decks.find(d => d.id === menuTargetId);
-  if (!deck || !deck.filename) return;
-  if (!confirm(`「${deck.name}」をGitHubから削除して非公開に戻しますか？`)) return;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(`${API_BASE}delete_cards`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: deck.filename }), signal: controller.signal,
-    });
-    clearTimeout(timer);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '削除失敗');
-    deck.filename = null; deck.count = undefined; deck.published_by = null;
-    saveDecks(decks); renderDeckListUI();
-    showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
-  } catch(e) {
-    alert('GitHubからの削除に失敗しました。\n' + e.message);
-  }
-}
-
-async function menuDelete() {
-  closeModal('modal-deck-menu');
-  if (!confirm('このデッキを削除しますか？')) return;
-  const deck = decks.find(d => d.id === menuTargetId);
-  if (deck && deck.filename) {
-    try {
-      await fetch(`${API_BASE}delete_cards`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: deck.filename }),
-      });
-    } catch(e) {
-      if (!confirm('GitHubからの削除に失敗しました。ローカルからだけ削除しますか？')) return;
-    }
-  }
-  decks = decks.filter(d => d.id !== menuTargetId);
-  saveDecks(decks); renderDeckList();
-}
-
-// ── 新規作成 ──────────────────────────
-function openNewSet() {
-  document.getElementById('new-set-name').value = '';
-  showScreen('new');
-  loadSubjects();
-  setTimeout(() => document.getElementById('new-set-name').focus(), 200);
-}
-
-async function loadSubjects() {
-  const sel = document.getElementById('new-subject');
-  sel.innerHTML = '<option value="">読み込み中…</option>';
-  try {
-    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`);
-    const data = await res.json();
-    if (!data.ok || !data.channels.length) throw new Error();
-    sel.innerHTML = '<option value="">科目を選択（任意）</option>' +
-      data.channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-  } catch(e) {
-    sel.innerHTML = '<option value="">（科目を取得できませんでした）</option>';
-  }
-}
-
-function startEdit() {
-  const subject = document.getElementById('new-subject').value;
-  const input   = document.getElementById('new-set-name').value.trim();
-  if (!input) { shake('new-set-name'); return; }
-  const name = subject ? `${subject} ${input}` : input;
-  const deck = { id: genId(), name, subject, cards: [] };
-  decks.push(deck); saveDecks(decks);
-  openEditDeck(deck.id);
-}
-
-// ── カード編集画面 ────────────────────
-function openEditDeck(deckId) {
-  currentDeckId = deckId;
-  const deck = decks.find(d => d.id === deckId);
-  document.getElementById('edit-deck-title').textContent = deck.name;
-  // ★ 公開済みデッキは「保存」（ローカルのみ）ボタンを隠し、「保存して公開」だけにする
-  document.getElementById('btn-save-local').style.display = deck.filename ? 'none' : '';
-  document.getElementById('btn-done').textContent = deck.filename ? '公開して保存' : '保存して公開';
-  clearEditor(); renderCreatedList(); showScreen('edit');
-  setTimeout(() => document.getElementById('ta-q').focus(), 200);
-}
-function clearEditor() {
-  ['q','a','e'].forEach(k => {
-    document.getElementById('ta-'+k).value = '';
-    autoResize(document.getElementById('ta-'+k));
-    imgBuf[k] = [];
-    document.getElementById('imgs-'+k).innerHTML = '';
-  });
-}
-
-function saveCard(mode) {
-  const q = document.getElementById('ta-q').value.trim();
-  const a = document.getElementById('ta-a').value.trim();
-  const deck = decks.find(d => d.id === currentDeckId);
-  if (q || a) {
-    if (!q || !a) { shake(!q ? 'ta-q' : 'ta-a'); return; }
-    deck.cards.push({ id:genId(), question:q, answer:a,
-      explanation: document.getElementById('ta-e').value.trim(),
-      imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
-    saveDecks(decks);
-    document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
-  }
-  if (mode === 'publish') {
-    // ★ 未ログインチェック（公開ボタンを押した時だけ）
-    if (!getLoginSession()) {
-      const goLogin = confirm(
-        '⚠ ログインしていません。\n' +
-        'このまま公開すると「匿名」として公開されます。\n\n' +
-        'OK → 匿名のまま公開する\n' +
-        'キャンセル → ログイン画面に移動する'
-      );
-      if (!goLogin) {
-        sessionStorage.setItem('post_login_redirect', location.href); // ログイン後に戻ってくる先を記憶
-        location.href = LOGIN_PATH;
-        return;
-      }
-    }
-    publishDeck(deck);
-  } else if (mode === 'local') {
-    saveDecks(decks); showScreen('list');
-  } else {
-    clearEditor(); renderCreatedList();
-    document.getElementById('edit-scroll').scrollTo(0,0);
-    document.getElementById('ta-q').focus();
-  }
-}
-
-async function publishDeck(deck) {
-  saveDecks(decks); showScreen('list');
-  const session = getLoginSession();
-  const cards = deck.cards.map(c => ({
-    id: c.id, // サーバーが対応していれば id を保持したまま返してもらうため付与
-    question: c.question, answer: c.answer, explanation: c.explanation || ''
-  }));
-  const body = {
-    name: deck.name,
-    cards,
-    guild_id: GUILD_ID,
-    subject: deck.subject || null,                       // ★ 科目ごとのチャンネル振り分け用
-    publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
-    publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
-  };
-  if (deck.filename) body.filename = deck.filename;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    const res  = await fetch(`${API_BASE}save_cards`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body), signal: controller.signal,
-    });
-    clearTimeout(timer);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '不明なエラー');
-    deck.filename = data.filename; deck.count = deck.cards.length;
-    deck.published_by = session ? session.nickname : '匿名';
-    saveDecks(decks); renderDeckListUI();
-    showBanner('✓ 保存して公開しました！', '#dcfce7', '#166534');
-  } catch(e) {
-    showBanner('💾 ローカルに保存しました（GitHub同期失敗）', '#fffbeb', '#92400e');
-  }
-}
-
-function renderCreatedList() {
-  const deck = decks.find(d => d.id === currentDeckId);
-  const section = document.getElementById('created-section');
-  const list    = document.getElementById('created-list');
-  if (!deck||!deck.cards.length) { section.style.display='none'; return; }
-  section.style.display='block';
-  list.innerHTML = deck.cards.map((c,i) => `
-    <div class="created-item">
-      <div class="created-item-num">${i+1}</div>
-      <div class="created-item-body">
-        <div class="created-item-q">${esc(c.question)}</div>
-        <div class="created-item-a">${esc(c.answer)}</div>
+      <div class="card-block">
+        <div class="block-header">
+          <span class="block-label">解説 <span class="block-label-sub">Explanation</span></span>
+        </div>
+        <textarea class="auto-textarea" id="ta-e" placeholder="解説（任意）…" oninput="autoResize(this)"></textarea>
+        <div class="img-strip" id="imgs-e"></div>
+        <div class="block-actions">
+          <button class="block-action-btn" onclick="addImage('e')">🖼 画像を追加</button>
+        </div>
       </div>
-      <div class="created-item-btns">
-        <button class="btn btn-ghost btn-sm" onclick="openCardEditModal(${i})">編集</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteCardFromDeck(${i})">削除</button>
+
+      <div class="created-section" id="created-section" style="display:none">
+        <div class="created-label">作成済みカード</div>
+        <div class="created-list" id="created-list"></div>
       </div>
-    </div>`).join('');
-}
+    </div>
+  </div>
+  <div class="editor-actions">
+    <button class="btn btn-outline" onclick="saveCard(false)">次へ</button>
+    <button class="btn btn-ghost" id="btn-save-local" onclick="saveCard('local')">保存</button>
+    <button class="btn btn-blue" id="btn-done" onclick="saveCard('publish')">保存して公開</button>
+  </div>
+</div>
 
-function deleteCardFromDeck(idx) {
-  if (!confirm('このカードを削除しますか？')) return;
-  const deck = decks.find(d => d.id === currentDeckId);
-  deck.cards.splice(idx, 1); saveDecks(decks);
-  document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
-  renderCreatedList();
-}
-function confirmLeaveEdit() {
-  if (confirm('編集を終了して一覧に戻りますか？')) showScreen('list');
-}
+<!-- ══════════ 学習画面 ══════════ -->
+<div class="screen" id="screen-study">
+  <div class="topbar">
+    <button class="topbar-back" onclick="showScreen('list')">←</button>
+    <div class="topbar-title" id="study-title">学習</div>
+    <button class="btn btn-ghost btn-sm" onclick="editCurrentStudyCard()" title="このカードを編集">✏️</button>
+    <button class="btn btn-ghost btn-sm" onclick="shuffleStudy()">🔀</button>
+  </div>
 
-// ── カード編集モーダル（デッキ編集画面 / 学習画面 共通） ─────
-let editingDeckId  = null;
-let editingCardKey = null;
-let editingContext = 'editor'; // 'editor'（デッキ編集画面）| 'study'（プレイ中）
+  <div class="study-done" id="study-done" style="display:none">
+    <div class="study-done-icon">🎉</div>
+    <div class="study-done-title">完了！</div>
+    <div class="study-done-sub" id="study-done-sub"></div>
+    <button class="btn btn-outline" onclick="shuffleStudy()">もう一度</button>
+    <button class="btn btn-blue"    onclick="showScreen('list')">一覧に戻る</button>
+  </div>
 
-function openCardEditModal(idx) {
-  const deck = decks.find(d => d.id === currentDeckId);
-  openCardEditModalCommon(deck.id, deck.cards[idx], 'editor');
-}
+  <div id="study-content" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
+    <div class="study-top">
+      <div class="study-progress-row">
+        <div class="study-progress-bar">
+          <div class="study-progress-fill" id="study-prog-fill"></div>
+        </div>
+        <div class="study-progress-label" id="study-prog-label"></div>
+      </div>
+      <div class="study-q-tag">問題</div>
+      <div class="study-q-text" id="study-q-text"></div>
+      <div class="study-q-imgs" id="study-q-imgs"></div>
+    </div>
 
-// ★ プレイ中に今表示しているカードを編集する
-function editCurrentStudyCard() {
-  const c = studyCards[studyIdx];
-  if (!c) return;
-  openCardEditModalCommon(studyDeckId, c, 'study');
-}
+    <div class="study-bottom">
+      <div class="study-answer-panel" id="study-answer-panel">
+        <div class="answer-tag">解答</div>
+        <div class="answer-text" id="study-a-text"></div>
+        <div class="answer-imgs" id="study-a-imgs"></div>
+        <div id="study-expl-wrap" style="display:none">
+          <hr class="expl-divider">
+          <div class="expl-tag">解説</div>
+          <div class="expl-text" id="study-e-text"></div>
+        </div>
+      </div>
+      <!-- 答えを見る前：前へ + 答えを見る -->
+      <div class="study-reveal-bar" id="study-reveal-bar">
+        <button class="btn btn-ghost" id="study-prev-pre" onclick="studyMove(-1)" disabled>← 前へ</button>
+        <button class="btn btn-blue" onclick="revealAnswer()">答えを見る</button>
+      </div>
+      <!-- 答えを見た後：前へ / わからない / 次へ -->
+      <div class="study-nav" id="study-nav" style="display:none">
+        <button class="btn btn-ghost" id="study-prev" onclick="studyMove(-1)" disabled>← 前へ</button>
+        <button class="unsure-btn" id="unsure-btn" onclick="toggleUnsure()">？ わからない</button>
+        <button class="btn btn-blue"  id="study-next" onclick="studyMove(1)">次へ →</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-function openCardEditModalCommon(deckId, c, context) {
-  editingDeckId  = deckId;
-  editingCardKey = cardKey(c);
-  editingContext = context;
-  document.getElementById('modal-edit-q').value = c.question;
-  document.getElementById('modal-edit-a').value = c.answer;
-  document.getElementById('modal-edit-e').value = c.explanation||'';
-  ['modal-edit-q','modal-edit-a','modal-edit-e'].forEach(id => autoResize(document.getElementById(id)));
-  document.getElementById('card-edit-ok').style.display  = 'none';
-  document.getElementById('card-edit-err').style.display = 'none';
-  openModal('modal-card-edit');
-}
+<!-- モーダル: プレイモード選択 -->
+<div class="modal-overlay" id="modal-play-mode" onclick="onOverlayClick(event,'modal-play-mode')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="play-mode-deck-name" style="font-size:14px;color:var(--text-secondary);font-weight:600;margin-bottom:.75rem"></div>
 
-async function saveCardEdit() {
-  const q = document.getElementById('modal-edit-q').value.trim();
-  const a = document.getElementById('modal-edit-a').value.trim();
-  const errBar = document.getElementById('card-edit-err');
-  if (!q || !a) {
-    errBar.textContent = '✕ 問題文と解答は必須です';
-    errBar.style.display = 'block';
-    setTimeout(() => errBar.style.display = 'none', 3000);
-    return;
-  }
-  const deck = decks.find(d => d.id === editingDeckId);
-  if (!deck) { closeModal('modal-card-edit'); return; }
-  const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
-  if (idx === -1) { closeModal('modal-card-edit'); return; }
+    <!-- ★ 反転モードのトグル -->
+    <label class="reverse-toggle-row" onclick="event.stopPropagation()">
+      <span>🔄 問題と解答を逆にする</span>
+      <input type="checkbox" id="reverse-mode-checkbox">
+    </label>
 
-  // 既存オブジェクトを直接書き換える
-  // → studyCards 側も同じ参照を持っているので、これだけで学習画面にも反映される
-  const card = deck.cards[idx];
-  card.question    = q;
-  card.answer      = a;
-  card.explanation = document.getElementById('modal-edit-e').value.trim();
+    <div class="play-mode-item" onclick="startStudyMode('all')">
+      <span class="play-mode-icon">📚</span>
+      <div>
+        <div>すべてのカード</div>
+        <div class="play-mode-sub" id="play-mode-all-sub"></div>
+      </div>
+    </div>
+    <div class="play-mode-item" id="play-mode-unsure-item" onclick="startStudyMode('unsure')">
+      <span class="play-mode-icon">🔖</span>
+      <div>
+        <div>わからないカードだけ</div>
+        <div class="play-mode-sub" id="play-mode-unsure-sub"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
-  saveDecks(decks);
-  closeModal('modal-card-edit');
+<!-- モーダル: デッキ名変更 -->
+<div class="modal-overlay" id="modal-rename" onclick="onOverlayClick(event,'modal-rename')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">デッキを編集</div>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">科目</label>
+    <select id="modal-rename-subject" class="modal-input" style="margin-bottom:.75rem;-webkit-appearance:none">
+      <option value="">読み込み中…</option>
+    </select>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">セット名</label>
+    <input class="modal-input" id="modal-rename-input" type="text" placeholder="セット名"
+           onkeydown="if(event.key==='Enter')saveRename()">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal('modal-rename')">キャンセル</button>
+      <button class="btn btn-blue"  onclick="saveRename()">保存</button>
+    </div>
+  </div>
+</div>
 
-  if (editingContext === 'study') {
-    refreshStudyCardDisplay(card);
-  } else {
-    renderCreatedList();
-  }
+<!-- モーダル: デッキメニュー -->
+<div class="modal-overlay" id="modal-deck-menu" onclick="onOverlayClick(event,'modal-deck-menu')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="menu-deck-name" style="font-size:14px;color:var(--text-secondary);font-weight:600;margin-bottom:.75rem"></div>
+    <div class="menu-item" onclick="menuEdit()">
+      <span class="menu-icon">✏️</span>カードを編集する
+    </div>
+    <div class="menu-item" onclick="menuRename()">
+      <span class="menu-icon">📝</span>デッキ名を変更する
+    </div>
+    <div class="menu-item" id="menu-unpublish-item" onclick="menuUnpublish()" style="display:none">
+      <span class="menu-icon">🔴</span>非公開に戻す
+    </div>
+    <div class="menu-item danger" onclick="menuDelete()">
+      <span class="menu-icon">🗑</span>デッキを削除する
+    </div>
+  </div>
+</div>
 
-  // ★ 公開済みならサーバー側にも反映する（通知はしない）
-  if (deck.filename) {
-    const ok = await syncDeckToServer(deck);
-    if (!ok) showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
-  }
-}
+<!-- モーダル: カード編集 -->
+<div class="modal-overlay" id="modal-card-edit" onclick="onOverlayClick(event,'modal-card-edit')">
+  <div class="modal-sheet" style="padding-bottom:1.5rem">
+    <div class="modal-handle"></div>
+    <div class="modal-title">カードを編集</div>
+    <div id="card-edit-ok"  style="display:none;background:#dcfce7;color:#166534;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px">✓ 保存しました！</div>
+    <div id="card-edit-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"></div>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">問題文</label>
+    <textarea class="modal-input" id="modal-edit-q" style="min-height:70px;resize:none;margin-bottom:.75rem" oninput="autoResize(this)"></textarea>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解答</label>
+    <textarea class="modal-input" id="modal-edit-a" style="min-height:70px;resize:none;margin-bottom:.75rem" oninput="autoResize(this)"></textarea>
+    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解説（任意）</label>
+    <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:1rem" oninput="autoResize(this)"></textarea>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal('modal-card-edit')">閉じる</button>
+      <button class="btn btn-blue" id="card-edit-save-btn" onclick="saveCardEdit()">保存する</button>
+    </div>
+  </div>
+</div>
 
-// プレイ中の表示だけを更新（めくり状態はそのまま維持）
-function refreshStudyCardDisplay(c) {
-  // ★ 反転モードなら問題⇔解答を入れ替えて表示する（データ自体は変えない）
-  const qText = studyReverse ? c.answer   : c.question;
-  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
-  const aText = studyReverse ? c.question : c.answer;
-  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
+<input type="file" id="img-file-input" accept="image/*" style="display:none">
 
-  document.getElementById('study-q-text').textContent = qText;
-  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
-  document.getElementById('study-a-text').textContent = aText;
-  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
-  const explWrap = document.getElementById('study-expl-wrap');
-  if (c.explanation) {
-    document.getElementById('study-e-text').textContent = c.explanation;
-    explWrap.style.display = '';
-  } else {
-    explWrap.style.display = 'none';
-  }
-}
-
-// ── デッキ名変更 ──────────────────────
-let renamingDeckId = null;
-async function openRename(id) {
-  renamingDeckId = id;
-  const deck = decks.find(d => d.id === id);
-  const currentSubject = deck.subject || '';
-  const currentName = currentSubject && deck.name.startsWith(currentSubject + ' ')
-    ? deck.name.slice(currentSubject.length + 1) : deck.name;
-  document.getElementById('modal-rename-input').value = currentName;
-  const sel = document.getElementById('modal-rename-subject');
-  sel.innerHTML = '<option value="">読み込み中…</option>';
-  openModal('modal-rename');
-  try {
-    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`);
-    const data = await res.json();
-    if (!data.ok || !data.channels.length) throw new Error();
-    sel.innerHTML = '<option value="">科目なし</option>' +
-      data.channels.map(c =>
-        `<option value="${c.name}"${c.name === currentSubject ? ' selected' : ''}>${c.name}</option>`
-      ).join('');
-  } catch(e) {
-    sel.innerHTML = `<option value="${currentSubject}">${currentSubject || '（取得失敗）'}</option>`;
-  }
-  setTimeout(() => document.getElementById('modal-rename-input').focus(), 150);
-}
-async function saveRename() {
-  const subject = document.getElementById('modal-rename-subject').value;
-  const input   = document.getElementById('modal-rename-input').value.trim();
-  if (!input) return;
-  const deck = decks.find(d => d.id === renamingDeckId);
-  const newName = subject ? `${subject} ${input}` : input;
-  deck.subject = subject;
-  deck.name    = newName;
-  saveDecks(decks);
-  closeModal('modal-rename');
-  renderDeckListUI();
-
-  // ★ 公開済みならサーバー側のファイルも更新する（通知はしない）
-  if (deck.filename) {
-    const ok = await syncDeckToServer(deck);
-    if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
-  }
-}
-
-// ★ 公開済みデッキの内容をサーバーに反映する共通処理（通知なし）
-async function syncDeckToServer(deck) {
-  try {
-    const cards = deck.cards.map(c => ({
-      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || ''
-    }));
-    const session = getLoginSession();
-    const res = await fetch(`${API_BASE}save_cards`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: deck.name,
-        cards,
-        filename: deck.filename,
-        guild_id: GUILD_ID,
-        subject: deck.subject || null,
-        publisher_id: session ? session.student_id : null,
-        publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
-        silent: true, // ★ 通知しない
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '不明なエラー');
-    deck.count = deck.cards.length;
-    saveDecks(decks);
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-// ── 学習 ─────────────────────────────
-function getUnsureSet(deckId) {
-  try { const raw = localStorage.getItem('unsure_' + deckId); return new Set(raw ? JSON.parse(raw) : []); }
-  catch { return new Set(); }
-}
-function saveUnsureSet(deckId, set) {
-  localStorage.setItem('unsure_' + deckId, JSON.stringify([...set]));
-}
-
-let studyDeckId = null;
-
-function openPlayMode(deckId) {
-  const deck = decks.find(d => d.id === deckId);
-  studyDeckId = deckId;
-  document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
-  document.getElementById('play-mode-deck-name').textContent = deck.name;
-  document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
-  const unsure = getUnsureSet(deckId);
-  const unsureCount = deck.cards.filter(c => unsure.has(cardKey(c))).length;
-  const unsureItem = document.getElementById('play-mode-unsure-item');
-  if (unsureCount > 0) {
-    document.getElementById('play-mode-unsure-sub').textContent = `${unsureCount} 問`;
-    unsureItem.style.display = '';
-    openModal('modal-play-mode');
-  } else {
-    startStudyMode('all');
-  }
-}
-
-function startStudyMode(mode) {
-  studyReverse = document.getElementById('reverse-mode-checkbox').checked; // ★ 反転モードかどうかを取得
-  closeModal('modal-play-mode');
-  const deck = decks.find(d => d.id === studyDeckId);
-  if (mode === 'unsure') {
-    const unsure = getUnsureSet(studyDeckId);
-    studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
-  } else {
-    studyCards = [...deck.cards];
-  }
-  studyIdx = 0;
-  document.getElementById('study-title').textContent = deck.name + (studyReverse ? ' 🔄' : ''); // ★ 反転中はタイトルに目印
-  document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
-  showScreen('study');
-  document.getElementById('study-done').style.display    = 'none';
-  document.getElementById('study-content').style.display = 'flex';
-  renderStudyCard();
-}
-
-function renderStudyCard() {
-  if (studyIdx >= studyCards.length) {
-    document.getElementById('study-content').style.display = 'none';
-    document.getElementById('study-done').style.display    = 'flex';
-    document.getElementById('study-prog-fill').style.width  = '100%';
-    document.getElementById('study-prog-label').textContent = `${studyCards.length} / ${studyCards.length}`;
-    return;
-  }
-  const c = studyCards[studyIdx];
-
-  // ★ 反転モードなら「問題」欄に解答、「解答」欄に問題文を出す（解説はそのまま解答側に表示）
-  const qText = studyReverse ? c.answer   : c.question;
-  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
-  const aText = studyReverse ? c.question : c.answer;
-  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
-
-  document.getElementById('study-q-text').textContent = qText;
-  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
-  document.getElementById('study-answer-panel').classList.remove('show');
-  document.getElementById('study-reveal-bar').style.display = 'flex';
-  document.getElementById('study-nav').style.display = 'none';
-  document.getElementById('study-a-text').textContent = aText;
-  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
-  const explWrap = document.getElementById('study-expl-wrap');
-  if (c.explanation) { document.getElementById('study-e-text').textContent = c.explanation; explWrap.style.display = ''; }
-  else { explWrap.style.display = 'none'; }
-  const pct = studyCards.length > 1 ? (studyIdx/(studyCards.length-1))*100 : 100;
-  document.getElementById('study-prog-fill').style.width  = pct + '%';
-  document.getElementById('study-prog-label').textContent = `${studyIdx+1} / ${studyCards.length}`;
-  // ★ 答えを見る前・見た後、両方の「前へ」ボタンの有効/無効を同期
-  document.getElementById('study-prev').disabled     = studyIdx === 0;
-  document.getElementById('study-prev-pre').disabled = studyIdx === 0;
-  document.getElementById('study-next').textContent = studyIdx === studyCards.length-1 ? '完了 ✓' : '次へ →';
-  updateUnsureBtn();
-}
-
-function revealAnswer() {
-  document.getElementById('study-answer-panel').classList.add('show');
-  document.getElementById('study-reveal-bar').style.display = 'none';
-  document.getElementById('study-nav').style.display = '';
-  updateUnsureBtn();
-}
-
-function updateUnsureBtn() {
-  const card = studyCards[studyIdx]; if (!card) return;
-  const key = cardKey(card);
-  const unsure = getUnsureSet(studyDeckId);
-  const btn = document.getElementById('unsure-btn');
-  btn.textContent = 'わからない';
-  btn.classList.toggle('marked', unsure.has(key));
-}
-
-function toggleUnsure() {
-  const card = studyCards[studyIdx]; if (!card) return;
-  const key = cardKey(card);
-  const unsure = getUnsureSet(studyDeckId);
-  if (unsure.has(key)) unsure.delete(key); else unsure.add(key);
-  saveUnsureSet(studyDeckId, unsure);
-  updateUnsureBtn();
-}
-
-function studyMove(dir) { studyIdx += dir; renderStudyCard(); }
-
-function shuffleStudy() {
-  for (let i=studyCards.length-1;i>0;i--) {
-    const j = Math.floor(Math.random()*(i+1));
-    [studyCards[i],studyCards[j]]=[studyCards[j],studyCards[i]];
-  }
-  studyIdx = 0;
-  document.getElementById('study-done').style.display    = 'none';
-  document.getElementById('study-content').style.display = 'flex';
-  renderStudyCard();
-}
-
-document.addEventListener('keydown', e => {
-  if (document.querySelector('.screen.active')?.id !== 'screen-study') return;
-  if (e.key==='ArrowRight') studyMove(1);
-  if (e.key==='ArrowLeft' && studyIdx>0) studyMove(-1);
-  if (e.key===' ') { e.preventDefault(); revealAnswer(); }
-});
-
-// ── 画像 ─────────────────────────────
-let imgTarget = null;
-const imgInput = document.getElementById('img-file-input');
-function addImage(t) { imgTarget=t; imgInput.click(); }
-imgInput.addEventListener('change', () => {
-  const file = imgInput.files[0]; if (!file||!imgTarget) return;
-  const r = new FileReader();
-  r.onload = e => { imgBuf[imgTarget].push(e.target.result); renderImgStrip(imgTarget); };
-  r.readAsDataURL(file); imgInput.value='';
-});
-function renderImgStrip(k) {
-  document.getElementById('imgs-'+k).innerHTML = imgBuf[k].map((b,i)=>`
-    <div class="img-thumb"><img src="${b}" alt="">
-      <button class="img-thumb-del" onclick="removeImg('${k}',${i})">✕</button></div>`).join('');
-}
-function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
-
-// ── モーダル ──────────────────────────
-function openModal(id)  { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-function onOverlayClick(e,id) { if(e.target===document.getElementById(id)) closeModal(id); }
-
-// ── ドロワー ──────────────────────────
-function openDrawer() {
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-}
-function closeDrawer() {
-  document.getElementById('drawer').classList.remove('open');
-  document.getElementById('drawer-overlay').classList.remove('open');
-}
-
-// ── バナー ────────────────────────────
-function showBanner(msg, bg, color) {
-  const banner = document.getElementById('save-ok-banner');
-  banner.textContent = msg;
-  banner.style.background = bg;
-  banner.style.color = color;
-  banner.style.display = 'block';
-  setTimeout(() => {
-    banner.style.display = 'none';
-    banner.style.background = '#dcfce7';
-    banner.style.color = '#166534';
-  }, 3500);
-}
-
-// ── ユーティリティ ────────────────────
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
-function shake(id) {
-  const el=document.getElementById(id); el.style.borderColor='#EF4444'; el.focus();
-  setTimeout(()=>el.style.borderColor='',700);
-}
-
-// ── 起動 ──────────────────────────────
-renderDeckList();
-
-// ===== JSON変更監視（公開デッキ list_cards のみ） =====
-let lastCardsHash = null;
-
-// SHA-256 ハッシュ計算
-async function digestMessage(message) {
-  const msgUint8 = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-// 公開デッキJSONの変更チェック
-// ★ 変更点：location.reload() をやめ、画面を邪魔しない更新に変更。
-//   ・一覧画面を見ている時だけ、その場で表示を更新
-//   ・編集中／プレイ中の画面はそのままにして、リロードもしない
-//     （データはバックグラウンドで decks / localStorage に反映されるので、
-//       次に一覧へ戻った時には最新の状態になっている）
-async function checkCardsUpdate() {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${API_BASE}list_cards`, { signal: controller.signal });
-    clearTimeout(timer);
-    const txt = await res.text();
-    const hash = await digestMessage(txt);
-
-    // 初回は保存だけ
-    if (lastCardsHash === null) {
-      lastCardsHash = hash;
-      return;
-    }
-
-    // ハッシュが変わっていなければ何もしない
-    if (hash === lastCardsHash) return;
-    lastCardsHash = hash;
-
-    // データをバックグラウンドでマージ（プレイ中・編集中の画面はそのまま）
-    await fetchAndMergeDecks();
-
-    // 一覧画面を見ている時だけ、その場で再描画する
-    const activeScreen = document.querySelector('.screen.active')?.id;
-    if (activeScreen === 'screen-list') {
-      renderDeckListUI();
-    }
-  } catch(e) {}
-}
-
-// 10秒ごとにチェック
-setInterval(checkCardsUpdate, 10000);
+<script src="/Cardmaker.js"></script>
+</body>
+</html>
