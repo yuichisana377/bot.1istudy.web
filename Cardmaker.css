@@ -376,3 +376,15 @@ html, body {
 .play-mode-item:active { background: var(--bg); }
 .play-mode-icon { font-size: 22px; width: 32px; text-align: center; }
 .play-mode-sub  { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+/* ── 反転モードトグル（プレイモード選択シート内） ── */
+.reverse-toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .8rem .25rem; margin-bottom: .5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px; font-weight: 600; color: var(--text);
+  cursor: pointer;
+}
+.reverse-toggle-row input[type="checkbox"] {
+  width: 20px; height: 20px; accent-color: #2563EB; cursor: pointer; flex-shrink: 0;
+}
