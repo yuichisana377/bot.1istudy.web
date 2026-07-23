@@ -411,10 +411,13 @@ async function fetchAndMergeDecks() {
       count: s.count,
       subject: s.subject || (existing && existing.subject) || null,
       published_by: s.published_by || (existing && existing.published_by) || null,
-      // ★ フォルダ所属はサーバー側が正（みんなで共有）。まだサーバーに未反映なら
+      // ★ フォルダ所属はサーバー側が正（みんなで共有）。
+      //   has_folder_id が true の場合は、folder_id が null（＝ルート）であっても
+      //   それをそのまま信頼する（＝ルートへ移動されたことを正しく反映する）。
+      //   has_folder_id が false の場合だけ、まだこの機能に未対応の古いデータなので
       //   ローカルに残っている値をフォールバックとして使う。
-      folderId: (s.folder_id !== undefined && s.folder_id !== null)
-        ? s.folder_id
+      folderId: s.has_folder_id
+        ? (s.folder_id || null)
         : (existing ? (existing.folderId || null) : null),
     };
   });
