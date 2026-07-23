@@ -12,6 +12,64 @@ function loadDecks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) 
 function saveDecks(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+// ── フォルダ（最大3階層・みんなで共有） ──
+// フォルダの本体はサーバー（GitHub上の folders.json）に保存され、全員で共有される。
+// ローカルのキャッシュは「サーバーから取得できるまでの間、即座に表示するため」だけに使う。
+const FOLDER_CACHE_KEY = 'cardmaker_folders_cache_v1';
+function loadFoldersCache() { try { return JSON.parse(localStorage.getItem(FOLDER_CACHE_KEY)) || []; } catch { return []; } }
+function saveFoldersCache(f) { localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(f)); }
+const MAX_FOLDER_DEPTH = 3;
+
+let folders = loadFoldersCache(); // { id, name, parentId }
+let currentFolderId = null; // null = ルート
+
+// ★ サーバーからフォルダ一覧を取得してキャッシュに反映する
+async function fetchAndMergeFolders() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal });
+  clearTimeout(timer);
+  const data = await res.json();
+  if (!data.ok) return false;
+  folders = (data.folders || []).map(f => ({ id: f.id, name: f.name, parentId: f.parent_id ?? null }));
+  saveFoldersCache(folders);
+  return true;
+}
+
+function folderLevel(id) {
+  let lvl = 0, cur = folders.find(f => f.id === id);
+  while (cur) { lvl++; cur = folders.find(f => f.id === cur.parentId); }
+  return lvl;
+}
+function folderChildren(parentId) {
+  return folders.filter(f => f.parentId === parentId)
+    .slice().sort((a,b) => a.name.localeCompare(b.name, 'ja'));
+}
+function folderDescendants(id) {
+  const direct = folders.filter(f => f.parentId === id);
+  let all = [...direct];
+  direct.forEach(f => { all = all.concat(folderDescendants(f.id)); });
+  return all;
+}
+function maxLevelInSubtree(id) {
+  const desc = folderDescendants(id);
+  return Math.max(folderLevel(id), ...desc.map(f => folderLevel(f.id)));
+}
+function canMoveFolderTo(folderId, newParentId) {
+  if (folderId === newParentId) return false;
+  const descIds = folderDescendants(folderId).map(f => f.id);
+  if (newParentId && descIds.includes(newParentId)) return false;
+  const oldLevel = folderLevel(folderId);
+  const newLevel = folderLevel(newParentId) + 1;
+  const shift = newLevel - oldLevel;
+  return (maxLevelInSubtree(folderId) + shift) <= MAX_FOLDER_DEPTH;
+}
+function countDecksRecursive(folderId) {
+  const direct = decks.filter(d => (d.folderId || null) === folderId).length;
+  const subCount = folderChildren(folderId).reduce((sum, f) => sum + countDecksRecursive(f.id), 0);
+  return direct + subCount;
+}
+
 // ── ログインセッション（Login.js と共通） ──────
 const SESSION_KEY = 'sl_session';
 function getLoginSession() {
@@ -46,6 +104,7 @@ function showScreen(id) {
   window.scrollTo(0, 0);
   if (id === 'list') {
     decks = loadDecks();
+    folders = loadFoldersCache();
     renderDeckListUI();
     setTimeout(() => renderDeckList(), 0);
   }
@@ -53,17 +112,45 @@ function showScreen(id) {
 
 // ── デッキ一覧 ────────────────────────
 function renderDeckListUI() {
+  // 表示中のフォルダが（他端末での削除などで）無くなっていたらルートに戻す
+  if (currentFolderId && !folders.find(f => f.id === currentFolderId)) currentFolderId = null;
+
+  renderBreadcrumb();
+
   const grid  = document.getElementById('deck-grid');
   const empty = document.getElementById('deck-list-empty');
-  if (!decks.length) { grid.style.display='none'; empty.style.display='block'; return; }
+
+  const childFolders = folderChildren(currentFolderId);
+  const childDecks   = decks.filter(d => (d.folderId || null) === currentFolderId);
+
+  if (!childFolders.length && !childDecks.length) {
+    grid.style.display='none'; empty.style.display='block';
+    document.getElementById('deck-list-empty-text').textContent =
+      currentFolderId ? 'このフォルダにはまだ何もありません' : 'まだデッキがありません';
+    return;
+  }
   empty.style.display='none'; grid.style.display='flex';
 
+  const folderHtml = childFolders.map(f => {
+    const cnt = countDecksRecursive(f.id);
+    return `
+    <div class="deck-card folder-card" onclick="openFolder('${f.id}')">
+      <div class="deck-card-info">
+        <div class="deck-card-title">📁 ${esc(f.name)}</div>
+        <div class="deck-card-meta">${cnt} 問</div>
+      </div>
+      <div class="deck-card-actions">
+        <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">✏️</button>
+      </div>
+    </div>`;
+  }).join('');
+
   // ★ 非公開・公開のグループ位置はそのまま、各グループ内だけ新しい順（下が古い）に反転
-  const unpublished = decks.filter(d => !d.filename).slice().reverse();
-  const published    = decks.filter(d =>  d.filename).slice().reverse();
+  const unpublished = childDecks.filter(d => !d.filename).slice().reverse();
+  const published    = childDecks.filter(d =>  d.filename).slice().reverse();
   const orderedDecks = [...unpublished, ...published];
 
-  grid.innerHTML = orderedDecks.map(d => {
+  const deckHtml = orderedDecks.map(d => {
     const unsureSet   = getUnsureSet(d.id);
     const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
     const unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
@@ -87,6 +174,222 @@ function renderDeckListUI() {
       </div>
     </div>`;
   }).join('');
+
+  grid.innerHTML = folderHtml + deckHtml;
+}
+
+// ── パンくずリスト ────────────────────
+function renderBreadcrumb() {
+  const bar = document.getElementById('folder-breadcrumb');
+  if (!currentFolderId) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const chain = [];
+  let cur = folders.find(f => f.id === currentFolderId);
+  while (cur) { chain.unshift(cur); cur = folders.find(f => f.id === cur.parentId); }
+  bar.style.display = 'flex';
+  bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">🏠 ホーム</span>` +
+    chain.map(f => `<span class="crumb-sep">›</span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
+}
+
+// ── フォルダ間の移動 ──────────────────
+function openFolder(id) {
+  currentFolderId = id;
+  renderDeckListUI();
+  const body = document.querySelector('#screen-list .cm-scroll-body');
+  if (body) body.scrollTop = 0;
+}
+
+// ── 追加（デッキ / フォルダ）の選択 ─────
+function openAddChoice() { openModal('modal-add-choice'); }
+function chooseNewDeck() { closeModal('modal-add-choice'); openNewSet(); }
+function chooseNewFolder() {
+  closeModal('modal-add-choice');
+  if (folderLevel(currentFolderId) >= MAX_FOLDER_DEPTH) {
+    alert(`フォルダは${MAX_FOLDER_DEPTH}階層までしか作成できません。`);
+    return;
+  }
+  openFolderNameModal('create', null);
+}
+
+// ── フォルダ名の入力（新規作成 / 名前変更） ─
+let folderNameMode = 'create'; // 'create' | 'rename'
+let folderNameTargetId = null;
+
+function openFolderNameModal(mode, folderId) {
+  folderNameMode = mode;
+  folderNameTargetId = folderId;
+  const input = document.getElementById('folder-name-input');
+  document.getElementById('folder-name-modal-title').textContent =
+    mode === 'rename' ? 'フォルダ名を変更' : '新しいフォルダ';
+  input.value = mode === 'rename' ? (folders.find(f => f.id === folderId)?.name || '') : '';
+  openModal('modal-folder-name');
+  setTimeout(() => input.focus(), 150);
+}
+
+async function saveFolderName() {
+  const input = document.getElementById('folder-name-input');
+  const name = input.value.trim();
+  if (!name) { shake('folder-name-input'); return; }
+
+  const btn = document.querySelector('#modal-folder-name .btn-blue');
+  const targetFolder = folderNameMode === 'rename' ? folders.find(f => f.id === folderNameTargetId) : null;
+  const body = {
+    name,
+    parent_id: folderNameMode === 'rename' ? (targetFolder ? targetFolder.parentId : null) : currentFolderId,
+  };
+  if (folderNameMode === 'rename') body.id = folderNameTargetId;
+
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}save_folder`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    await fetchAndMergeFolders();
+    closeModal('modal-folder-name');
+    renderDeckListUI();
+  } catch(e) {
+    alert('フォルダの保存に失敗しました。\n' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── フォルダメニュー ───────────────────
+let folderMenuTargetId = null;
+function openFolderMenu(id) {
+  folderMenuTargetId = id;
+  const f = folders.find(x => x.id === id);
+  document.getElementById('folder-menu-name').textContent = f ? f.name : '';
+  openModal('modal-folder-menu');
+}
+function folderMenuRename() { closeModal('modal-folder-menu'); openFolderNameModal('rename', folderMenuTargetId); }
+function folderMenuMove()   { closeModal('modal-folder-menu'); openMovePicker('folder', folderMenuTargetId); }
+
+async function folderMenuDelete() {
+  closeModal('modal-folder-menu');
+  const folder = folders.find(f => f.id === folderMenuTargetId);
+  if (!folder) return;
+
+  const descIds = folderDescendants(folder.id).map(f => f.id);
+  const allFolderIds = [folder.id, ...descIds];
+  const targetDecks = decks.filter(d => allFolderIds.includes(d.folderId || null));
+
+  const msg = (targetDecks.length || descIds.length)
+    ? `「${folder.name}」を削除すると、中にあるサブフォルダ ${descIds.length} 個とデッキ ${targetDecks.length} 個もすべて削除されます。よろしいですか？`
+    : `「${folder.name}」を削除しますか？`;
+  if (!confirm(msg)) return;
+
+  // 公開済みデッキはサーバー側からも削除
+  for (const d of targetDecks) {
+    if (d.filename) {
+      try {
+        await fetch(`${API_BASE}delete_cards`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: d.filename }),
+        });
+      } catch(e) {}
+    }
+  }
+
+  // フォルダ自体もサーバー（みんなで共有）から削除
+  try {
+    const res = await fetch(`${API_BASE}delete_folder`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: folder.id }), signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+  } catch(e) {
+    alert('サーバーからのフォルダ削除に失敗しました。\n' + e.message);
+    return;
+  }
+
+  const removeIds = new Set(targetDecks.map(d => d.id));
+  decks = decks.filter(d => !removeIds.has(d.id));
+  if (allFolderIds.includes(currentFolderId)) currentFolderId = folder.parentId || null;
+  saveDecks(decks);
+  await fetchAndMergeFolders();
+  renderDeckListUI();
+}
+
+// ── 移動先の選択（デッキ / フォルダ 共通） ─
+let movePickerKind = null;   // 'deck' | 'folder'
+let movePickerTargetId = null;
+
+function openMovePicker(kind, id) {
+  movePickerKind = kind;
+  movePickerTargetId = id;
+  document.getElementById('move-picker-title').textContent =
+    kind === 'folder' ? 'フォルダの移動先' : 'デッキの移動先';
+  renderMovePickerList();
+  openModal('modal-move-picker');
+}
+
+function renderMovePickerList() {
+  const list = document.getElementById('move-picker-list');
+  const currentParent = movePickerKind === 'deck'
+    ? (decks.find(d => d.id === movePickerTargetId)?.folderId || null)
+    : (folders.find(f => f.id === movePickerTargetId)?.parentId || null);
+
+  const rows = [];
+  const rootDisabled = movePickerKind === 'folder' && !canMoveFolderTo(movePickerTargetId, null);
+  rows.push({ id: null, label: '🏠 ルート', level: 0, disabled: rootDisabled });
+
+  function walk(parentId, level) {
+    folderChildren(parentId).forEach(f => {
+      const disabled = movePickerKind === 'folder' && !canMoveFolderTo(movePickerTargetId, f.id);
+      rows.push({ id: f.id, label: '📁 ' + f.name, level, disabled });
+      walk(f.id, level + 1);
+    });
+  }
+  walk(null, 1);
+
+  list.innerHTML = rows.map(r => {
+    const isCurrent = r.id === currentParent;
+    const cls = 'move-picker-row'
+      + (r.disabled ? ' disabled' : '')
+      + (isCurrent ? ' current' : '');
+    const idAttr = r.id === null ? 'null' : `'${r.id}'`;
+    const clickAttr = r.disabled ? '' : ` onclick="selectMoveTarget(${idAttr})"`;
+    return `<div class="${cls}" style="padding-left:${8 + r.level * 18}px"${clickAttr}>${esc(r.label)}${isCurrent ? ' <span class="move-picker-current-tag">現在</span>' : ''}</div>`;
+  }).join('');
+}
+
+async function selectMoveTarget(targetId) {
+  closeModal('modal-move-picker');
+
+  if (movePickerKind === 'deck') {
+    const d = decks.find(x => x.id === movePickerTargetId);
+    if (!d) return;
+    d.folderId = targetId;
+    saveDecks(decks);
+    renderDeckListUI();
+    // ★ 公開済みデッキはサーバー側（みんなの共有フォルダ情報）にも反映する
+    if (d.filename) {
+      const ok = await syncDeckToServer(d);
+      if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+    return;
+  }
+
+  // フォルダの移動（みんなで共有）
+  const f = folders.find(x => x.id === movePickerTargetId);
+  if (!f || !canMoveFolderTo(f.id, targetId)) return;
+  try {
+    const res = await fetch(`${API_BASE}save_folder`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetId }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    await fetchAndMergeFolders();
+    renderDeckListUI();
+  } catch(e) {
+    alert('フォルダの移動に失敗しました。\n' + e.message);
+  }
 }
 
 // ★ list_cards を取得して decks にマージする共通処理（画面描画はしない）
@@ -108,6 +411,11 @@ async function fetchAndMergeDecks() {
       count: s.count,
       subject: s.subject || (existing && existing.subject) || null,
       published_by: s.published_by || (existing && existing.published_by) || null,
+      // ★ フォルダ所属はサーバー側が正（みんなで共有）。まだサーバーに未反映なら
+      //   ローカルに残っている値をフォールバックとして使う。
+      folderId: (s.folder_id !== undefined && s.folder_id !== null)
+        ? s.folder_id
+        : (existing ? (existing.folderId || null) : null),
     };
   });
   const publishedNames = new Set(fetched.map(f => f.name));
@@ -119,9 +427,10 @@ async function fetchAndMergeDecks() {
 
 async function renderDeckList() {
   decks = loadDecks();
+  folders = loadFoldersCache();
   renderDeckListUI();
   try {
-    await fetchAndMergeDecks();
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders()]);
     renderDeckListUI();
   } catch(e) {}
 }
@@ -136,6 +445,7 @@ function openDeckMenu(id) {
 }
 function menuEdit()   { closeModal('modal-deck-menu'); openEditDeck(menuTargetId); }
 function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId); }
+function menuMove()   { closeModal('modal-deck-menu'); openMovePicker('deck', menuTargetId); }
 
 async function menuUnpublish() {
   closeModal('modal-deck-menu');
@@ -205,7 +515,7 @@ function startEdit() {
   const input   = document.getElementById('new-set-name').value.trim();
   if (!input) { shake('new-set-name'); return; }
   const name = subject ? `${subject} ${input}` : input;
-  const deck = { id: genId(), name, subject, cards: [] };
+  const deck = { id: genId(), name, subject, cards: [], folderId: currentFolderId };
   decks.push(deck); saveDecks(decks);
   openEditDeck(deck.id);
 }
@@ -279,6 +589,7 @@ async function publishDeck(deck) {
     cards,
     guild_id: GUILD_ID,
     subject: deck.subject || null,                       // ★ 科目ごとのチャンネル振り分け用
+    folder_id: deck.folderId || null,                     // ★ フォルダ所属（みんなで共有）
     publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
     publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
   };
@@ -482,6 +793,7 @@ async function syncDeckToServer(deck) {
         filename: deck.filename,
         guild_id: GUILD_ID,
         subject: deck.subject || null,
+        folder_id: deck.folderId || null, // ★ フォルダ所属（みんなで共有）
         publisher_id: session ? session.student_id : null,
         publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
         silent: true, // ★ 通知しない
@@ -733,3 +1045,31 @@ async function checkCardsUpdate() {
 
 // 10秒ごとにチェック
 setInterval(checkCardsUpdate, 10000);
+
+// ===== JSON変更監視（共有フォルダ folders.json） =====
+let lastFoldersHash = null;
+
+async function checkFoldersUpdate() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal });
+    clearTimeout(timer);
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
+
+    if (lastFoldersHash === null) { lastFoldersHash = hash; return; }
+    if (hash === lastFoldersHash) return;
+    lastFoldersHash = hash;
+
+    await fetchAndMergeFolders();
+
+    const activeScreen = document.querySelector('.screen.active')?.id;
+    if (activeScreen === 'screen-list') {
+      renderDeckListUI();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkFoldersUpdate, 10000);
