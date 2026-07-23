@@ -585,7 +585,8 @@ async function publishDeck(deck) {
   const session = getLoginSession();
   const cards = deck.cards.map(c => ({
     id: c.id, // サーバーが対応していれば id を保持したまま返してもらうため付与
-    question: c.question, answer: c.answer, explanation: c.explanation || ''
+    question: c.question, answer: c.answer, explanation: c.explanation || '',
+    imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [], // ★ 画像も公開する
   }));
   const body = {
     name: deck.name,
@@ -784,7 +785,8 @@ async function saveRename() {
 async function syncDeckToServer(deck) {
   try {
     const cards = deck.cards.map(c => ({
-      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || ''
+      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
+      imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [], // ★ 画像も同期する
     }));
     const session = getLoginSession();
     const res = await fetch(`${API_BASE}save_cards`, {
@@ -943,14 +945,114 @@ document.addEventListener('keydown', e => {
 });
 
 // ── 画像 ─────────────────────────────
+// アップロード時に長辺を IMG_MAX_DIMENSION にリサイズしJPEG圧縮する。
+// GitHub Contents API（1ファイルあたり実用上1MB程度が上限）に収まりやすくするため。
+const IMG_MAX_DIMENSION = 1280;
+const IMG_JPEG_QUALITY  = 0.72;
+
+// --- EXIFの回転情報を読み取る（スマホ写真が横倒しにならないようにするため） ---
+function getExifOrientation(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xFFD8) return 1; // JPEGでない
+  const length = view.byteLength;
+  let offset = 2;
+  while (offset + 4 <= length) {
+    const marker = view.getUint16(offset, false);
+    if (marker === 0xFFE1) {
+      const segLength = view.getUint16(offset + 2, false);
+      return readExifOrientation(view, offset + 4, segLength);
+    } else if ((marker & 0xFF00) !== 0xFF00) {
+      break;
+    } else {
+      offset += 2 + view.getUint16(offset + 2, false);
+    }
+  }
+  return 1;
+}
+function readExifOrientation(view, start) {
+  if (start + 10 > view.byteLength) return 1;
+  if (view.getUint32(start, false) !== 0x45786966) return 1; // "Exif"
+  const tiffOffset = start + 6;
+  const little = view.getUint16(tiffOffset, false) === 0x4949;
+  const firstIFDOffset = view.getUint32(tiffOffset + 4, little);
+  const dirStart = tiffOffset + firstIFDOffset;
+  if (dirStart + 2 > view.byteLength) return 1;
+  const entries = view.getUint16(dirStart, little);
+  for (let i = 0; i < entries; i++) {
+    const entryOffset = dirStart + 2 + i * 12;
+    if (entryOffset + 10 > view.byteLength) break;
+    if (view.getUint16(entryOffset, little) === 0x0112) {
+      return view.getUint16(entryOffset + 8, little);
+    }
+  }
+  return 1;
+}
+// 1〜8のEXIF orientation値をcanvasの変形に変換する
+function applyOrientationTransform(ctx, orientation, width, height) {
+  switch (orientation) {
+    case 2: ctx.transform(-1, 0, 0, 1, width, 0); break;
+    case 3: ctx.transform(-1, 0, 0, -1, width, height); break;
+    case 4: ctx.transform(1, 0, 0, -1, 0, height); break;
+    case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+    case 6: ctx.transform(0, 1, -1, 0, height, 0); break;
+    case 7: ctx.transform(0, -1, -1, 0, height, width); break;
+    case 8: ctx.transform(0, -1, 1, 0, 0, width); break;
+    default: break; // 1（回転なし）
+  }
+}
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像の読み込みに失敗しました')); };
+    img.src = url;
+  });
+}
+async function compressImageFile(file) {
+  let orientation = 1;
+  if (file.type === 'image/jpeg') {
+    try {
+      const buf = await file.slice(0, 128 * 1024).arrayBuffer();
+      orientation = getExifOrientation(buf);
+    } catch(e) { orientation = 1; }
+  }
+
+  const img = await loadImageFromFile(file);
+  let width = img.naturalWidth || img.width;
+  let height = img.naturalHeight || img.height;
+  if (width > IMG_MAX_DIMENSION || height > IMG_MAX_DIMENSION) {
+    if (width >= height) { height = Math.round(height * IMG_MAX_DIMENSION / width); width = IMG_MAX_DIMENSION; }
+    else { width = Math.round(width * IMG_MAX_DIMENSION / height); height = IMG_MAX_DIMENSION; }
+  }
+
+  const swapDims = orientation >= 5 && orientation <= 8; // 90°/270°回転の場合は縦横が入れ替わる
+  const canvas = document.createElement('canvas');
+  canvas.width  = swapDims ? height : width;
+  canvas.height = swapDims ? width  : height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; // 透過PNGがJPEG化で黒くならないよう白背景にする
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  applyOrientationTransform(ctx, orientation, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+
+  return canvas.toDataURL('image/jpeg', IMG_JPEG_QUALITY);
+}
+
 let imgTarget = null;
 const imgInput = document.getElementById('img-file-input');
 function addImage(t) { imgTarget=t; imgInput.click(); }
-imgInput.addEventListener('change', () => {
+imgInput.addEventListener('change', async () => {
   const file = imgInput.files[0]; if (!file||!imgTarget) return;
-  const r = new FileReader();
-  r.onload = e => { imgBuf[imgTarget].push(e.target.result); renderImgStrip(imgTarget); };
-  r.readAsDataURL(file); imgInput.value='';
+  const target = imgTarget;
+  imgInput.value = '';
+  try {
+    const dataUrl = await compressImageFile(file);
+    imgBuf[target].push(dataUrl);
+    renderImgStrip(target);
+  } catch(e) {
+    alert('画像の読み込みに失敗しました。別の画像で試してください。');
+  }
 });
 function renderImgStrip(k) {
   document.getElementById('imgs-'+k).innerHTML = imgBuf[k].map((b,i)=>`
@@ -958,6 +1060,7 @@ function renderImgStrip(k) {
       <button class="img-thumb-del" onclick="removeImg('${k}',${i})">✕</button></div>`).join('');
 }
 function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
+
 
 // ── モーダル ──────────────────────────
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
