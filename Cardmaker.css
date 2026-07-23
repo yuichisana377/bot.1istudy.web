@@ -204,6 +204,36 @@ html, body {
 .empty-state { text-align: center; padding: 4rem 1.5rem; color: var(--text-secondary); font-size: 14px; }
 .empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
 
+/* ── フォルダ ── */
+.folder-card { cursor: pointer; }
+.folder-card:active { background: var(--bg); }
+
+.folder-breadcrumb {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
+  font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem;
+}
+.folder-breadcrumb .crumb {
+  cursor: pointer; padding: 3px 6px; border-radius: 6px; font-weight: 600;
+}
+.folder-breadcrumb .crumb:active { background: var(--bg); }
+.folder-breadcrumb .crumb-sep { color: var(--border); margin: 0 1px; }
+
+.move-picker-list {
+  max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: 1rem;
+}
+.move-picker-row {
+  padding: .7rem .75rem; font-size: 14px; font-weight: 500; color: var(--text);
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.move-picker-row:last-child { border-bottom: none; }
+.move-picker-row:active { background: var(--bg); }
+.move-picker-row.current { background: #EFF4FF; color: #2563EB; font-weight: 700; }
+.move-picker-row.disabled { color: var(--text-secondary); opacity: .4; cursor: not-allowed; }
+.move-picker-current-tag {
+  font-size: 10px; background: #2563EB; color: #fff; padding: 1px 6px; border-radius: 10px; margin-left: 4px;
+}
+
 /* ── 学習画面 ── */
 /* overflow:hidden は共通の .screen ルールに統合済み */
 .study-top {
