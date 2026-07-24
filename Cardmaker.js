@@ -100,79 +100,105 @@ function cardKey(c) {
 // ============================================================
 //  自前のダイアログUI（デバイスのOS/ブラウザ標準の confirm() を使わない）
 //  ─────────────────────────────────────────────
-//  window.confirm() は端末やブラウザによって見た目が変わってしまうため、
-//  CardMaker全体で見た目が統一される自前のモーダルに置き換える。
-//  既存HTML/CSSには依存せず、必要なスタイルをJSから注入して完結させている。
+//  Cardmaker.css の既存クラス（.modal-overlay / .modal-sheet / .modal-handle /
+//  .modal-title / .modal-btns / .btn-* / .play-mode-item など）をそのまま
+//  流用して動的にモーダルを生成するので、新規CSSを追加せずに他のモーダルと
+//  完全に同じ見た目・アニメーションになる。端末やブラウザに依存しない。
 // ============================================================
-let _cmDialogStyleInjected = false;
-function injectCmDialogStyle() {
-  if (_cmDialogStyleInjected) return;
-  _cmDialogStyleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = `
-    .cm-dlg-overlay {
-      position: fixed; inset: 0; background: rgba(15,23,42,0.55);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 99999; padding: 20px; box-sizing: border-box;
-      opacity: 0; pointer-events: none; transition: opacity .15s ease;
-      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", Roboto, sans-serif;
-    }
-    .cm-dlg-overlay.cm-dlg-show { opacity: 1; pointer-events: auto; }
-    .cm-dlg-card {
-      background: #ffffff; border-radius: 18px; max-width: 360px; width: 100%;
-      padding: 26px 22px 20px; box-shadow: 0 24px 60px rgba(15,23,42,0.28);
-      transform: translateY(10px) scale(.97); transition: transform .16s ease;
-      text-align: center; box-sizing: border-box;
-    }
-    .cm-dlg-overlay.cm-dlg-show .cm-dlg-card { transform: translateY(0) scale(1); }
-    .cm-dlg-icon { font-size: 30px; line-height: 1; margin-bottom: 10px; }
-    .cm-dlg-title { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 8px; letter-spacing: .01em; }
-    .cm-dlg-desc { font-size: 13px; color: #64748b; margin: 0 0 22px; line-height: 1.65; white-space: pre-line; }
-    .cm-dlg-btn {
-      display: block; width: 100%; padding: 13px 16px; margin-bottom: 10px;
-      border-radius: 12px; border: none; font-size: 14px; font-weight: 700;
-      cursor: pointer; transition: opacity .12s ease, transform .06s ease;
-      -webkit-tap-highlight-color: transparent; font-family: inherit;
-    }
-    .cm-dlg-btn:last-of-type { margin-bottom: 0; }
-    .cm-dlg-btn:active { transform: scale(0.98); }
-    .cm-dlg-btn-primary { background: #2563eb; color: #ffffff; }
-    .cm-dlg-btn-warn { background: #fef9c3; color: #854d0e; }
-    .cm-dlg-btn-danger { background: #fee2e2; color: #b91c1c; }
-    .cm-dlg-btn-ghost { background: #f1f5f9; color: #334155; }
-    .cm-dlg-btn-text { background: transparent; color: #94a3b8; font-weight: 600; padding: 10px; margin-top: 2px; }
-  `;
-  document.head.appendChild(style);
-}
 
-// 汎用ダイアログ表示。buttons: [{label, value, style}], 背景クリックやEscでキャンセル(value=null)
-function showCmDialog({ icon = '', title = '', desc = '', buttons = [] }) {
-  injectCmDialogStyle();
+// 選択肢が2つの確認ダイアログ（キャンセル + 実行）。confirm()の代替。
+// okStyle: 'blue' | 'danger' | 'outline'（既存のbtnクラスに対応）
+function showCmConfirm({ title, desc = '', okLabel = 'OK', cancelLabel = 'キャンセル', okStyle = 'blue' }) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
-    overlay.className = 'cm-dlg-overlay';
+    overlay.className = 'modal-overlay';
     overlay.innerHTML = `
-      <div class="cm-dlg-card">
-        ${icon ? `<div class="cm-dlg-icon">${icon}</div>` : ''}
-        ${title ? `<p class="cm-dlg-title">${esc(title)}</p>` : ''}
-        ${desc ? `<p class="cm-dlg-desc">${esc(desc)}</p>` : ''}
-        ${buttons.map((b, i) => `<button type="button" class="cm-dlg-btn cm-dlg-btn-${b.style || 'ghost'}" data-idx="${i}">${esc(b.label)}</button>`).join('')}
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${esc(title)}</div>
+        ${desc ? `<div style="font-size:13px;color:var(--text-secondary);margin:-.5rem 0 1rem;line-height:1.6;white-space:pre-line">${esc(desc)}</div>` : ''}
+        <div class="modal-btns">
+          <button type="button" class="btn btn-ghost" data-val="0">${esc(cancelLabel)}</button>
+          <button type="button" class="btn btn-${okStyle}" data-val="1">${esc(okLabel)}</button>
+        </div>
       </div>`;
     document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('cm-dlg-show'));
+    requestAnimationFrame(() => overlay.classList.add('open'));
 
     function finish(value) {
-      document.removeEventListener('keydown', onKey);
-      overlay.classList.remove('cm-dlg-show');
-      setTimeout(() => overlay.remove(), 160);
+      overlay.classList.remove('open');
+      setTimeout(() => overlay.remove(), 180);
       resolve(value);
     }
-    function onKey(e) { if (e.key === 'Escape') finish(null); }
-    document.addEventListener('keydown', onKey);
-
-    overlay.querySelectorAll('.cm-dlg-btn').forEach(btn => {
-      btn.addEventListener('click', () => finish(buttons[+btn.dataset.idx].value));
+    overlay.querySelectorAll('[data-val]').forEach(btn => {
+      btn.addEventListener('click', () => finish(btn.dataset.val === '1'));
     });
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(false); });
+  });
+}
+
+// ボタン1つだけの通知ダイアログ。alert()の代替。
+function showCmAlert({ title, desc = '', okLabel = '閉じる' }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${esc(title)}</div>
+        ${desc ? `<div style="font-size:13px;color:var(--text-secondary);margin:-.5rem 0 1rem;line-height:1.6;white-space:pre-line">${esc(desc)}</div>` : ''}
+        <div class="modal-btns">
+          <button type="button" class="btn btn-blue" data-val="1" style="flex:1">${esc(okLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    function finish() {
+      overlay.classList.remove('open');
+      setTimeout(() => overlay.remove(), 180);
+      resolve(true);
+    }
+    overlay.querySelector('[data-val]').addEventListener('click', finish);
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(); });
+  });
+}
+
+// 3つ以上の選択肢から選ぶダイアログ（modal-play-mode と同じ見た目）。
+// choices: [{ icon, label, sub, value }]。キャンセル時は null を返す。
+function showCmChoiceDialog({ title, desc = '', choices, cancelLabel = 'キャンセル' }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${esc(title)}</div>
+        ${desc ? `<div style="font-size:13px;color:var(--text-secondary);margin:-.5rem 0 1rem;line-height:1.6;white-space:pre-line">${esc(desc)}</div>` : ''}
+        ${choices.map((c, i) => `
+          <div class="play-mode-item" data-idx="${i}">
+            <span class="play-mode-icon">${c.icon || ''}</span>
+            <div>
+              <div>${esc(c.label)}</div>
+              ${c.sub ? `<div class="play-mode-sub">${esc(c.sub)}</div>` : ''}
+            </div>
+          </div>`).join('')}
+        <div class="modal-btns" style="margin-top:.5rem">
+          <button type="button" class="btn btn-ghost" data-cancel style="flex:1">${esc(cancelLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    function finish(value) {
+      overlay.classList.remove('open');
+      setTimeout(() => overlay.remove(), 180);
+      resolve(value);
+    }
+    overlay.querySelectorAll('[data-idx]').forEach(el => {
+      el.addEventListener('click', () => finish(choices[+el.dataset.idx].value));
+    });
+    overlay.querySelector('[data-cancel]').addEventListener('click', () => finish(null));
     overlay.addEventListener('click', e => { if (e.target === overlay) finish(null); });
   });
 }
@@ -289,10 +315,9 @@ function chooseNewDeck() { closeModal('modal-add-choice'); openNewSet(); }
 async function chooseNewFolder() {
   closeModal('modal-add-choice');
   if (folderLevel(currentFolderId) >= MAX_FOLDER_DEPTH) {
-    await showCmDialog({
-      icon: '📁', title: 'フォルダを作成できません',
+    await showCmAlert({
+      title: 'フォルダを作成できません',
       desc: `フォルダは${MAX_FOLDER_DEPTH}階層までしか作成できません。`,
-      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
     });
     return;
   }
@@ -339,10 +364,7 @@ async function saveFolderName() {
     closeModal('modal-folder-name');
     renderDeckListUI();
   } catch(e) {
-    await showCmDialog({
-      icon: '⚠️', title: 'フォルダの保存に失敗しました', desc: e.message,
-      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
-    });
+    await showCmAlert({ title: 'フォルダの保存に失敗しました', desc: e.message });
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -371,12 +393,8 @@ async function folderMenuDelete() {
   const desc = (targetDecks.length || descIds.length)
     ? `「${folder.name}」を削除すると、中にあるサブフォルダ ${descIds.length} 個とデッキ ${targetDecks.length} 個もすべて削除されます。`
     : `「${folder.name}」を削除しますか？`;
-  const ok = await showCmDialog({
-    icon: '🗑️', title: 'フォルダを削除しますか？', desc,
-    buttons: [
-      { label: 'キャンセル', value: false, style: 'ghost' },
-      { label: '削除する', value: true, style: 'danger' },
-    ],
+  const ok = await showCmConfirm({
+    title: 'フォルダを削除しますか？', desc, okLabel: '削除する', okStyle: 'danger',
   });
   if (!ok) return;
 
@@ -401,10 +419,7 @@ async function folderMenuDelete() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
   } catch(e) {
-    await showCmDialog({
-      icon: '⚠️', title: 'サーバーからのフォルダ削除に失敗しました', desc: e.message,
-      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
-    });
+    await showCmAlert({ title: 'サーバーからのフォルダ削除に失敗しました', desc: e.message });
     return;
   }
 
@@ -490,10 +505,7 @@ async function selectMoveTarget(targetId) {
     await fetchAndMergeFolders();
     renderDeckListUI();
   } catch(e) {
-    await showCmDialog({
-      icon: '⚠️', title: 'フォルダの移動に失敗しました', desc: e.message,
-      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
-    });
+    await showCmAlert({ title: 'フォルダの移動に失敗しました', desc: e.message });
   }
 }
 
@@ -561,13 +573,10 @@ async function menuUnpublish() {
   closeModal('modal-deck-menu');
   const deck = decks.find(d => d.id === menuTargetId);
   if (!deck || !deck.filename) return;
-  const ok = await showCmDialog({
-    icon: '🔴', title: '非公開に戻しますか？',
+  const ok = await showCmConfirm({
+    title: '非公開に戻しますか？',
     desc: `「${deck.name}」をGitHubから削除して非公開に戻します。`,
-    buttons: [
-      { label: 'キャンセル', value: false, style: 'ghost' },
-      { label: '非公開に戻す', value: true, style: 'danger' },
-    ],
+    okLabel: '非公開に戻す', okStyle: 'danger',
   });
   if (!ok) return;
   try {
@@ -584,21 +593,15 @@ async function menuUnpublish() {
     saveDecks(decks); renderDeckListUI();
     showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
   } catch(e) {
-    await showCmDialog({
-      icon: '⚠️', title: 'GitHubからの削除に失敗しました', desc: e.message,
-      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
-    });
+    await showCmAlert({ title: 'GitHubからの削除に失敗しました', desc: e.message });
   }
 }
 
 async function menuDelete() {
   closeModal('modal-deck-menu');
-  const okDelete = await showCmDialog({
-    icon: '🗑️', title: 'このデッキを削除しますか？', desc: 'この操作は取り消せません。',
-    buttons: [
-      { label: 'キャンセル', value: false, style: 'ghost' },
-      { label: '削除する', value: true, style: 'danger' },
-    ],
+  const okDelete = await showCmConfirm({
+    title: 'このデッキを削除しますか？', desc: 'この操作は取り消せません。',
+    okLabel: '削除する', okStyle: 'danger',
   });
   if (!okDelete) return;
   const deck = decks.find(d => d.id === menuTargetId);
@@ -609,13 +612,10 @@ async function menuDelete() {
         body: JSON.stringify({ filename: deck.filename }),
       });
     } catch(e) {
-      const localOnly = await showCmDialog({
-        icon: '⚠️', title: 'GitHubからの削除に失敗しました',
+      const localOnly = await showCmConfirm({
+        title: 'GitHubからの削除に失敗しました',
         desc: 'ローカルからだけ削除しますか？',
-        buttons: [
-          { label: 'キャンセル', value: false, style: 'ghost' },
-          { label: 'ローカルから削除', value: true, style: 'danger' },
-        ],
+        okLabel: 'ローカルから削除', okStyle: 'danger',
       });
       if (!localOnly) return;
     }
@@ -691,13 +691,12 @@ async function saveCard(mode) {
   if (mode === 'publish') {
     // ★ 未ログインチェック（公開ボタンを押した時だけ）／自前UIで確認する
     if (!getLoginSession()) {
-      const proceedAnon = await showCmDialog({
-        icon: '⚠️', title: 'ログインしていません',
+      const proceedAnon = await showCmConfirm({
+        title: 'ログインしていません',
         desc: 'このまま公開すると「匿名」として公開されます。',
-        buttons: [
-          { label: 'ログイン画面へ', value: false, style: 'ghost' },
-          { label: '匿名のまま公開する', value: true, style: 'primary' },
-        ],
+        cancelLabel: 'ログイン画面へ',
+        okLabel: '匿名のまま公開する',
+        okStyle: 'blue',
       });
       if (!proceedAnon) {
         sessionStorage.setItem('post_login_redirect', location.href); // ログイン後に戻ってくる先を記憶
@@ -706,17 +705,18 @@ async function saveCard(mode) {
       }
     }
     // ★ 完成／未完成を選択してもらう（自前UI）。未完成なら通知なし（silent）で公開する
-    const choice = await showCmDialog({
-      icon: '📇', title: 'このデッキは完成していますか？',
+    const choice = await showCmChoiceDialog({
+      title: 'このデッキは完成していますか？',
       desc: '未完成として公開すると、Discordへの通知は送られません。\nあとから編集して完成にできます。',
-      buttons: [
-        { label: 'キャンセル', value: 'cancel', style: 'text' },
-        { label: '🟡 未完成として公開する（通知なし）', value: 'draft', style: 'warn' },
-        { label: '✓ 完成として公開する', value: 'complete', style: 'primary' },
+      choices: [
+        { icon: '✅', label: '完成として公開する',   sub: '通知が送信されます',   value: 'complete' },
+        { icon: '🟡', label: '未完成として公開する', sub: '通知は送信されません', value: 'draft' },
       ],
     });
-    if (!choice || choice === 'cancel') return;
-    publishDeck(deck, choice === 'complete');
+    if (!choice) return; // キャンセル
+    // ★ deck.id だけを渡し、publishDeck 側で常に最新のdecks配列から探し直す
+    //   （画面遷移で decks 配列が入れ替わっても更新が失われないようにするため）
+    publishDeck(deck.id, choice === 'complete');
   } else if (mode === 'local') {
     saveDecks(decks); showScreen('list');
   } else {
@@ -726,8 +726,22 @@ async function saveCard(mode) {
   }
 }
 
-async function publishDeck(deck, isComplete = true) {
+// ★ deckId で受け取り、サーバーへの保存が完了するたびに毎回「最新のdecks配列」から
+//   対象を探し直して更新する。
+//   ─────────────────────────────────────────────
+//   以前は deck オブジェクトへの参照を直接書き換えていたが、この関数の冒頭で
+//   showScreen('list') を呼ぶと内部で decks = loadDecks() が実行され、
+//   decks 配列全体が新しいオブジェクト群に入れ替わってしまう。
+//   その結果、渡された deck オブジェクトは新しい decks 配列に含まれない
+//   「孤立した参照」になり、公開完了後の filename 更新が保存されず
+//   一覧表示がいつまでも「非公開」のままになる不具合があった。
+async function publishDeck(deckId, isComplete = true) {
   saveDecks(decks); showScreen('list');
+
+  // showScreen('list') 実行後の最新の decks から対象デッキを取得する
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+
   const session = getLoginSession();
   const cards = deck.cards.map(c => ({
     id: c.id, // サーバーが対応していれば id を保持したまま返してもらうため付与
@@ -755,10 +769,20 @@ async function publishDeck(deck, isComplete = true) {
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
-    deck.filename = data.filename; deck.count = deck.cards.length;
-    deck.published_by = session ? session.nickname : '匿名';
-    deck.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持
-    saveDecks(decks); renderDeckListUI();
+
+    // ★ ここが重要：POST完了までの間にバックグラウンド同期（10秒ごとのポーリング等）
+    //   で decks 配列が再び入れ替わっている可能性があるため、必ずこの時点で
+    //   もう一度 loadDecks() し、id で探し直してから更新・保存する。
+    decks = loadDecks();
+    const target = decks.find(d => d.id === deckId);
+    if (target) {
+      target.filename = data.filename;
+      target.count = target.cards.length;
+      target.published_by = session ? session.nickname : '匿名';
+      target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持
+      saveDecks(decks);
+    }
+    renderDeckListUI();
     showBanner(
       isComplete ? '✓ 保存して公開しました！' : '🟡 未完成として公開しました（通知なし）',
       isComplete ? '#dcfce7' : '#fef9c3',
@@ -790,12 +814,8 @@ function renderCreatedList() {
 }
 
 async function deleteCardFromDeck(idx) {
-  const ok = await showCmDialog({
-    icon: '🗑️', title: 'このカードを削除しますか？',
-    buttons: [
-      { label: 'キャンセル', value: false, style: 'ghost' },
-      { label: '削除する', value: true, style: 'danger' },
-    ],
+  const ok = await showCmConfirm({
+    title: 'このカードを削除しますか？', okLabel: '削除する', okStyle: 'danger',
   });
   if (!ok) return;
   const deck = decks.find(d => d.id === currentDeckId);
@@ -804,12 +824,9 @@ async function deleteCardFromDeck(idx) {
   renderCreatedList();
 }
 async function confirmLeaveEdit() {
-  const ok = await showCmDialog({
-    icon: '↩️', title: '編集を終了しますか？', desc: '一覧画面に戻ります。',
-    buttons: [
-      { label: 'キャンセル', value: false, style: 'ghost' },
-      { label: '終了する', value: true, style: 'primary' },
-    ],
+  const ok = await showCmConfirm({
+    title: '編集を終了しますか？', desc: '一覧画面に戻ります。',
+    okLabel: '終了する', okStyle: 'blue',
   });
   if (ok) showScreen('list');
 }
@@ -1217,10 +1234,7 @@ imgInput.addEventListener('change', async () => {
     imgBuf[target].push(dataUrl);
     renderImgStrip(target);
   } catch(e) {
-    await showCmDialog({
-      icon: '⚠️', title: '画像の読み込みに失敗しました', desc: '別の画像で試してください。',
-      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
-    });
+    await showCmAlert({ title: '画像の読み込みに失敗しました', desc: '別の画像で試してください。' });
   }
 });
 function renderImgStrip(k) {
