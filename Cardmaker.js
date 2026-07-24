@@ -97,6 +97,86 @@ function cardKey(c) {
   return c.id || ('h_' + hashStr((c.question || '') + '||' + (c.answer || '')));
 }
 
+// ============================================================
+//  自前のダイアログUI（デバイスのOS/ブラウザ標準の confirm() を使わない）
+//  ─────────────────────────────────────────────
+//  window.confirm() は端末やブラウザによって見た目が変わってしまうため、
+//  CardMaker全体で見た目が統一される自前のモーダルに置き換える。
+//  既存HTML/CSSには依存せず、必要なスタイルをJSから注入して完結させている。
+// ============================================================
+let _cmDialogStyleInjected = false;
+function injectCmDialogStyle() {
+  if (_cmDialogStyleInjected) return;
+  _cmDialogStyleInjected = true;
+  const style = document.createElement('style');
+  style.textContent = `
+    .cm-dlg-overlay {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 99999; padding: 20px; box-sizing: border-box;
+      opacity: 0; pointer-events: none; transition: opacity .15s ease;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", Roboto, sans-serif;
+    }
+    .cm-dlg-overlay.cm-dlg-show { opacity: 1; pointer-events: auto; }
+    .cm-dlg-card {
+      background: #ffffff; border-radius: 18px; max-width: 360px; width: 100%;
+      padding: 26px 22px 20px; box-shadow: 0 24px 60px rgba(15,23,42,0.28);
+      transform: translateY(10px) scale(.97); transition: transform .16s ease;
+      text-align: center; box-sizing: border-box;
+    }
+    .cm-dlg-overlay.cm-dlg-show .cm-dlg-card { transform: translateY(0) scale(1); }
+    .cm-dlg-icon { font-size: 30px; line-height: 1; margin-bottom: 10px; }
+    .cm-dlg-title { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 8px; letter-spacing: .01em; }
+    .cm-dlg-desc { font-size: 13px; color: #64748b; margin: 0 0 22px; line-height: 1.65; white-space: pre-line; }
+    .cm-dlg-btn {
+      display: block; width: 100%; padding: 13px 16px; margin-bottom: 10px;
+      border-radius: 12px; border: none; font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: opacity .12s ease, transform .06s ease;
+      -webkit-tap-highlight-color: transparent; font-family: inherit;
+    }
+    .cm-dlg-btn:last-of-type { margin-bottom: 0; }
+    .cm-dlg-btn:active { transform: scale(0.98); }
+    .cm-dlg-btn-primary { background: #2563eb; color: #ffffff; }
+    .cm-dlg-btn-warn { background: #fef9c3; color: #854d0e; }
+    .cm-dlg-btn-danger { background: #fee2e2; color: #b91c1c; }
+    .cm-dlg-btn-ghost { background: #f1f5f9; color: #334155; }
+    .cm-dlg-btn-text { background: transparent; color: #94a3b8; font-weight: 600; padding: 10px; margin-top: 2px; }
+  `;
+  document.head.appendChild(style);
+}
+
+// 汎用ダイアログ表示。buttons: [{label, value, style}], 背景クリックやEscでキャンセル(value=null)
+function showCmDialog({ icon = '', title = '', desc = '', buttons = [] }) {
+  injectCmDialogStyle();
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'cm-dlg-overlay';
+    overlay.innerHTML = `
+      <div class="cm-dlg-card">
+        ${icon ? `<div class="cm-dlg-icon">${icon}</div>` : ''}
+        ${title ? `<p class="cm-dlg-title">${esc(title)}</p>` : ''}
+        ${desc ? `<p class="cm-dlg-desc">${esc(desc)}</p>` : ''}
+        ${buttons.map((b, i) => `<button type="button" class="cm-dlg-btn cm-dlg-btn-${b.style || 'ghost'}" data-idx="${i}">${esc(b.label)}</button>`).join('')}
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('cm-dlg-show'));
+
+    function finish(value) {
+      document.removeEventListener('keydown', onKey);
+      overlay.classList.remove('cm-dlg-show');
+      setTimeout(() => overlay.remove(), 160);
+      resolve(value);
+    }
+    function onKey(e) { if (e.key === 'Escape') finish(null); }
+    document.addEventListener('keydown', onKey);
+
+    overlay.querySelectorAll('.cm-dlg-btn').forEach(btn => {
+      btn.addEventListener('click', () => finish(buttons[+btn.dataset.idx].value));
+    });
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(null); });
+  });
+}
+
 // ── ルーター ──────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -206,10 +286,14 @@ function openFolder(id) {
 // ── 追加（デッキ / フォルダ）の選択 ─────
 function openAddChoice() { openModal('modal-add-choice'); }
 function chooseNewDeck() { closeModal('modal-add-choice'); openNewSet(); }
-function chooseNewFolder() {
+async function chooseNewFolder() {
   closeModal('modal-add-choice');
   if (folderLevel(currentFolderId) >= MAX_FOLDER_DEPTH) {
-    alert(`フォルダは${MAX_FOLDER_DEPTH}階層までしか作成できません。`);
+    await showCmDialog({
+      icon: '📁', title: 'フォルダを作成できません',
+      desc: `フォルダは${MAX_FOLDER_DEPTH}階層までしか作成できません。`,
+      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
+    });
     return;
   }
   openFolderNameModal('create', null);
@@ -255,7 +339,10 @@ async function saveFolderName() {
     closeModal('modal-folder-name');
     renderDeckListUI();
   } catch(e) {
-    alert('フォルダの保存に失敗しました。\n' + e.message);
+    await showCmDialog({
+      icon: '⚠️', title: 'フォルダの保存に失敗しました', desc: e.message,
+      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
+    });
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -281,10 +368,17 @@ async function folderMenuDelete() {
   const allFolderIds = [folder.id, ...descIds];
   const targetDecks = decks.filter(d => allFolderIds.includes(d.folderId || null));
 
-  const msg = (targetDecks.length || descIds.length)
-    ? `「${folder.name}」を削除すると、中にあるサブフォルダ ${descIds.length} 個とデッキ ${targetDecks.length} 個もすべて削除されます。よろしいですか？`
+  const desc = (targetDecks.length || descIds.length)
+    ? `「${folder.name}」を削除すると、中にあるサブフォルダ ${descIds.length} 個とデッキ ${targetDecks.length} 個もすべて削除されます。`
     : `「${folder.name}」を削除しますか？`;
-  if (!confirm(msg)) return;
+  const ok = await showCmDialog({
+    icon: '🗑️', title: 'フォルダを削除しますか？', desc,
+    buttons: [
+      { label: 'キャンセル', value: false, style: 'ghost' },
+      { label: '削除する', value: true, style: 'danger' },
+    ],
+  });
+  if (!ok) return;
 
   // 公開済みデッキはサーバー側からも削除
   for (const d of targetDecks) {
@@ -307,7 +401,10 @@ async function folderMenuDelete() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
   } catch(e) {
-    alert('サーバーからのフォルダ削除に失敗しました。\n' + e.message);
+    await showCmDialog({
+      icon: '⚠️', title: 'サーバーからのフォルダ削除に失敗しました', desc: e.message,
+      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
+    });
     return;
   }
 
@@ -393,7 +490,10 @@ async function selectMoveTarget(targetId) {
     await fetchAndMergeFolders();
     renderDeckListUI();
   } catch(e) {
-    alert('フォルダの移動に失敗しました。\n' + e.message);
+    await showCmDialog({
+      icon: '⚠️', title: 'フォルダの移動に失敗しました', desc: e.message,
+      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
+    });
   }
 }
 
@@ -461,7 +561,15 @@ async function menuUnpublish() {
   closeModal('modal-deck-menu');
   const deck = decks.find(d => d.id === menuTargetId);
   if (!deck || !deck.filename) return;
-  if (!confirm(`「${deck.name}」をGitHubから削除して非公開に戻しますか？`)) return;
+  const ok = await showCmDialog({
+    icon: '🔴', title: '非公開に戻しますか？',
+    desc: `「${deck.name}」をGitHubから削除して非公開に戻します。`,
+    buttons: [
+      { label: 'キャンセル', value: false, style: 'ghost' },
+      { label: '非公開に戻す', value: true, style: 'danger' },
+    ],
+  });
+  if (!ok) return;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
@@ -476,13 +584,23 @@ async function menuUnpublish() {
     saveDecks(decks); renderDeckListUI();
     showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
   } catch(e) {
-    alert('GitHubからの削除に失敗しました。\n' + e.message);
+    await showCmDialog({
+      icon: '⚠️', title: 'GitHubからの削除に失敗しました', desc: e.message,
+      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
+    });
   }
 }
 
 async function menuDelete() {
   closeModal('modal-deck-menu');
-  if (!confirm('このデッキを削除しますか？')) return;
+  const okDelete = await showCmDialog({
+    icon: '🗑️', title: 'このデッキを削除しますか？', desc: 'この操作は取り消せません。',
+    buttons: [
+      { label: 'キャンセル', value: false, style: 'ghost' },
+      { label: '削除する', value: true, style: 'danger' },
+    ],
+  });
+  if (!okDelete) return;
   const deck = decks.find(d => d.id === menuTargetId);
   if (deck && deck.filename) {
     try {
@@ -491,7 +609,15 @@ async function menuDelete() {
         body: JSON.stringify({ filename: deck.filename }),
       });
     } catch(e) {
-      if (!confirm('GitHubからの削除に失敗しました。ローカルからだけ削除しますか？')) return;
+      const localOnly = await showCmDialog({
+        icon: '⚠️', title: 'GitHubからの削除に失敗しました',
+        desc: 'ローカルからだけ削除しますか？',
+        buttons: [
+          { label: 'キャンセル', value: false, style: 'ghost' },
+          { label: 'ローカルから削除', value: true, style: 'danger' },
+        ],
+      });
+      if (!localOnly) return;
     }
   }
   decks = decks.filter(d => d.id !== menuTargetId);
@@ -550,7 +676,7 @@ function clearEditor() {
   });
 }
 
-function saveCard(mode) {
+async function saveCard(mode) {
   const q = document.getElementById('ta-q').value.trim();
   const a = document.getElementById('ta-a').value.trim();
   const deck = decks.find(d => d.id === currentDeckId);
@@ -563,27 +689,34 @@ function saveCard(mode) {
     document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
   }
   if (mode === 'publish') {
-    // ★ 未ログインチェック（公開ボタンを押した時だけ）
+    // ★ 未ログインチェック（公開ボタンを押した時だけ）／自前UIで確認する
     if (!getLoginSession()) {
-      const goLogin = confirm(
-        '⚠ ログインしていません。\n' +
-        'このまま公開すると「匿名」として公開されます。\n\n' +
-        'OK → 匿名のまま公開する\n' +
-        'キャンセル → ログイン画面に移動する'
-      );
-      if (!goLogin) {
+      const proceedAnon = await showCmDialog({
+        icon: '⚠️', title: 'ログインしていません',
+        desc: 'このまま公開すると「匿名」として公開されます。',
+        buttons: [
+          { label: 'ログイン画面へ', value: false, style: 'ghost' },
+          { label: '匿名のまま公開する', value: true, style: 'primary' },
+        ],
+      });
+      if (!proceedAnon) {
         sessionStorage.setItem('post_login_redirect', location.href); // ログイン後に戻ってくる先を記憶
         location.href = LOGIN_PATH;
         return;
       }
     }
-    // ★ 完成／未完成を選択してもらう。未完成なら通知なし（silent）で公開する
-    const isComplete = confirm(
-      'このデッキは完成していますか？\n\n' +
-      'OK → 完成として公開する（通知あり）\n' +
-      'キャンセル → 未完成として公開する（通知なし）'
-    );
-    publishDeck(deck, isComplete);
+    // ★ 完成／未完成を選択してもらう（自前UI）。未完成なら通知なし（silent）で公開する
+    const choice = await showCmDialog({
+      icon: '📇', title: 'このデッキは完成していますか？',
+      desc: '未完成として公開すると、Discordへの通知は送られません。\nあとから編集して完成にできます。',
+      buttons: [
+        { label: 'キャンセル', value: 'cancel', style: 'text' },
+        { label: '🟡 未完成として公開する（通知なし）', value: 'draft', style: 'warn' },
+        { label: '✓ 完成として公開する', value: 'complete', style: 'primary' },
+      ],
+    });
+    if (!choice || choice === 'cancel') return;
+    publishDeck(deck, choice === 'complete');
   } else if (mode === 'local') {
     saveDecks(decks); showScreen('list');
   } else {
@@ -656,15 +789,29 @@ function renderCreatedList() {
     </div>`).join('');
 }
 
-function deleteCardFromDeck(idx) {
-  if (!confirm('このカードを削除しますか？')) return;
+async function deleteCardFromDeck(idx) {
+  const ok = await showCmDialog({
+    icon: '🗑️', title: 'このカードを削除しますか？',
+    buttons: [
+      { label: 'キャンセル', value: false, style: 'ghost' },
+      { label: '削除する', value: true, style: 'danger' },
+    ],
+  });
+  if (!ok) return;
   const deck = decks.find(d => d.id === currentDeckId);
   deck.cards.splice(idx, 1); saveDecks(decks);
   document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
   renderCreatedList();
 }
-function confirmLeaveEdit() {
-  if (confirm('編集を終了して一覧に戻りますか？')) showScreen('list');
+async function confirmLeaveEdit() {
+  const ok = await showCmDialog({
+    icon: '↩️', title: '編集を終了しますか？', desc: '一覧画面に戻ります。',
+    buttons: [
+      { label: 'キャンセル', value: false, style: 'ghost' },
+      { label: '終了する', value: true, style: 'primary' },
+    ],
+  });
+  if (ok) showScreen('list');
 }
 
 // ── カード編集モーダル（デッキ編集画面 / 学習画面 共通） ─────
@@ -1070,7 +1217,10 @@ imgInput.addEventListener('change', async () => {
     imgBuf[target].push(dataUrl);
     renderImgStrip(target);
   } catch(e) {
-    alert('画像の読み込みに失敗しました。別の画像で試してください。');
+    await showCmDialog({
+      icon: '⚠️', title: '画像の読み込みに失敗しました', desc: '別の画像で試してください。',
+      buttons: [{ label: '閉じる', value: true, style: 'ghost' }],
+    });
   }
 });
 function renderImgStrip(k) {
