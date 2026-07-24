@@ -157,6 +157,10 @@ function renderDeckListUI() {
     const pubBadge = d.filename
       ? `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
       : `<span class="pub-badge local">🔴 非公開</span>`;
+    // ★ 公開済みかつ未完成としてマークされているデッキには未完成バッジを表示
+    const draftBadge = (d.filename && d.incomplete)
+      ? `<span class="pub-badge draft">🟡 未完成</span>`
+      : '';
     return `
     <div class="deck-card">
       <div class="deck-card-info">
@@ -164,6 +168,7 @@ function renderDeckListUI() {
         <div class="deck-card-meta">
           ${d.filename ? (d.count ?? d.cards.length) : d.cards.length} 問
           ${pubBadge}
+          ${draftBadge}
           ${unsureBadge}
         </div>
       </div>
@@ -411,6 +416,8 @@ async function fetchAndMergeDecks() {
       count: s.count,
       subject: s.subject || (existing && existing.subject) || null,
       published_by: s.published_by || (existing && existing.published_by) || null,
+      // ★ 未完成フラグはサーバー側に無い情報なので、既存のローカル状態を引き継ぐ
+      incomplete: existing ? !!existing.incomplete : false,
       // ★ フォルダ所属はサーバー側が正（みんなで共有）。
       //   has_folder_id が true の場合は、folder_id が null（＝ルート）であっても
       //   それをそのまま信頼する（＝ルートへ移動されたことを正しく反映する）。
@@ -465,7 +472,7 @@ async function menuUnpublish() {
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '削除失敗');
-    deck.filename = null; deck.count = undefined; deck.published_by = null;
+    deck.filename = null; deck.count = undefined; deck.published_by = null; deck.incomplete = false;
     saveDecks(decks); renderDeckListUI();
     showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
   } catch(e) {
@@ -570,7 +577,13 @@ function saveCard(mode) {
         return;
       }
     }
-    publishDeck(deck);
+    // ★ 完成／未完成を選択してもらう。未完成なら通知なし（silent）で公開する
+    const isComplete = confirm(
+      'このデッキは完成していますか？\n\n' +
+      'OK → 完成として公開する（通知あり）\n' +
+      'キャンセル → 未完成として公開する（通知なし）'
+    );
+    publishDeck(deck, isComplete);
   } else if (mode === 'local') {
     saveDecks(decks); showScreen('list');
   } else {
@@ -580,7 +593,7 @@ function saveCard(mode) {
   }
 }
 
-async function publishDeck(deck) {
+async function publishDeck(deck, isComplete = true) {
   saveDecks(decks); showScreen('list');
   const session = getLoginSession();
   const cards = deck.cards.map(c => ({
@@ -596,6 +609,7 @@ async function publishDeck(deck) {
     folder_id: deck.folderId || null,                     // ★ フォルダ所属（みんなで共有）
     publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
     publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
+    silent: !isComplete, // ★ 未完成として公開する場合は通知しない
   };
   if (deck.filename) body.filename = deck.filename;
   try {
@@ -610,8 +624,13 @@ async function publishDeck(deck) {
     if (!data.ok) throw new Error(data.error || '不明なエラー');
     deck.filename = data.filename; deck.count = deck.cards.length;
     deck.published_by = session ? session.nickname : '匿名';
+    deck.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持
     saveDecks(decks); renderDeckListUI();
-    showBanner('✓ 保存して公開しました！', '#dcfce7', '#166534');
+    showBanner(
+      isComplete ? '✓ 保存して公開しました！' : '🟡 未完成として公開しました（通知なし）',
+      isComplete ? '#dcfce7' : '#fef9c3',
+      isComplete ? '#166534' : '#854d0e'
+    );
   } catch(e) {
     showBanner('💾 ローカルに保存しました（GitHub同期失敗）', '#fffbeb', '#92400e');
   }
