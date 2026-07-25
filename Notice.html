@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>お知らせ — 1I勉強会</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/Style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
+</head>
+<body>
+
+<!-- ドロワーオーバーレイ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+<!-- ドロワー -->
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="app-name">📚 1I 勉強会web</div>
+    <div class="app-sub">統合学習ツール</div>
+  </div>
+  <nav class="drawer-nav">
+    <a class="drawer-item" href="/index.html">
+      <span class="di-icon">📘</span>予定管理
+    </a>
+    <a class="drawer-item" href="/Timetable.html">
+      <span class="di-icon">📒</span>時間割
+    </a>
+    <a class="drawer-item" href="/Cardmaker.html">
+      <span class="di-icon">📇</span>CardMaker
+    </a>
+    <a class="drawer-item" href="/StudyLog.html">
+      <span class="di-icon">📊</span>勉強ログ
+    </a>
+    <a class="drawer-item active" href="/Notice.html">
+      <span class="di-icon">📢</span>お知らせ
+    </a>
+  </nav>
+</div>
+
+<div class="scroll-body">
+
+  <!-- ヘッダー -->
+  <header class="header">
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
+    <span class="header-title">お知らせ</span>
+    <button class="today-btn-plan" onclick="openUploadModal()">＋ アップロード</button>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="plan-main">
+    <div class="loading" id="notice-loading">読み込み中…</div>
+    <div id="notice-content"></div>
+  </main>
+
+</div>
+
+<!-- 詳細（プレビュー）モーダル -->
+<div class="modal-bg" id="modal-view" onclick="onBgClickNotice(event,'view')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3 id="view-filename">お知らせ</h3>
+      <button class="modal-close" onclick="closeNoticeModal('view')">✕</button>
+    </div>
+    <div class="loading" id="view-loading" style="display:none">読み込み中…</div>
+    <div class="notice-body" id="view-body"></div>
+    <button class="notice-del-btn" id="view-delete-btn" onclick="deleteCurrentNotice()">削除する</button>
+  </div>
+</div>
+
+<!-- アップロードモーダル -->
+<div class="modal-bg" id="modal-upload" onclick="onBgClickNotice(event,'upload')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3>お知らせをアップロード</h3>
+      <button class="modal-close" onclick="closeNoticeModal('upload')">✕</button>
+    </div>
+    <div class="success-bar" id="upload-ok">✓ アップロードしました！</div>
+    <div class="error-bar"   id="upload-err"></div>
+
+    <div class="field">
+      <label>ファイル名（.md または .txt）</label>
+      <input type="text" id="upload-filename" placeholder="例: 2026-07-25_お知らせ.md">
+    </div>
+    <div class="field">
+      <label>アップロード者名（任意）</label>
+      <input type="text" id="upload-uploader" placeholder="例: 田中">
+    </div>
+    <div class="field">
+      <label>内容</label>
+      <textarea id="upload-content" rows="10" placeholder="お知らせの本文を入力…"
+        style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-md);
+        font-size:14px;background:var(--bg);color:var(--text);outline:none;resize:vertical;
+        font-family:inherit;line-height:1.6;"></textarea>
+    </div>
+
+    <!-- ファイルから読み込む場合 -->
+    <div class="field">
+      <label>またはPCから .md / .txt ファイルを選択</label>
+      <input type="file" id="upload-file-input" accept=".md,.txt" onchange="onLocalFileSelected(event)">
+    </div>
+
+    <button class="btn-primary" onclick="submitUpload()">アップロードする</button>
+  </div>
+</div>
+
+<script src="/Notice.js"></script>
+</body>
+</html>
