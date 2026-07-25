@@ -5,9 +5,16 @@
 
 const API_BASE = "https://python-bot-1istudy.onrender.com/";
 const GUILD_ID = "1509880344806162544";
+const LOGIN_PATH = '/Login.html'; // ★ Cardmaker.js と同じ基準のログインページパス
 
 let notices = [];
 let currentViewFilename = null;
+
+// ── ログインセッション（Login.js / Cardmaker.js と共通） ──────
+const SESSION_KEY = 'sl_session';
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
 
 // ============================================================
 //  起動
@@ -53,13 +60,18 @@ function renderNotices() {
     return;
   }
 
-  el.innerHTML = `<div class="notice-list">` + notices.map(n => `
+  el.innerHTML = `<div class="notice-list">` + notices.map(n => {
+    const metaParts = [];
+    if (n.uploader) metaParts.push(`${n.uploader}さん`);
+    if (n.uploaded_at) metaParts.push(n.uploaded_at);
+    const meta = metaParts.length ? `<span class="notice-meta">${metaParts.join(' ・ ')}</span>` : '';
+    return `
     <div class="notice-card" onclick="openViewModal('${n.filename.replace(/'/g, "\\'")}')">
       <span class="notice-badge ${extBadgeClass(n.ext)}">${n.ext.toUpperCase()}</span>
-      <span class="notice-name">${n.filename}</span>
+      <span class="notice-name">${n.filename}${meta}</span>
       <span class="notice-arrow">›</span>
-    </div>
-  `).join('') + `</div>`;
+    </div>`;
+  }).join('') + `</div>`;
 }
 
 // ============================================================
@@ -68,6 +80,7 @@ function renderNotices() {
 async function openViewModal(filename) {
   currentViewFilename = filename;
   document.getElementById('view-filename').textContent = filename;
+  document.getElementById('view-meta').textContent = '';
   const bodyEl = document.getElementById('view-body');
   bodyEl.innerHTML = '';
   document.getElementById('view-loading').style.display = 'block';
@@ -78,6 +91,10 @@ async function openViewModal(filename) {
     document.getElementById('view-loading').style.display = 'none';
     if (data.ok) {
       renderNoticeBody(bodyEl, filename, data.content);
+      const metaParts = [];
+      if (data.uploader) metaParts.push(`${data.uploader}さん`);
+      if (data.uploaded_at) metaParts.push(data.uploaded_at);
+      document.getElementById('view-meta').textContent = metaParts.join(' ・ ');
     } else {
       bodyEl.classList.add('notice-plain');
       bodyEl.textContent = '読み込みに失敗しました: ' + (data.error || '');
@@ -136,11 +153,15 @@ async function deleteCurrentNotice() {
 // ============================================================
 function openUploadModal() {
   document.getElementById('upload-filename').value = '';
-  document.getElementById('upload-uploader').value = '';
   document.getElementById('upload-content').value = '';
   document.getElementById('upload-file-input').value = '';
   document.getElementById('upload-ok').style.display = 'none';
   document.getElementById('upload-err').style.display = 'none';
+
+  const session = getLoginSession();
+  const display = document.getElementById('upload-uploader-display');
+  display.textContent = session ? `${session.nickname} さん` : '未ログイン（匿名として投稿されます）';
+
   document.getElementById('modal-upload').classList.add('open');
 }
 
@@ -159,12 +180,27 @@ function onLocalFileSelected(e) {
 
 async function submitUpload() {
   const filename = document.getElementById('upload-filename').value.trim();
-  const uploader = document.getElementById('upload-uploader').value.trim();
   const content  = document.getElementById('upload-content').value;
 
   if (!filename) { showNoticeErr('upload-err', 'ファイル名を入力してください'); return; }
   if (!/\.(md|txt)$/i.test(filename)) { showNoticeErr('upload-err', 'ファイル名は .md か .txt にしてください'); return; }
   if (!content.trim()) { showNoticeErr('upload-err', '内容が空です'); return; }
+
+  // ★ Cardmaker.js と同じ考え方：未ログインなら「匿名のまま投稿」か「ログイン画面へ」を確認する
+  const session = getLoginSession();
+  if (!session) {
+    const proceedAnon = confirm(
+      'ログインしていません。\n' +
+      'このまま投稿すると「匿名」として投稿されます。\n\n' +
+      'OK：匿名のまま投稿する\nキャンセル：ログイン画面へ移動する'
+    );
+    if (!proceedAnon) {
+      sessionStorage.setItem('post_login_redirect', location.href); // ログイン後に戻ってくる先を記憶
+      location.href = LOGIN_PATH;
+      return;
+    }
+  }
+  const uploader = session ? session.nickname : '匿名';
 
   const btn = document.querySelector('#modal-upload .btn-primary');
   btn.disabled = true;
