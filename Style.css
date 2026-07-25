@@ -660,3 +660,185 @@ body {
   color: #fff;
   border-color: var(--text);
 }
+/* ============================================================
+   お知らせページ用スタイル
+   → Style.css の末尾にそのまま追記してください
+============================================================ */
+
+.notice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 13px 14px;
+  cursor: pointer;
+  transition: background .13s, border-color .13s;
+}
+.notice-card:active {
+  background: var(--bg);
+}
+
+.notice-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: .03em;
+  flex-shrink: 0;
+}
+.notice-badge-md  { background: #dbeafe; color: #1e40af; }
+.notice-badge-txt { background: #f3f4f6; color: #374151; }
+
+.notice-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  word-break: break-all;
+}
+
+.notice-arrow {
+  color: var(--text-tertiary);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.notice-body {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  word-break: break-word;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+}
+
+/* .txt はプレーンテキストとして改行だけ保持して表示 */
+.notice-body.notice-plain {
+  white-space: pre-wrap;
+}
+
+/* ============================================================
+   .md の GitHub 風レンダリング（markdown-body）
+============================================================ */
+.notice-body.markdown-body h1,
+.notice-body.markdown-body h2,
+.notice-body.markdown-body h3,
+.notice-body.markdown-body h4 {
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 1em 0 .5em;
+}
+.notice-body.markdown-body h1:first-child,
+.notice-body.markdown-body h2:first-child,
+.notice-body.markdown-body h3:first-child { margin-top: 0; }
+
+.notice-body.markdown-body h1 { font-size: 1.5em; padding-bottom: .3em; border-bottom: 1px solid var(--border); }
+.notice-body.markdown-body h2 { font-size: 1.28em; padding-bottom: .25em; border-bottom: 1px solid var(--border); }
+.notice-body.markdown-body h3 { font-size: 1.12em; }
+.notice-body.markdown-body h4 { font-size: 1em; }
+
+.notice-body.markdown-body p {
+  margin: 0 0 .8em;
+}
+.notice-body.markdown-body p:last-child { margin-bottom: 0; }
+
+.notice-body.markdown-body strong { font-weight: 700; }
+.notice-body.markdown-body em { font-style: italic; }
+
+.notice-body.markdown-body ul,
+.notice-body.markdown-body ol {
+  margin: 0 0 .8em;
+  padding-left: 1.6em;
+}
+.notice-body.markdown-body ul { list-style: disc; }
+.notice-body.markdown-body ul ul { list-style: circle; }
+.notice-body.markdown-body ol { list-style: decimal; }
+.notice-body.markdown-body li { margin: .2em 0; }
+.notice-body.markdown-body li > p { margin-bottom: .3em; }
+
+.notice-body.markdown-body a {
+  color: #1e40af;
+  text-decoration: none;
+}
+.notice-body.markdown-body a:hover { text-decoration: underline; }
+
+.notice-body.markdown-body code {
+  background: var(--border-light);
+  border-radius: 4px;
+  padding: .15em .4em;
+  font-size: .9em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
+}
+.notice-body.markdown-body pre {
+  background: var(--border-light);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0 0 .8em;
+}
+.notice-body.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.notice-body.markdown-body blockquote {
+  border-left: 3px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0 .9em;
+  margin: 0 0 .8em;
+}
+
+.notice-body.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+
+.notice-body.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 .8em;
+  font-size: .95em;
+}
+.notice-body.markdown-body th,
+.notice-body.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.notice-body.markdown-body th {
+  background: var(--border-light);
+  font-weight: 700;
+}
+
+/* 削除ボタン（目立たせすぎない小さいスタイル） */
+.notice-del-btn {
+  display: block;
+  margin: 4px 0 0 auto;
+  width: auto;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.notice-del-btn:active,
+.notice-del-btn:hover {
+  color: #991b1b;
+  text-decoration: underline;
+}
