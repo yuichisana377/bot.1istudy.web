@@ -1111,10 +1111,11 @@ async function openPlayMode(deckId) {
   if (unsureCount > 0) {
     document.getElementById('play-mode-unsure-sub').textContent = `${unsureCount} 問`;
     unsureItem.style.display = '';
-    openModal('modal-play-mode');
   } else {
-    startStudyMode('all');
+    unsureItem.style.display = 'none';
   }
+  // ★ 反転トグルを必ず見せるため、わからないカードの有無に関わらずモーダルを開く
+  openModal('modal-play-mode');
 }
 
 function startStudyMode(mode) {
