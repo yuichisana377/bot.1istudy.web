@@ -257,9 +257,15 @@ function renderDeckListUI() {
   const orderedDecks = [...unpublished, ...published];
 
   const deckHtml = orderedDecks.map(d => {
-    const unsureSet   = getUnsureSet(d.id);
-    const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
-    const unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
+    // ★ カード本体を未読み込みのデッキ（公開デッキで cardsLoaded=false）は
+    //   d.cards が空のままなので、「わからない」バッジは読み込み後にしか出せない。
+    //   ここでは読み込み済みの場合だけ計算する。
+    let unsureBadge = '';
+    if (d.cardsLoaded !== false) {
+      const unsureSet   = getUnsureSet(d.id);
+      const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
+      unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
+    }
     const pubBadge = d.filename
       ? `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
       : `<span class="pub-badge local">🔴 非公開</span>`;
@@ -267,12 +273,19 @@ function renderDeckListUI() {
     const draftBadge = (d.filename && d.incomplete)
       ? `<span class="pub-badge draft">🟡 未完成</span>`
       : '';
+    // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
+    //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
+    const questionCount = d.filename ? (d.count ?? d.cards.length) : d.cards.length;
+    // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
+    //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
+    const isLoadingThis = loadingDeckIds.has(d.id);
+    const playDisabled = questionCount === 0 || isLoadingThis;
     return `
     <div class="deck-card">
       <div class="deck-card-info">
         <div class="deck-card-title">${esc(d.name)}</div>
         <div class="deck-card-meta">
-          ${d.filename ? (d.count ?? d.cards.length) : d.cards.length} 問
+          ${questionCount} 問
           ${pubBadge}
           ${draftBadge}
           ${unsureBadge}
@@ -280,8 +293,8 @@ function renderDeckListUI() {
       </div>
       <div class="deck-card-actions">
         <button class="btn btn-blue btn-sm" onclick="openPlayMode('${d.id}')"
-          ${d.cards.length===0?'disabled':''}>▶ プレイ</button>
-        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー">✏️</button>
+          ${playDisabled?'disabled':''}>${isLoadingThis ? '読み込み中…' : '▶ プレイ'}</button>
+        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>✏️</button>
       </div>
     </div>`;
   }).join('');
@@ -509,7 +522,14 @@ async function selectMoveTarget(targetId) {
   }
 }
 
-// ★ list_cards を取得して decks にマージする共通処理（画面描画はしない）
+// ★ list_cards（軽量メタ情報のみ）を取得して decks にマージする共通処理（画面描画はしない）
+//   ─────────────────────────────────────────────
+//   以前はここで全デッキの cards 本体（画像含む）を丸ごと取得していたため、
+//   デッキ数や画像が増えるほど一覧表示が遅くなっていた。
+//   現在の list_cards はカード本体を含まない軽量なメタ情報（name/count/subject/
+//   folder_id/published_by など）だけを返すので、一覧表示はすぐに終わる。
+//   カード本体は、デッキを実際に開く（プレイ／編集）ときに
+//   ensureDeckCardsLoaded() で個別に取得する。
 async function fetchAndMergeDecks() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
@@ -520,10 +540,14 @@ async function fetchAndMergeDecks() {
   if (!data.ok) return { changed: false, txt };
   const fetched = data.sets.map(s => {
     const existing = decks.find(d => d.filename === s.filename);
+    // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
+    //   未読み込みなら空配列のままにし、開いたときに取得する。
+    const keepLoadedCards = existing && existing.cardsLoaded;
     return {
       id: existing ? existing.id : genId(),
       name: s.name,
-      cards: s.cards,
+      cards: keepLoadedCards ? existing.cards : [],
+      cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
       subject: s.subject || (existing && existing.subject) || null,
@@ -541,10 +565,46 @@ async function fetchAndMergeDecks() {
     };
   });
   const publishedNames = new Set(fetched.map(f => f.name));
-  const localOnly = decks.filter(d => !d.filename && !publishedNames.has(d.name));
+  // ★ ローカル限定デッキ（未公開）は常にカード本体を持っているので cardsLoaded=true 扱い
+  const localOnly = decks.filter(d => !d.filename && !publishedNames.has(d.name))
+    .map(d => ({ ...d, cardsLoaded: true }));
   decks = [...localOnly, ...fetched];
   saveDecks(decks);
   return { changed: true, txt };
+}
+
+// ★ 公開済みデッキのカード本体（問題・解答・画像など）を、必要になった時点で取得する。
+//   ・ローカル限定（未公開）デッキは常にカードを保持しているので何もしない。
+//   ・既に読み込み済み（cardsLoaded=true）なら再取得しない。
+//   ・取得中は loadingDeckIds に id を入れて一覧を再描画し、「読み込み中…」を表示する。
+let loadingDeckIds = new Set();
+async function ensureDeckCardsLoaded(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return false;
+  if (!deck.filename) { deck.cardsLoaded = true; return true; }
+  if (deck.cardsLoaded) return true;
+
+  loadingDeckIds.add(deckId);
+  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(deck.filename)}`, { signal: controller.signal });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    deck.cards = data.cards || [];
+    deck.cardsLoaded = true;
+    deck.count = deck.cards.length;
+    saveDecks(decks);
+    return true;
+  } catch(e) {
+    return false;
+  } finally {
+    loadingDeckIds.delete(deckId);
+    if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  }
 }
 
 async function renderDeckList() {
@@ -565,7 +625,7 @@ function openDeckMenu(id) {
   document.getElementById('menu-unpublish-item').style.display = deck.filename ? '' : 'none';
   openModal('modal-deck-menu');
 }
-function menuEdit()   { closeModal('modal-deck-menu'); openEditDeck(menuTargetId); }
+async function menuEdit()   { closeModal('modal-deck-menu'); await openEditDeck(menuTargetId); }
 function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId); }
 function menuMove()   { closeModal('modal-deck-menu'); openMovePicker('deck', menuTargetId); }
 
@@ -651,15 +711,25 @@ function startEdit() {
   const input   = document.getElementById('new-set-name').value.trim();
   if (!input) { shake('new-set-name'); return; }
   const name = subject ? `${subject} ${input}` : input;
-  const deck = { id: genId(), name, subject, cards: [], folderId: currentFolderId };
+  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId };
   decks.push(deck); saveDecks(decks);
   openEditDeck(deck.id);
 }
 
 // ── カード編集画面 ────────────────────
-function openEditDeck(deckId) {
+// ★ 公開済みデッキはカード本体が未読み込みの可能性があるので、
+//   編集画面を開く前に ensureDeckCardsLoaded() で取得しておく。
+async function openEditDeck(deckId) {
   currentDeckId = deckId;
   const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+
+  const ok = await ensureDeckCardsLoaded(deckId);
+  if (!ok) {
+    await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+    return;
+  }
+
   document.getElementById('edit-deck-title').textContent = deck.name;
   // ★ 公開済みデッキは「保存」（ローカルのみ）ボタンを隠し、「保存して公開」だけにする
   document.getElementById('btn-save-local').style.display = deck.filename ? 'none' : '';
@@ -778,6 +848,7 @@ async function publishDeck(deckId, isComplete = true) {
     if (target) {
       target.filename = data.filename;
       target.count = target.cards.length;
+      target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
       target.published_by = session ? session.nickname : '匿名';
       target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持
       saveDecks(decks);
@@ -958,7 +1029,16 @@ async function saveRename() {
   renderDeckListUI();
 
   // ★ 公開済みならサーバー側のファイルも更新する（通知はしない）
+  //   ※ カード本体が未読み込みでも、renameだけならcardsが空でも
+  //     サーバー側は既存ファイルの中身を維持したまま名前だけ変えたいところだが、
+  //     save_cards は cards を丸ごと上書きする仕様なので、未読み込みのまま
+  //     送るとカードが消えてしまう。そのため rename 前に必ず読み込んでおく。
   if (deck.filename) {
+    const loaded = await ensureDeckCardsLoaded(deck.id);
+    if (!loaded) {
+      showBanner('⚠ サーバーへの名前変更の反映に失敗しました（カード読み込みエラー）', '#fffbeb', '#92400e');
+      return;
+    }
     const ok = await syncDeckToServer(deck);
     if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
   }
@@ -1009,9 +1089,19 @@ function saveUnsureSet(deckId, set) {
 
 let studyDeckId = null;
 
-function openPlayMode(deckId) {
+// ★ 公開済みデッキはカード本体が未読み込みの可能性があるので、
+//   プレイモードを開く前に ensureDeckCardsLoaded() で取得しておく。
+async function openPlayMode(deckId) {
   const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
   studyDeckId = deckId;
+
+  const ok = await ensureDeckCardsLoaded(deckId);
+  if (!ok) {
+    await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+    return;
+  }
+
   document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
@@ -1302,6 +1392,7 @@ async function digestMessage(message) {
 //   ・編集中／プレイ中の画面はそのままにして、リロードもしない
 //     （データはバックグラウンドで decks / localStorage に反映されるので、
 //       次に一覧へ戻った時には最新の状態になっている）
+//   ・list_cards は軽量メタ情報のみなので、このポーリング自体も軽くなった。
 async function checkCardsUpdate() {
   try {
     const controller = new AbortController();
