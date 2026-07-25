@@ -62,7 +62,10 @@
   <div class="modal">
     <span class="modal-handle"></span>
     <div class="modal-header">
-      <h3 id="view-filename">お知らせ</h3>
+      <div>
+        <h3 id="view-filename">お知らせ</h3>
+        <span class="notice-meta" id="view-meta"></span>
+      </div>
       <button class="modal-close" onclick="closeNoticeModal('view')">✕</button>
     </div>
     <div class="loading" id="view-loading" style="display:none">読み込み中…</div>
@@ -87,8 +90,8 @@
       <input type="text" id="upload-filename" placeholder="例: 2026-07-25_お知らせ.md">
     </div>
     <div class="field">
-      <label>アップロード者名（任意）</label>
-      <input type="text" id="upload-uploader" placeholder="例: 田中">
+      <label>投稿者</label>
+      <div class="notice-uploader-display" id="upload-uploader-display">読み込み中…</div>
     </div>
     <div class="field">
       <label>内容</label>
