@@ -266,13 +266,14 @@ function renderDeckListUI() {
       const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
       unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
     }
-    const pubBadge = d.filename
-      ? `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
-      : `<span class="pub-badge local">🔴 非公開</span>`;
-    // ★ 公開済みかつ未完成としてマークされているデッキには未完成バッジを表示
-    const draftBadge = (d.filename && d.incomplete)
-      ? `<span class="pub-badge draft">🟡 未完成</span>`
-      : '';
+    // ★ 公開状態バッジ：未公開／公開済み／未完成 のいずれか1つだけを表示する。
+    //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
+    //   分かりにくいので同じ場所に1つだけ出すよう統合した）
+    const pubBadge = !d.filename
+      ? `<span class="pub-badge local">🔴 非公開</span>`
+      : d.incomplete
+        ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+        : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
     // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
     //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
     const questionCount = d.filename ? (d.count ?? d.cards.length) : d.cards.length;
@@ -287,7 +288,6 @@ function renderDeckListUI() {
         <div class="deck-card-meta">
           ${questionCount} 問
           ${pubBadge}
-          ${draftBadge}
           ${unsureBadge}
         </div>
       </div>
@@ -527,7 +527,7 @@ async function selectMoveTarget(targetId) {
 //   以前はここで全デッキの cards 本体（画像含む）を丸ごと取得していたため、
 //   デッキ数や画像が増えるほど一覧表示が遅くなっていた。
 //   現在の list_cards はカード本体を含まない軽量なメタ情報（name/count/subject/
-//   folder_id/published_by など）だけを返すので、一覧表示はすぐに終わる。
+//   folder_id/published_by/incomplete など）だけを返すので、一覧表示はすぐに終わる。
 //   カード本体は、デッキを実際に開く（プレイ／編集）ときに
 //   ensureDeckCardsLoaded() で個別に取得する。
 async function fetchAndMergeDecks() {
@@ -552,8 +552,9 @@ async function fetchAndMergeDecks() {
       count: s.count,
       subject: s.subject || (existing && existing.subject) || null,
       published_by: s.published_by || (existing && existing.published_by) || null,
-      // ★ 未完成フラグはサーバー側に無い情報なので、既存のローカル状態を引き継ぐ
-      incomplete: existing ? !!existing.incomplete : false,
+      // ★ 未完成フラグはサーバー側の索引（list_cards）にも保存されるようになったため、
+      //   他人の端末でも同じ表示になるようサーバー値を信頼する。
+      incomplete: !!s.incomplete,
       // ★ フォルダ所属はサーバー側が正（みんなで共有）。
       //   has_folder_id が true の場合は、folder_id が null（＝ルート）であっても
       //   それをそのまま信頼する（＝ルートへ移動されたことを正しく反映する）。
@@ -597,6 +598,8 @@ async function ensureDeckCardsLoaded(deckId) {
     deck.cards = data.cards || [];
     deck.cardsLoaded = true;
     deck.count = deck.cards.length;
+    // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
+    if ('incomplete' in data) deck.incomplete = !!data.incomplete;
     saveDecks(decks);
     return true;
   } catch(e) {
@@ -827,6 +830,7 @@ async function publishDeck(deckId, isComplete = true) {
     publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
     publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
     silent: !isComplete, // ★ 未完成として公開する場合は通知しない
+    incomplete: !isComplete, // ★ 未完成フラグをサーバーに保存し、他の人の端末にも表示させる
   };
   if (deck.filename) body.filename = deck.filename;
   try {
@@ -850,7 +854,7 @@ async function publishDeck(deckId, isComplete = true) {
       target.count = target.cards.length;
       target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
       target.published_by = session ? session.nickname : '匿名';
-      target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持
+      target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持（サーバーにも保存済み）
       saveDecks(decks);
     }
     renderDeckListUI();
@@ -1065,6 +1069,7 @@ async function syncDeckToServer(deck) {
         publisher_id: session ? session.student_id : null,
         publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
         silent: true, // ★ 通知しない
+        incomplete: !!deck.incomplete, // ★ 未完成フラグを維持したままサーバーへ反映する
       }),
       signal: AbortSignal.timeout(10000),
     });
