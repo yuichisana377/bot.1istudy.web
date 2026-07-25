@@ -665,6 +665,11 @@ body {
    → Style.css の末尾にそのまま追記してください
 ============================================================ */
 
+/* ============================================================
+   お知らせページ用スタイル
+   → Style.css の末尾にそのまま追記してください
+============================================================ */
+
 .notice-list {
   display: flex;
   flex-direction: column;
@@ -703,6 +708,23 @@ body {
   color: var(--text);
   flex: 1;
   word-break: break-all;
+}
+
+.notice-meta {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.notice-uploader-display {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text-secondary);
 }
 
 .notice-arrow {
