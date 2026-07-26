@@ -216,7 +216,7 @@ html, body {
   cursor: pointer; padding: 3px 6px; border-radius: 6px; font-weight: 600;
 }
 .folder-breadcrumb .crumb:active { background: var(--bg); }
-.folder-breadcrumb .crumb-sep { color: var(--border); margin: 0 2px; }
+.folder-breadcrumb .crumb-sep { color: var(--text-secondary); margin: 0 1px; }
 
 .move-picker-list {
   max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
