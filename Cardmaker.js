@@ -348,7 +348,7 @@ function renderBreadcrumb() {
   while (cur) { chain.unshift(cur); cur = folders.find(f => f.id === cur.parentId); }
   bar.style.display = 'flex';
   bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">🏠 ホーム</span>` +
-    chain.map(f => `<span class="crumb-sep">></span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
+    chain.map(f => `<span class="crumb-sep">/</span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
 }
 
 // ── フォルダ間の移動 ──────────────────
