@@ -1646,6 +1646,38 @@ async function checkCardsUpdate() {
 // 10秒ごとにチェック
 setInterval(checkCardsUpdate, 10000);
 
+// ===== ページ復帰時の強制リフレッシュ（Chromeのbfcache / バックグラウンド対策） =====
+//   ・ドロワーで他のページに移動して「戻る」で復帰したとき、Chromeなどは
+//     ページをスクリプト再実行せずそのまま凍結復元することがある（bfcache）。
+//     この場合、setIntervalによるポーリングは次のタイミングまで動かないため、
+//     他の人が更新した内容がすぐには反映されない。
+//   ・スマホでアプリを切り替えて長時間バックグラウンドに置いた場合も、
+//     復帰直後はまだ古いデータのままになりがち。
+//   → ページが「再び見える状態になった瞬間」に、10秒待たず即座に
+//     最新データを取りに行くことで解消する。
+let isForceRefreshing = false;
+async function forceRefreshOnReturn() {
+  if (isForceRefreshing) return;
+  isForceRefreshing = true;
+  try {
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders()]);
+    if (document.querySelector('.screen.active')?.id === 'screen-list') {
+      renderDeckListUI();
+    }
+  } finally {
+    isForceRefreshing = false;
+  }
+}
+
+// bfcacheから復元された場合（persisted === true）に発火
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) forceRefreshOnReturn();
+});
+
+// タブ／アプリがバックグラウンドから表示状態に戻った瞬間に発火
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') forceRefreshOnReturn();
+});
 // ===== JSON変更監視（共有フォルダ folders.json） =====
 let lastFoldersHash = null;
 
