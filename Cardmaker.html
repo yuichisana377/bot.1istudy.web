@@ -263,6 +263,15 @@
       <input type="checkbox" id="reverse-mode-checkbox">
     </label>
 
+    <!-- ★ 続きから再開（前回途中で終えたデータがある時だけ表示） -->
+    <div class="play-mode-item" id="play-mode-resume-item" onclick="startStudyMode('resume')" style="display:none">
+      <span class="play-mode-icon">▶️</span>
+      <div>
+        <div>続きから</div>
+        <div class="play-mode-sub" id="play-mode-resume-sub"></div>
+      </div>
+    </div>
+
     <div class="play-mode-item" onclick="startStudyMode('all')">
       <span class="play-mode-icon">📚</span>
       <div>
