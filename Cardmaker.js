@@ -80,6 +80,17 @@ function countCardsRecursive(folderId) {
   const subCount = folderChildren(folderId).reduce((sum, f) => sum + countCardsRecursive(f.id), 0);
   return direct + subCount;
 }
+// フォルダ配下（サブフォルダ含む）の「わからない」カード数の合計
+// ※ カード本体が未読み込み（cardsLoaded === false）のデッキは
+//    unsureセットと突き合わせる術がないので、そのデッキ分は数えない
+//    （一覧を開いたときに一部のデッキがまだ未読み込みでも壊れないようにするため）
+function countUnsureRecursive(folderId) {
+  return collectDecksInFolder(folderId).reduce((sum, d) => {
+    if (d.cardsLoaded === false) return sum;
+    const unsure = getUnsureSet(d.id);
+    return sum + d.cards.filter(c => unsure.has(cardKey(c))).length;
+  }, 0);
+}
 
 // フォルダ配下（サブフォルダ含む）の全デッキを集める
 function collectDecksInFolder(folderId) {
@@ -258,9 +269,11 @@ function renderDeckListUI() {
 
   const folderHtml = childFolders.map(f => {
   const cnt = countDecksRecursive(f.id);
-  const totalCards = countCardsRecursive(f.id);           // ★ 追加
+  const totalCards = countCardsRecursive(f.id);     
+  const unsureCount = countUnsureRecursive(f.id); // ★ 追加
   const isLoadingThisFolder = loadingFolderIds.has(f.id);  // ★ 追加
-  const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder; // ★ 追加
+  const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;// ★ 追加
+  const folderUnsureBadge = unsureCount > 0  
   return `
   <div class="deck-card folder-card" onclick="openFolder('${f.id}')">
     <div class="deck-card-info">
