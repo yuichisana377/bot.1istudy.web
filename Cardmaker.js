@@ -100,6 +100,7 @@ let menuTargetId   = null;
 let imgBuf = { q:[], a:[], e:[] };
 let studyCards = [], studyIdx = 0;
 let studyReverse = false; // ★ 追加：問題と解答を逆にするモードかどうか
+let studyMode = 'all'; // ★ 追加：'all' | 'unsure'（続きから再開時に同じ絞り込みを再現するため）
 
 // ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
 // id が無いカード（例：公開後にサーバーから取り込まれたカード）でも
@@ -264,7 +265,7 @@ function renderDeckListUI() {
   <div class="deck-card folder-card" onclick="openFolder('${f.id}')">
     <div class="deck-card-info">
       <div class="deck-card-title">📁 ${esc(f.name)}</div>
-      <div class="deck-card-meta">${cnt} 問</div>
+      <div class="deck-card-meta">${cnt} デッキ・${totalCards} 問</div>
     </div>
     <div class="deck-card-actions">
       <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
@@ -1123,6 +1124,39 @@ function saveUnsureSet(deckId, set) {
   localStorage.setItem('unsure_' + deckId, JSON.stringify([...set]));
 }
 
+// ★ 追加：学習の続きから再開するための進捗保存・読込・削除
+//   ・デッキ / フォルダそれぞれ独立したキーで保存する
+//   ・保存するのは「そのときのカードの並び順（キー配列）」「今何問目か」
+//     「'all'/'unsure' のどちらのモードだったか」「反転モードだったか」
+//   ・カードの内容自体は保存しない（常に最新の decks から引き直すため、
+//     編集や画像追加をしても続きから再開したときにズレない）
+function progressKey(isFolder, id) {
+  return (isFolder ? 'cm_progress_folder_' : 'cm_progress_deck_') + id;
+}
+function saveStudyProgress() {
+  const id = studyIsFolder ? studyFolderId : studyDeckId;
+  if (!id || !studyCards.length) return;
+  const data = {
+    order: studyCards.map(c => cardKey(c)),
+    idx: studyIdx,
+    mode: studyMode,
+    reverse: studyReverse,
+    updatedAt: Date.now(),
+  };
+  try { localStorage.setItem(progressKey(studyIsFolder, id), JSON.stringify(data)); } catch(e) {}
+}
+function loadStudyProgress(isFolder, id) {
+  try {
+    const data = JSON.parse(localStorage.getItem(progressKey(isFolder, id)));
+    if (!data || !Array.isArray(data.order) || !data.order.length) return null;
+    if (typeof data.idx !== 'number' || data.idx >= data.order.length) return null;
+    return data;
+  } catch(e) { return null; }
+}
+function clearStudyProgress(isFolder, id) {
+  try { localStorage.removeItem(progressKey(isFolder, id)); } catch(e) {}
+}
+
 let studyDeckId = null;
 let studyIsFolder = false;   // ★ 追加：フォルダ単位のプレイ中かどうか
 let studyFolderId = null;    // ★ 追加：プレイ中のフォルダid
@@ -1172,6 +1206,16 @@ async function openFolderPlayMode(folderId) {
     unsureItem.style.display = 'none';
   }
 
+  // ★ 続きから再開できる場合は「続きから」の項目を表示する
+  const savedF = loadStudyProgress(true, folderId);
+  const resumeItemF = document.getElementById('play-mode-resume-item');
+  if (savedF) {
+    document.getElementById('play-mode-resume-sub').textContent = `${savedF.idx + 1} / ${savedF.order.length} 問から`;
+    resumeItemF.style.display = '';
+  } else {
+    resumeItemF.style.display = 'none';
+  }
+
   openModal('modal-play-mode');
 }
 // ★ 公開済みデッキはカード本体が未読み込みの可能性があるので、
@@ -1200,6 +1244,17 @@ async function openPlayMode(deckId) {
   } else {
     unsureItem.style.display = 'none';
   }
+
+  // ★ 続きから再開できる場合は「続きから」の項目を表示する
+  const savedD = loadStudyProgress(false, deckId);
+  const resumeItemD = document.getElementById('play-mode-resume-item');
+  if (savedD) {
+    document.getElementById('play-mode-resume-sub').textContent = `${savedD.idx + 1} / ${savedD.order.length} 問から`;
+    resumeItemD.style.display = '';
+  } else {
+    resumeItemD.style.display = 'none';
+  }
+
   // ★ 反転トグルを必ず見せるため、わからないカードの有無に関わらずモーダルを開く
   openModal('modal-play-mode');
 }
@@ -1207,33 +1262,65 @@ async function openPlayMode(deckId) {
 function startStudyMode(mode) {
   studyReverse = document.getElementById('reverse-mode-checkbox').checked;
   closeModal('modal-play-mode');
+  const progressId = studyIsFolder ? studyFolderId : studyDeckId;
 
   let title;
-  if (studyIsFolder) {
-    // フォルダ内の全デッキのカードを、どのデッキ由来かのタグ付きでまとめる
-    const merged = [];
-    folderPlayDecks.forEach(d => {
-      const unsure = mode === 'unsure' ? getUnsureSet(d.id) : null;
-      d.cards.forEach(c => {
-        if (mode === 'unsure' && !unsure.has(cardKey(c))) return;
-        merged.push({ ...c, __deckId: d.id }); // ★ 元のデッキidを保持
-      });
-    });
-    studyCards = merged;
-    const folder = folders.find(f => f.id === studyFolderId);
-    title = folder ? `📁 ${folder.name}` : 'フォルダ';
-  } else {
-    const deck = decks.find(d => d.id === studyDeckId);
-    if (mode === 'unsure') {
-      const unsure = getUnsureSet(studyDeckId);
-      studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
+
+  if (mode === 'resume') {
+    // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定）を復元する。
+    //   カード本体は常に最新の decks / folderPlayDecks から引き直すので、
+    //   編集や画像追加が続きから再開に影響しない。
+    const saved = loadStudyProgress(studyIsFolder, progressId);
+    if (!saved) return; // 万が一データが消えていた場合は何もしない
+    studyReverse = saved.reverse;
+    studyMode = saved.mode || 'all';
+
+    let pool;
+    if (studyIsFolder) {
+      pool = [];
+      folderPlayDecks.forEach(d => d.cards.forEach(c => pool.push({ ...c, __deckId: d.id })));
+      const folder = folders.find(f => f.id === studyFolderId);
+      title = folder ? `📁 ${folder.name}` : 'フォルダ';
     } else {
-      studyCards = [...deck.cards];
+      const deck = decks.find(d => d.id === studyDeckId);
+      pool = deck ? [...deck.cards] : [];
+      title = deck ? deck.name : '';
     }
-    title = deck.name;
+    const byKey = new Map(pool.map(c => [cardKey(c), c]));
+    studyCards = saved.order.map(k => byKey.get(k)).filter(Boolean);
+    if (!studyCards.length) return; // カードが全部消えていた場合は何もしない
+    studyIdx = Math.min(saved.idx, studyCards.length - 1);
+  } else {
+    studyMode = mode;
+    if (studyIsFolder) {
+      // フォルダ内の全デッキのカードを、どのデッキ由来かのタグ付きでまとめる
+      const merged = [];
+      folderPlayDecks.forEach(d => {
+        const unsure = mode === 'unsure' ? getUnsureSet(d.id) : null;
+        d.cards.forEach(c => {
+          if (mode === 'unsure' && !unsure.has(cardKey(c))) return;
+          merged.push({ ...c, __deckId: d.id }); // ★ 元のデッキidを保持
+        });
+      });
+      studyCards = merged;
+      const folder = folders.find(f => f.id === studyFolderId);
+      title = folder ? `📁 ${folder.name}` : 'フォルダ';
+    } else {
+      const deck = decks.find(d => d.id === studyDeckId);
+      if (mode === 'unsure') {
+        const unsure = getUnsureSet(studyDeckId);
+        studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
+      } else {
+        studyCards = [...deck.cards];
+      }
+      title = deck.name;
+    }
+    studyIdx = 0;
+    // ★ 「すべて」「わからないだけ」を新しく選び直した場合は、
+    //   古い「続きから」データを破棄する（そのまま残すと内容と矛盾するため）
+    clearStudyProgress(studyIsFolder, progressId);
   }
 
-  studyIdx = 0;
   document.getElementById('study-title').textContent = title + (studyReverse ? ' 🔄' : '');
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
   showScreen('study');
@@ -1243,11 +1330,13 @@ function startStudyMode(mode) {
 }
 
 function renderStudyCard() {
+  const progressId = studyIsFolder ? studyFolderId : studyDeckId;
   if (studyIdx >= studyCards.length) {
     document.getElementById('study-content').style.display = 'none';
     document.getElementById('study-done').style.display    = 'flex';
     document.getElementById('study-prog-fill').style.width  = '100%';
     document.getElementById('study-prog-label').textContent = `${studyCards.length} / ${studyCards.length}`;
+    clearStudyProgress(studyIsFolder, progressId); // ★ 完了したら続きデータは不要になるので消す
     return;
   }
   const c = studyCards[studyIdx];
@@ -1276,6 +1365,7 @@ function renderStudyCard() {
   document.getElementById('study-prev-pre').disabled = studyIdx === 0;
   document.getElementById('study-next').textContent = studyIdx === studyCards.length-1 ? '完了 ✓' : '次へ →';
   updateUnsureBtn();
+  saveStudyProgress(); // ★ カードを表示するたびに現在位置を保存し、次回「続きから」を出せるようにする
 }
 
 function revealAnswer() {
