@@ -27,7 +27,10 @@ let currentFolderId = null; // null = ルート
 async function fetchAndMergeFolders() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
-  const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal });
+  // ★ cache: 'no-store' を追加：Chromeなどが list_folders のレスポンスを
+  //   ディスクキャッシュから返してしまい、他端末で作成したフォルダが
+  //   即座に反映されない不具合を防ぐため、常にサーバーへ問い合わせる。
+  const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal, cache: 'no-store' });
   clearTimeout(timer);
   const data = await res.json();
   if (!data.ok) return false;
@@ -533,7 +536,10 @@ async function selectMoveTarget(targetId) {
 async function fetchAndMergeDecks() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
-  const res  = await fetch(`${API_BASE}list_cards`, { signal: controller.signal });
+  // ★ cache: 'no-store' を追加：これが無いと、Chromeなどのブラウザが
+  //   list_cards のレスポンスをキャッシュしてしまい、新規作成・公開した
+  //   カードが自分の端末の一覧にすぐ反映されないことがあるため。
+  const res  = await fetch(`${API_BASE}list_cards`, { signal: controller.signal, cache: 'no-store' });
   clearTimeout(timer);
   const txt = await res.text();
   const data = JSON.parse(txt);
@@ -591,7 +597,9 @@ async function ensureDeckCardsLoaded(deckId) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(deck.filename)}`, { signal: controller.signal });
+    // ★ cache: 'no-store' を追加：公開直後のカード内容が古いキャッシュのまま
+    //   返ってこないようにするため。
+    const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(deck.filename)}`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
@@ -699,7 +707,9 @@ async function loadSubjects() {
   const sel = document.getElementById('new-subject');
   sel.innerHTML = '<option value="">読み込み中…</option>';
   try {
-    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`);
+    // ★ cache: 'no-store' を追加：科目（チャンネル）一覧が古いまま
+    //   表示され続けることを防ぐため。
+    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`, { cache: 'no-store' });
     const data = await res.json();
     if (!data.ok || !data.channels.length) throw new Error();
     sel.innerHTML = '<option value="">科目を選択（任意）</option>' +
@@ -1008,7 +1018,8 @@ async function openRename(id) {
   sel.innerHTML = '<option value="">読み込み中…</option>';
   openModal('modal-rename');
   try {
-    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`);
+    // ★ cache: 'no-store' を追加
+    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`, { cache: 'no-store' });
     const data = await res.json();
     if (!data.ok || !data.channels.length) throw new Error();
     sel.innerHTML = '<option value="">科目なし</option>' +
@@ -1403,7 +1414,9 @@ async function checkCardsUpdate() {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${API_BASE}list_cards`, { signal: controller.signal });
+    // ★ cache: 'no-store' を追加：これが無いと、ハッシュ比較のための取得自体が
+    //   キャッシュされたレスポンスを見てしまい、更新検知が機能しないことがあるため。
+    const res = await fetch(`${API_BASE}list_cards`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timer);
     const txt = await res.text();
     const hash = await digestMessage(txt);
@@ -1439,7 +1452,8 @@ async function checkFoldersUpdate() {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal });
+    // ★ cache: 'no-store' を追加（list_cards側と同様の理由）
+    const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timer);
     const txt = await res.text();
     const hash = await digestMessage(txt);
