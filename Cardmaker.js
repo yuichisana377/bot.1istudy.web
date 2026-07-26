@@ -72,6 +72,21 @@ function countDecksRecursive(folderId) {
   const subCount = folderChildren(folderId).reduce((sum, f) => sum + countDecksRecursive(f.id), 0);
   return direct + subCount;
 }
+// フォルダ配下（サブフォルダ含む）の合計カード数
+function countCardsRecursive(folderId) {
+  const direct = decks
+    .filter(d => (d.folderId || null) === folderId)
+    .reduce((sum, d) => sum + (d.filename ? (d.count ?? d.cards.length) : d.cards.length), 0);
+  const subCount = folderChildren(folderId).reduce((sum, f) => sum + countCardsRecursive(f.id), 0);
+  return direct + subCount;
+}
+
+// フォルダ配下（サブフォルダ含む）の全デッキを集める
+function collectDecksInFolder(folderId) {
+  const direct = decks.filter(d => (d.folderId || null) === folderId);
+  const subDecks = folderChildren(folderId).reduce((arr, f) => arr.concat(collectDecksInFolder(f.id)), []);
+  return [...direct, ...subDecks];
+}
 
 // ── ログインセッション（Login.js と共通） ──────
 const SESSION_KEY = 'sl_session';
@@ -241,19 +256,23 @@ function renderDeckListUI() {
   empty.style.display='none'; grid.style.display='flex';
 
   const folderHtml = childFolders.map(f => {
-    const cnt = countDecksRecursive(f.id);
-    return `
-    <div class="deck-card folder-card" onclick="openFolder('${f.id}')">
-      <div class="deck-card-info">
-        <div class="deck-card-title">📁 ${esc(f.name)}</div>
-        <div class="deck-card-meta">${cnt} 問</div>
-      </div>
-      <div class="deck-card-actions">
-        <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">✏️</button>
-      </div>
-    </div>`;
-  }).join('');
-
+  const cnt = countDecksRecursive(f.id);
+  const totalCards = countCardsRecursive(f.id);           // ★ 追加
+  const isLoadingThisFolder = loadingFolderIds.has(f.id);  // ★ 追加
+  const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder; // ★ 追加
+  return `
+  <div class="deck-card folder-card" onclick="openFolder('${f.id}')">
+    <div class="deck-card-info">
+      <div class="deck-card-title">📁 ${esc(f.name)}</div>
+      <div class="deck-card-meta">${cnt} 問</div>
+    </div>
+    <div class="deck-card-actions">
+      <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
+        ${folderPlayDisabled?'disabled':''}>${isLoadingThisFolder ? '読み込み中…' : '▶ プレイ'}</button>
+      <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">✏️</button>
+    </div>
+  </div>`;
+}).join('');
   // ★ 非公開・公開のグループ位置はそのまま、各グループ内だけ新しい順（下が古い）に反転
   const unpublished = childDecks.filter(d => !d.filename).slice().reverse();
   const published    = childDecks.filter(d =>  d.filename).slice().reverse();
@@ -930,7 +949,8 @@ function openCardEditModal(idx) {
 function editCurrentStudyCard() {
   const c = studyCards[studyIdx];
   if (!c) return;
-  openCardEditModalCommon(studyDeckId, c, 'study');
+  const deckId = c.__deckId || studyDeckId; // ★
+  openCardEditModalCommon(deckId, c, 'study');
 }
 
 function openCardEditModalCommon(deckId, c, context) {
@@ -1104,12 +1124,62 @@ function saveUnsureSet(deckId, set) {
 }
 
 let studyDeckId = null;
+let studyIsFolder = false;   // ★ 追加：フォルダ単位のプレイ中かどうか
+let studyFolderId = null;    // ★ 追加：プレイ中のフォルダid
+let folderPlayDecks = [];    // ★ 追加：フォルダプレイの対象デッキ一覧
+let loadingFolderIds = new Set(); // ★ 追加：カード読み込み中のフォルダid
 
+// ★ フォルダ配下の全デッキ（サブフォルダ含む）を1つの学習セッションとしてプレイする
+async function openFolderPlayMode(folderId) {
+  const folder = folders.find(f => f.id === folderId);
+  const targetDecks = collectDecksInFolder(folderId)
+    .filter(d => (d.filename ? (d.count ?? d.cards.length) : d.cards.length) > 0);
+  if (!targetDecks.length) return;
+
+  loadingFolderIds.add(folderId);
+  renderDeckListUI();
+
+  const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id)));
+
+  loadingFolderIds.delete(folderId);
+  renderDeckListUI();
+
+  if (results.some(ok => !ok)) {
+    await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+    return;
+  }
+
+  folderPlayDecks = targetDecks;
+  studyIsFolder = true;
+  studyFolderId = folderId;
+  studyDeckId = null;
+
+  document.getElementById('reverse-mode-checkbox').checked = false;
+  document.getElementById('play-mode-deck-name').textContent = folder ? `📁 ${folder.name}` : 'フォルダ';
+
+  const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
+  document.getElementById('play-mode-all-sub').textContent = `${allCount} 問`;
+
+  const unsureCount = folderPlayDecks.reduce((s, d) => {
+    const unsure = getUnsureSet(d.id);
+    return s + d.cards.filter(c => unsure.has(cardKey(c))).length;
+  }, 0);
+  const unsureItem = document.getElementById('play-mode-unsure-item');
+  if (unsureCount > 0) {
+    document.getElementById('play-mode-unsure-sub').textContent = `${unsureCount} 問`;
+    unsureItem.style.display = '';
+  } else {
+    unsureItem.style.display = 'none';
+  }
+
+  openModal('modal-play-mode');
+}
 // ★ 公開済みデッキはカード本体が未読み込みの可能性があるので、
 //   プレイモードを開く前に ensureDeckCardsLoaded() で取得しておく。
 async function openPlayMode(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
+  studyIsFolder = false;
   studyDeckId = deckId;
 
   const ok = await ensureDeckCardsLoaded(deckId);
@@ -1135,17 +1205,36 @@ async function openPlayMode(deckId) {
 }
 
 function startStudyMode(mode) {
-  studyReverse = document.getElementById('reverse-mode-checkbox').checked; // ★ 反転モードかどうかを取得
+  studyReverse = document.getElementById('reverse-mode-checkbox').checked;
   closeModal('modal-play-mode');
-  const deck = decks.find(d => d.id === studyDeckId);
-  if (mode === 'unsure') {
-    const unsure = getUnsureSet(studyDeckId);
-    studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
+
+  let title;
+  if (studyIsFolder) {
+    // フォルダ内の全デッキのカードを、どのデッキ由来かのタグ付きでまとめる
+    const merged = [];
+    folderPlayDecks.forEach(d => {
+      const unsure = mode === 'unsure' ? getUnsureSet(d.id) : null;
+      d.cards.forEach(c => {
+        if (mode === 'unsure' && !unsure.has(cardKey(c))) return;
+        merged.push({ ...c, __deckId: d.id }); // ★ 元のデッキidを保持
+      });
+    });
+    studyCards = merged;
+    const folder = folders.find(f => f.id === studyFolderId);
+    title = folder ? `📁 ${folder.name}` : 'フォルダ';
   } else {
-    studyCards = [...deck.cards];
+    const deck = decks.find(d => d.id === studyDeckId);
+    if (mode === 'unsure') {
+      const unsure = getUnsureSet(studyDeckId);
+      studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
+    } else {
+      studyCards = [...deck.cards];
+    }
+    title = deck.name;
   }
+
   studyIdx = 0;
-  document.getElementById('study-title').textContent = deck.name + (studyReverse ? ' 🔄' : ''); // ★ 反転中はタイトルに目印
+  document.getElementById('study-title').textContent = title + (studyReverse ? ' 🔄' : '');
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
   showScreen('study');
   document.getElementById('study-done').style.display    = 'none';
@@ -1199,7 +1288,8 @@ function revealAnswer() {
 function updateUnsureBtn() {
   const card = studyCards[studyIdx]; if (!card) return;
   const key = cardKey(card);
-  const unsure = getUnsureSet(studyDeckId);
+  const deckId = card.__deckId || studyDeckId; // ★ フォルダプレイなら元デッキid
+  const unsure = getUnsureSet(deckId);
   const btn = document.getElementById('unsure-btn');
   btn.textContent = 'わからない';
   btn.classList.toggle('marked', unsure.has(key));
@@ -1208,12 +1298,19 @@ function updateUnsureBtn() {
 function toggleUnsure() {
   const card = studyCards[studyIdx]; if (!card) return;
   const key = cardKey(card);
-  const unsure = getUnsureSet(studyDeckId);
+  const deckId = card.__deckId || studyDeckId; // ★
+  const unsure = getUnsureSet(deckId);
   if (unsure.has(key)) unsure.delete(key); else unsure.add(key);
-  saveUnsureSet(studyDeckId, unsure);
+  saveUnsureSet(deckId, unsure);
   updateUnsureBtn();
 }
 
+function editCurrentStudyCard() {
+  const c = studyCards[studyIdx];
+  if (!c) return;
+  const deckId = c.__deckId || studyDeckId; // ★
+  openCardEditModalCommon(deckId, c, 'study');
+}
 function studyMove(dir) { studyIdx += dir; renderStudyCard(); }
 
 function shuffleStudy() {
