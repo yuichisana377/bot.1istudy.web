@@ -269,16 +269,17 @@ function renderDeckListUI() {
 
   const folderHtml = childFolders.map(f => {
   const cnt = countDecksRecursive(f.id);
-  const totalCards = countCardsRecursive(f.id);     
-  const unsureCount = countUnsureRecursive(f.id); // ★ 追加
-  const isLoadingThisFolder = loadingFolderIds.has(f.id);  // ★ 追加
-  const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;// ★ 追加
-  const folderUnsureBadge = unsureCount > 0  
+  const totalCards = countCardsRecursive(f.id);
+  const unsureCount = countUnsureRecursive(f.id);              // ★ 追加
+  const isLoadingThisFolder = loadingFolderIds.has(f.id);
+  const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;
+  const folderUnsureBadge = unsureCount > 0                     // ★ 追加
+    ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
   return `
   <div class="deck-card folder-card" onclick="openFolder('${f.id}')">
     <div class="deck-card-info">
       <div class="deck-card-title">📁 ${esc(f.name)}</div>
-      <div class="deck-card-meta">${cnt} デッキ・${totalCards} 問</div>
+      <div class="deck-card-meta">${cnt} デッキ・${totalCards} 問${folderUnsureBadge}</div>
     </div>
     <div class="deck-card-actions">
       <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
