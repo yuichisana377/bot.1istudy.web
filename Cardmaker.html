@@ -8,6 +8,27 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/Style.css">
 <link rel="stylesheet" href="/Cardmaker.css">
+<style>
+  /* ★ 追加：作成済みカードのドラッグ並び替え用スタイル（Cardmaker.cssを汚さずここで完結） */
+  .created-item {
+    display: flex;
+    align-items: center;
+  }
+  .drag-handle {
+    cursor: grab;
+    padding: 0 8px;
+    color: var(--text-secondary);
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+    touch-action: none;   /* スマホでドラッグ中にページがスクロールしないようにする */
+    user-select: none;
+  }
+  .created-item.dragging {
+    background: var(--surface, #fff);
+    border-radius: 8px;
+  }
+</style>
 </head>
 <body>
 
@@ -338,12 +359,28 @@
     <div class="modal-title">カードを編集</div>
     <div id="card-edit-ok"  style="display:none;background:#dcfce7;color:#166534;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px">✓ 保存しました！</div>
     <div id="card-edit-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"></div>
+
     <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">問題文</label>
-    <textarea class="modal-input" id="modal-edit-q" style="min-height:70px;resize:none;margin-bottom:.75rem" oninput="autoResize(this)"></textarea>
+    <textarea class="modal-input" id="modal-edit-q" style="min-height:70px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
+    <div class="img-strip" id="modal-imgs-q"></div>
+    <div class="block-actions" style="margin-bottom:.75rem">
+      <button class="block-action-btn" onclick="addModalImage('q')">🖼 画像を追加</button>
+    </div>
+
     <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解答</label>
-    <textarea class="modal-input" id="modal-edit-a" style="min-height:70px;resize:none;margin-bottom:.75rem" oninput="autoResize(this)"></textarea>
+    <textarea class="modal-input" id="modal-edit-a" style="min-height:70px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
+    <div class="img-strip" id="modal-imgs-a"></div>
+    <div class="block-actions" style="margin-bottom:.75rem">
+      <button class="block-action-btn" onclick="addModalImage('a')">🖼 画像を追加</button>
+    </div>
+
     <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解説（任意）</label>
-    <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:1rem" oninput="autoResize(this)"></textarea>
+    <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
+    <div class="img-strip" id="modal-imgs-e"></div>
+    <div class="block-actions" style="margin-bottom:1rem">
+      <button class="block-action-btn" onclick="addModalImage('e')">🖼 画像を追加</button>
+    </div>
+
     <div class="modal-btns">
       <button class="btn btn-ghost" onclick="closeModal('modal-card-edit')">閉じる</button>
       <button class="btn btn-blue" id="card-edit-save-btn" onclick="saveCardEdit()">保存する</button>
