@@ -184,7 +184,10 @@
         </div>
         <div class="study-progress-label" id="study-prog-label"></div>
       </div>
-      <div class="study-q-tag">問題</div>
+      <div class="study-tag-row">
+        <div class="study-q-tag">問題</div>
+        <div class="study-deck-tag" id="study-deck-tag" style="display:none"></div>
+      </div>
       <div class="study-q-text" id="study-q-text"></div>
       <div class="study-q-imgs" id="study-q-imgs"></div>
     </div>
@@ -389,6 +392,11 @@
 </div>
 
 <input type="file" id="img-file-input" accept="image/*" style="display:none">
+
+<!-- 画像拡大表示（ライトボックス） -->
+<div class="img-lightbox-overlay" id="img-lightbox" onclick="closeImgLightbox()">
+  <img id="img-lightbox-img" src="" alt="">
+</div>
 
 <script src="/Cardmaker.js"></script>
 </body>
