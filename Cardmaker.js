@@ -532,18 +532,11 @@ async function selectMoveTarget(targetId) {
     if (!d) return;
 
     // ★ 修正：公開済みデッキを移動する前に、必ずサーバーから最新のカード本体を
-    //   取り直す（force = true）。cardsLoaded=true のキャッシュがあっても、
-    //   それが古い可能性（他の人が後から編集・再公開した等）があるため、
-    //   syncDeckToServer で古い内容のまま上書きしてしまう事故を防ぐ。
+    //   取り直す。失敗時は loadDeckCardsWithRecovery が再試行・強制続行の
+    //   選択肢を提示するので、移動できないまま詰むことはない。
     if (d.filename) {
-      const loaded = await ensureDeckCardsLoaded(d.id, true);
-      if (!loaded) {
-        await showCmAlert({
-          title: '移動に失敗しました',
-          desc: 'カードの読み込みに失敗しました。通信環境を確認してもう一度お試しください。',
-        });
-        return;
-      }
+      const loaded = await loadDeckCardsWithRecovery(d.id);
+      if (!loaded) return; // ユーザーが「やめる」を選んだ場合は移動しない
     }
 
     d.folderId = targetId;
@@ -636,11 +629,14 @@ async function fetchAndMergeDecks() {
 //     必ずサーバーから最新を取り直す（他の人が後から編集・移動している可能性があるため）。
 //   ・取得中は loadingDeckIds に id を入れて一覧を再描画し、「読み込み中…」を表示する。
 let loadingDeckIds = new Set();
+// ★ 戻り値を { ok: true } | { ok: false, reason: 'network' | 'mismatch' | 'not_found', ... } に変更。
+//   単純な true/false ではなく「なぜ失敗したか」を区別できるようにし、
+//   呼び出し側で「再試行」「強制的に空のまま開く」などの回復手段を提示できるようにする。
 async function ensureDeckCardsLoaded(deckId, force = false) {
   const deck = decks.find(d => d.id === deckId);
-  if (!deck) return false;
-  if (!deck.filename) { deck.cardsLoaded = true; return true; }
-  if (deck.cardsLoaded && !force) return true;
+  if (!deck) return { ok: false, reason: 'not_found' };
+  if (!deck.filename) { deck.cardsLoaded = true; return { ok: true }; }
+  if (deck.cardsLoaded && !force) return { ok: true };
 
   // ★ 直前まで一覧（list_cardsのメタ情報）で分かっていた問題数を控えておく。
   //   これと比べて、実際に取得できたカード数が不自然に少なければ
@@ -663,13 +659,13 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     const fetchedCards = data.cards || [];
 
     // ★ 安全策：サーバーが ok:true を返していても、直前まで分かっていた問題数が
-    //   1件以上あったのに、取得できたカードが0件（または明らかに少ない）場合は、
-    //   通信は成功していても内容としては信用できないので「失敗」として扱う。
+    //   1件以上あったのに、取得できたカードが0件の場合は、通信は成功していても
+    //   内容としては信用できないので「失敗」として扱う。
     //   これにより、編集画面が空の状態で開いてしまい、そのまま公開して
     //   サーバー側の本物のカードを空データで上書きしてしまう事故を防ぐ。
     if (expectedCount !== null && expectedCount > 0 && fetchedCards.length === 0) {
-      console.warn(`[cardmaker] get_card_set が0件を返しましたが、一覧では${expectedCount}件のはずです。安全のため読み込み失敗として扱います。 filename=${deck.filename}`);
-      return false;
+      console.warn(`[cardmaker] get_card_set が0件を返しましたが、一覧では${expectedCount}件のはずです。 filename=${deck.filename}`);
+      return { ok: false, reason: 'mismatch', expectedCount, fetchedCount: 0 };
     }
 
     deck.cards = fetchedCards;
@@ -678,12 +674,66 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
     if ('incomplete' in data) deck.incomplete = !!data.incomplete;
     saveDecks(decks);
-    return true;
+    return { ok: true };
   } catch(e) {
-    return false;
+    return { ok: false, reason: 'network' };
   } finally {
     loadingDeckIds.delete(deckId);
     if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  }
+}
+
+// ★ ensureDeckCardsLoaded を呼び出した上で、失敗した場合に
+//   「行き止まりのアラートで終わらせず」ユーザーに回復手段を提示する共通処理。
+//   ─────────────────────────────────────────────
+//   ・reason: 'mismatch'（件数不一致）の場合は、まず必ず最新のメタ情報
+//     （list_cards）を取り直してから再判定する。ローカルに残っている古い
+//     件数のせいで「本当は0件が正しい」デッキまで誤って詰んでしまうのを防ぐため。
+//   ・それでも不一致が解消しない場合は「もう一度試す」「空のまま開く（上級者向け）」
+//     の2択を提示し、ユーザーの意思で先に進めるようにする（＝二度と開けなくなる、
+//     という事態を避ける）。
+//   ・reason: 'network' の場合は、単純に「もう一度試す」か「やめる」かを聞く。
+async function loadDeckCardsWithRecovery(deckId) {
+  while (true) {
+    const result = await ensureDeckCardsLoaded(deckId, true);
+    if (result.ok) return true;
+
+    if (result.reason === 'mismatch') {
+      // ★ 判定前に最新のメタ情報を取り直す（ローカルの古いcountによる誤判定を防ぐ）
+      try { await fetchAndMergeDecks(); } catch(e) {}
+      const deck = decks.find(d => d.id === deckId);
+      if (!deck) return false;
+
+      // メタ情報を更新した結果、期待件数が0（＝本当に空が正解）になっていれば、
+      // ここで改めて通常読み込みすれば矛盾なく成功するはず
+      if (deck.count === 0) continue;
+
+      const choice = await showCmChoiceDialog({
+        title: '問題データの読み込みに不整合があります',
+        desc: `一覧では${result.expectedCount}問のはずですが、サーバーから0問しか取得できませんでした。\nこのまま開いて保存すると、サーバー側のデータが消える可能性があります。`,
+        choices: [
+          { icon: '🔄', label: 'もう一度試す', sub: 'まずはこちらをおすすめします', value: 'retry' },
+          { icon: '⚠️', label: '空のまま開く（上級者向け）', sub: '保存すると中身が消える可能性があります', value: 'force' },
+        ],
+        cancelLabel: 'やめる',
+      });
+      if (choice === 'retry') continue;
+      if (choice === 'force') {
+        const d = decks.find(x => x.id === deckId);
+        if (d) { d.cards = []; d.cardsLoaded = true; saveDecks(decks); }
+        return true;
+      }
+      return false; // やめる
+    }
+
+    // ネットワークエラー・その他の場合
+    const retry = await showCmConfirm({
+      title: '読み込みに失敗しました',
+      desc: '通信環境を確認してもう一度お試しください。',
+      okLabel: 'もう一度試す', cancelLabel: 'やめる',
+    });
+    if (!retry) return false;
+    // ループして再試行
   }
 }
 
@@ -807,12 +857,11 @@ async function openEditDeck(deckId) {
   if (!deck) return;
 
   // ★ 編集は「サーバー全体を丸ごと上書き保存」につながる操作なので、
-  //   キャッシュ済みでも必ず最新のカードを取り直す（force = true）。
-  const ok = await ensureDeckCardsLoaded(deckId, true);
-  if (!ok) {
-    await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
-    return;
-  }
+  //   キャッシュ済みでも必ず最新のカードを取り直す。失敗した場合は
+  //   loadDeckCardsWithRecovery が「もう一度試す／空のまま開く」を
+  //   ユーザーに選ばせるので、行き止まりにならない。
+  const ok = await loadDeckCardsWithRecovery(deckId);
+  if (!ok) return; // ユーザーが「やめる」を選んだ場合は編集画面を開かない
 
   document.getElementById('edit-deck-title').textContent = deck.name;
   // ★ 公開済みデッキは「保存」（ローカルのみ）ボタンを隠し、「保存して公開」だけにする
@@ -1120,12 +1169,13 @@ async function saveRename() {
   //     サーバー側は既存ファイルの中身を維持したまま名前だけ変えたいところだが、
   //     save_cards は cards を丸ごと上書きする仕様なので、未読み込みのまま
   //     送るとカードが消えてしまう。そのため rename 前に必ず読み込んでおく。
-  //   ★ 修正：cardsLoaded=true のキャッシュがあっても、それが古い可能性があるため
-  //     force=true で必ずサーバーから最新を取り直してから上書き保存する。
+  //   ★ 修正：cardsLoaded=true のキャッシュがあっても古い可能性があるため必ず
+  //     最新化する。失敗時も loadDeckCardsWithRecovery が回復手段を提示するので、
+  //     rename操作だけがずっとできなくなる、ということはない。
   if (deck.filename) {
-    const loaded = await ensureDeckCardsLoaded(deck.id, true);
+    const loaded = await loadDeckCardsWithRecovery(deck.id);
     if (!loaded) {
-      showBanner('⚠ サーバーへの名前変更の反映に失敗しました（カード読み込みエラー）', '#fffbeb', '#92400e');
+      showBanner('⚠ 名前の変更はローカルには反映されています（サーバーへの反映は未実施）', '#fffbeb', '#92400e');
       return;
     }
     const ok = await syncDeckToServer(deck);
@@ -1234,7 +1284,7 @@ async function openFolderPlayMode(folderId) {
   loadingFolderIds.delete(folderId);
   renderDeckListUI();
 
-  if (results.some(ok => !ok)) {
+  if (results.some(r => !r.ok)) {
     await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
     return;
   }
@@ -1282,8 +1332,8 @@ async function openPlayMode(deckId) {
   studyIsFolder = false;
   studyDeckId = deckId;
 
-  const ok = await ensureDeckCardsLoaded(deckId);
-  if (!ok) {
+  const result = await ensureDeckCardsLoaded(deckId);
+  if (!result.ok) {
     await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
     return;
   }
