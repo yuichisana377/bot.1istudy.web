@@ -81,15 +81,12 @@ function countCardsRecursive(folderId) {
   return direct + subCount;
 }
 // フォルダ配下（サブフォルダ含む）の「わからない」カード数の合計
-// ※ カード本体が一度も読み込まれていない（d.cards が空の）デッキは
-//    unsureセットと突き合わせる術がないので、そのデッキ分は数えない。
-//    cardsLoaded=false でもキャッシュされた古いカード内容が残っていれば、
-//    それを使って（多少古い可能性はあるが）バッジを表示し続ける
-//    （そうしないと、他の人の編集を検知して再読み込みが必要になるたびに
-//    バッジが一瞬消え、マークがリセットされたように見えてしまうため）。
+// ※ カード本体が未読み込み（cardsLoaded === false）のデッキは
+//    unsureセットと突き合わせる術がないので、そのデッキ分は数えない
+//    （一覧を開いたときに一部のデッキがまだ未読み込みでも壊れないようにするため）
 function countUnsureRecursive(folderId) {
   return collectDecksInFolder(folderId).reduce((sum, d) => {
-    if (!d.cards || !d.cards.length) return sum;
+    if (d.cardsLoaded === false) return sum;
     const unsure = getUnsureSet(d.id);
     return sum + d.cards.filter(c => unsure.has(cardKey(c))).length;
   }, 0);
@@ -297,13 +294,11 @@ function renderDeckListUI() {
   const orderedDecks = [...unpublished, ...published];
 
   const deckHtml = orderedDecks.map(d => {
-    // ★ カード本体が一度も読み込まれていない（d.cards が空の）デッキだけ
-    //   「わからない」バッジを出せない。cardsLoaded=false でもキャッシュされた
-    //   古いカード内容が残っていればそれを使ってバッジを出し続ける
-    //   （そうしないと、他の人の編集を検知して再読み込みが必要になるたびに
-    //   バッジが一瞬消え、マークがリセットされたように見えてしまうため）。
+    // ★ カード本体を未読み込みのデッキ（公開デッキで cardsLoaded=false）は
+    //   d.cards が空のままなので、「わからない」バッジは読み込み後にしか出せない。
+    //   ここでは読み込み済みの場合だけ計算する。
     let unsureBadge = '';
-    if (d.cards && d.cards.length) {
+    if (d.cardsLoaded !== false) {
       const unsureSet   = getUnsureSet(d.id);
       const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
       unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
@@ -572,20 +567,7 @@ async function selectMoveTarget(targetId) {
 //   folder_id/published_by/incomplete など）だけを返すので、一覧表示はすぐに終わる。
 //   カード本体は、デッキを実際に開く（プレイ／編集）ときに
 //   ensureDeckCardsLoaded() で個別に取得する。
-//
-// ★ forceReloadCards について：
-//   他の端末がデッキの中身（問題・解答）を編集してサーバーへ保存しても、
-//   この端末が以前に一度でもカード本体を読み込んでいた（cardsLoaded=true）場合、
-//   従来は「keepLoadedCards」が常に優先され、キャッシュされた古いカード内容を
-//   使い回し続けてしまっていた（list_cards はメタ情報しか返さないため、
-//   中身が変わったこと自体は検知できても、変わった内容までは取得していなかった）。
-//   その結果、「自分がデッキを作った後、他の人が中身を編集しても、
-//   自分の端末には反映されない」という不具合が起きていた。
-//   forceReloadCards=true を指定すると、サーバー側に変更があったと分かった
-//   タイミング（10秒ごとのポーリングでの検知時／アプリ復帰時）で、
-//   今まさに編集中・プレイ中でないデッキのキャッシュを破棄し、
-//   次にそのデッキを開いたときに必ずサーバーから最新の中身を取り直す。
-async function fetchAndMergeDecks(forceReloadCards = false) {
+async function fetchAndMergeDecks() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   // ★ cache: 'no-store' を追加：これが無いと、Chromeなどのブラウザが
@@ -596,20 +578,15 @@ async function fetchAndMergeDecks(forceReloadCards = false) {
   const txt = await res.text();
   const data = JSON.parse(txt);
   if (!data.ok) return { changed: false, txt };
-  // ★ 今まさに編集中・プレイ中のデッキIDは、途中のデータが消えないよう保護する
-  const protectedIds = forceReloadCards ? deckIdsCurrentlyInUse() : null;
   const fetched = data.sets.map(s => {
     const existing = decks.find(d => d.filename === s.filename);
-    const mustReload = !!(forceReloadCards && existing && !protectedIds.has(existing.id));
-    const keepLoadedCards = existing && existing.cardsLoaded && !mustReload;
+    // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
+    //   未読み込みなら空配列のままにし、開いたときに取得する。
+    const keepLoadedCards = existing && existing.cardsLoaded;
     return {
       id: existing ? existing.id : genId(),
       name: s.name,
-      // ★ mustReload の場合でも古いカード内容をすぐに空にはしない。
-      //   cardsLoaded=false にすることで次に開いたときは必ず再取得されるが、
-      //   古い内容は「わからない」マークの引き継ぎ（migrateUnsureMarks）に
-      //   使うため、実際に再取得が完了するまでは保持しておく。
-      cards: existing ? existing.cards : [],
+      cards: keepLoadedCards ? existing.cards : [],
       cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
@@ -637,23 +614,6 @@ async function fetchAndMergeDecks(forceReloadCards = false) {
   return { changed: true, txt };
 }
 
-// ★ 今まさに編集中・プレイ中で、カードキャッシュを破棄してはいけないデッキIDの集合を返す
-function deckIdsCurrentlyInUse() {
-  const ids = new Set();
-  const activeScreen = document.querySelector('.screen.active')?.id;
-  if (activeScreen === 'screen-edit' && currentDeckId) {
-    ids.add(currentDeckId);
-  }
-  if (activeScreen === 'screen-study') {
-    if (studyIsFolder) {
-      folderPlayDecks.forEach(d => ids.add(d.id));
-    } else if (studyDeckId) {
-      ids.add(studyDeckId);
-    }
-  }
-  return ids;
-}
-
 // ★ 公開済みデッキのカード本体（問題・解答・画像など）を、必要になった時点で取得する。
 //   ・ローカル限定（未公開）デッキは常にカードを保持しているので何もしない。
 //   ・既に読み込み済み（cardsLoaded=true）なら再取得しない。
@@ -664,8 +624,6 @@ async function ensureDeckCardsLoaded(deckId) {
   if (!deck) return false;
   if (!deck.filename) { deck.cardsLoaded = true; return true; }
   if (deck.cardsLoaded) return true;
-
-  const oldCards = deck.cards || []; // ★ 追加：再取得前の内容。「わからない」マークの引き継ぎに使う
 
   loadingDeckIds.add(deckId);
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
@@ -679,13 +637,7 @@ async function ensureDeckCardsLoaded(deckId) {
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
-    const newCards = data.cards || [];
-    // ★ 追加：サーバーへの保存・取得の過程でカードの id が保持されず
-    //   cardKey が変わってしまうケースがあっても、「わからない」マークが
-    //   消えてしまわないよう、内容（問題文＋解答）が一致するカードへ
-    //   マークを引き継ぐ。
-    migrateUnsureMarks(deckId, oldCards, newCards);
-    deck.cards = newCards;
+    deck.cards = data.cards || [];
     deck.cardsLoaded = true;
     deck.count = deck.cards.length;
     // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
@@ -1186,39 +1138,11 @@ function saveUnsureSet(deckId, set) {
   localStorage.setItem('unsure_' + deckId, JSON.stringify([...set]));
 }
 
-// ★ 追加：カード本体を再取得した際、「わからない」マークが消えないようにする。
-//   ─────────────────────────────────────────────
-//   「わからない」マークは cardKey（= カードの id、無ければ問題文＋解答のハッシュ）
-//   をキーとして localStorage に保存している。通常は id が保たれるので
-//   キーは変わらないが、サーバーとの保存・取得を挟むと何らかの理由で id が
-//   保持されず、キーが変わってマークが消えたように見えることがある。
-//   ここでは、古いカードで「わからない」に印がついていたのにキーが
-//   一致する新カードが無い場合、内容（問題文＋解答）が完全一致する新カードを
-//   探し、そのキーにもマークを引き継ぐ。
-function migrateUnsureMarks(deckId, oldCards, newCards) {
-  if (!oldCards.length || !newCards.length) return;
-  const unsure = getUnsureSet(deckId);
-  if (!unsure.size) return;
-
-  const newKeys = new Set(newCards.map(c => cardKey(c)));
-  let changed = false;
-  oldCards.forEach(oldC => {
-    const oldKey = cardKey(oldC);
-    if (!unsure.has(oldKey)) return;   // このカードには元々マークが付いていない
-    if (newKeys.has(oldKey)) return;   // キーが変わっていない（そのまま一致するので不要）
-    const match = newCards.find(n => n.question === oldC.question && n.answer === oldC.answer);
-    if (match) {
-      const newKey = cardKey(match);
-      if (!unsure.has(newKey)) { unsure.add(newKey); changed = true; }
-    }
-  });
-  if (changed) saveUnsureSet(deckId, unsure);
-}
-
 // ★ 追加：学習の続きから再開するための進捗保存・読込・削除
 //   ・デッキ / フォルダそれぞれ独立したキーで保存する
 //   ・保存するのは「そのときのカードの並び順（キー配列）」「今何問目か」
 //     「'all'/'unsure' のどちらのモードだったか」「反転モードだったか」
+//     「シャッフル済みだったか」
 //   ・カードの内容自体は保存しない（常に最新の decks から引き直すため、
 //     編集や画像追加をしても続きから再開したときにズレない）
 function progressKey(isFolder, id) {
@@ -1232,6 +1156,7 @@ function saveStudyProgress() {
     idx: studyIdx,
     mode: studyMode,
     reverse: studyReverse,
+    shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
     updatedAt: Date.now(),
   };
   try { localStorage.setItem(progressKey(studyIsFolder, id), JSON.stringify(data)); } catch(e) {}
@@ -1249,6 +1174,7 @@ function clearStudyProgress(isFolder, id) {
 }
 
 let studyDeckId = null;
+let studyShuffled = false;   // ★ 追加：現在シャッフル済みの並びで学習中かどうか（続きから再開時の表示・保存用）
 let studyIsFolder = false;   // ★ 追加：フォルダ単位のプレイ中かどうか
 let studyFolderId = null;    // ★ 追加：プレイ中のフォルダid
 let folderPlayDecks = [];    // ★ 追加：フォルダプレイの対象デッキ一覧
@@ -1358,13 +1284,14 @@ function startStudyMode(mode) {
   let title;
 
   if (mode === 'resume') {
-    // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定）を復元する。
+    // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定・シャッフル済みか）を復元する。
     //   カード本体は常に最新の decks / folderPlayDecks から引き直すので、
     //   編集や画像追加が続きから再開に影響しない。
     const saved = loadStudyProgress(studyIsFolder, progressId);
     if (!saved) return; // 万が一データが消えていた場合は何もしない
     studyReverse = saved.reverse;
     studyMode = saved.mode || 'all';
+    studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
 
     let pool;
     if (studyIsFolder) {
@@ -1378,11 +1305,14 @@ function startStudyMode(mode) {
       title = deck ? deck.name : '';
     }
     const byKey = new Map(pool.map(c => [cardKey(c), c]));
+    // ★ order は保存時点の並び順（シャッフル済みならその並び）をそのまま記録しているので、
+    //   ここで単純にキーから引き直すだけで、シャッフルした状態のまま正しく再開できる。
     studyCards = saved.order.map(k => byKey.get(k)).filter(Boolean);
     if (!studyCards.length) return; // カードが全部消えていた場合は何もしない
     studyIdx = Math.min(saved.idx, studyCards.length - 1);
   } else {
     studyMode = mode;
+    studyShuffled = false; // ★ 「すべて」「わからないだけ」を選び直した場合はシャッフル状態をリセット
     if (studyIsFolder) {
       // フォルダ内の全デッキのカードを、どのデッキ由来かのタグ付きでまとめる
       const merged = [];
@@ -1412,7 +1342,7 @@ function startStudyMode(mode) {
     clearStudyProgress(studyIsFolder, progressId);
   }
 
-  document.getElementById('study-title').textContent = title + (studyReverse ? ' 🔄' : '');
+  document.getElementById('study-title').textContent = title + (studyReverse ? ' 🔄' : '') + (studyShuffled ? ' 🔀' : '');
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
   showScreen('study');
   document.getElementById('study-done').style.display    = 'none';
@@ -1500,9 +1430,14 @@ function shuffleStudy() {
     [studyCards[i],studyCards[j]]=[studyCards[j],studyCards[i]];
   }
   studyIdx = 0;
+  studyShuffled = true; // ★ 追加：シャッフル済み状態にする。以降の saveStudyProgress で保存され、
+                        //   「続きから」で再開したときもこのシャッフル順のまま復元される。
+  document.getElementById('study-title').textContent =
+    document.getElementById('study-title').textContent.replace(/\s*🔀$/, '') + ' 🔀'; // ★ タイトルにシャッフル中を表示
   document.getElementById('study-done').style.display    = 'none';
   document.getElementById('study-content').style.display = 'flex';
   renderStudyCard();
+  saveStudyProgress(); // ★ 念のため即座に保存しておく（renderStudyCard内でも保存されるが二重に確実化）
 }
 
 document.addEventListener('keydown', e => {
@@ -1688,8 +1623,6 @@ async function digestMessage(message) {
 //     （データはバックグラウンドで decks / localStorage に反映されるので、
 //       次に一覧へ戻った時には最新の状態になっている）
 //   ・list_cards は軽量メタ情報のみなので、このポーリング自体も軽くなった。
-//   ・forceReloadCards=true で呼び出すことで、他の人が中身を編集していた場合に
-//     読み込み済みキャッシュを破棄し、次に開いたときに最新の中身を取り直させる。
 async function checkCardsUpdate() {
   try {
     const controller = new AbortController();
@@ -1712,9 +1645,7 @@ async function checkCardsUpdate() {
     lastCardsHash = hash;
 
     // データをバックグラウンドでマージ（プレイ中・編集中の画面はそのまま）
-    // ★ forceReloadCards=true：サーバー側で何か変わったので、既に読み込み済みの
-    //   デッキのカードキャッシュも破棄し、次に開いたときに最新の中身を取り直す
-    await fetchAndMergeDecks(true);
+    await fetchAndMergeDecks();
 
     // 一覧画面を見ている時だけ、その場で再描画する
     const activeScreen = document.querySelector('.screen.active')?.id;
@@ -1736,13 +1667,12 @@ setInterval(checkCardsUpdate, 10000);
 //     復帰直後はまだ古いデータのままになりがち。
 //   → ページが「再び見える状態になった瞬間」に、10秒待たず即座に
 //     最新データを取りに行くことで解消する。
-//   ・ここも forceReloadCards=true にして、他の人の編集内容を取りこぼさないようにする。
 let isForceRefreshing = false;
 async function forceRefreshOnReturn() {
   if (isForceRefreshing) return;
   isForceRefreshing = true;
   try {
-    await Promise.all([fetchAndMergeDecks(true), fetchAndMergeFolders()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders()]);
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
