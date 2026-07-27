@@ -600,7 +600,11 @@ async function fetchAndMergeDecks(forceReloadCards = false) {
     return {
       id: existing ? existing.id : genId(),
       name: s.name,
-      cards: keepLoadedCards ? existing.cards : [],
+      // ★ mustReload の場合でも古いカード内容をすぐに空にはしない。
+      //   cardsLoaded=false にすることで次に開いたときは必ず再取得されるが、
+      //   古い内容は「わからない」マークの引き継ぎ（migrateUnsureMarks）に
+      //   使うため、実際に再取得が完了するまでは保持しておく。
+      cards: existing ? existing.cards : [],
       cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
@@ -656,6 +660,8 @@ async function ensureDeckCardsLoaded(deckId) {
   if (!deck.filename) { deck.cardsLoaded = true; return true; }
   if (deck.cardsLoaded) return true;
 
+  const oldCards = deck.cards || []; // ★ 追加：再取得前の内容。「わからない」マークの引き継ぎに使う
+
   loadingDeckIds.add(deckId);
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
 
@@ -668,7 +674,13 @@ async function ensureDeckCardsLoaded(deckId) {
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
-    deck.cards = data.cards || [];
+    const newCards = data.cards || [];
+    // ★ 追加：サーバーへの保存・取得の過程でカードの id が保持されず
+    //   cardKey が変わってしまうケースがあっても、「わからない」マークが
+    //   消えてしまわないよう、内容（問題文＋解答）が一致するカードへ
+    //   マークを引き継ぐ。
+    migrateUnsureMarks(deckId, oldCards, newCards);
+    deck.cards = newCards;
     deck.cardsLoaded = true;
     deck.count = deck.cards.length;
     // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
@@ -1167,6 +1179,35 @@ function getUnsureSet(deckId) {
 }
 function saveUnsureSet(deckId, set) {
   localStorage.setItem('unsure_' + deckId, JSON.stringify([...set]));
+}
+
+// ★ 追加：カード本体を再取得した際、「わからない」マークが消えないようにする。
+//   ─────────────────────────────────────────────
+//   「わからない」マークは cardKey（= カードの id、無ければ問題文＋解答のハッシュ）
+//   をキーとして localStorage に保存している。通常は id が保たれるので
+//   キーは変わらないが、サーバーとの保存・取得を挟むと何らかの理由で id が
+//   保持されず、キーが変わってマークが消えたように見えることがある。
+//   ここでは、古いカードで「わからない」に印がついていたのにキーが
+//   一致する新カードが無い場合、内容（問題文＋解答）が完全一致する新カードを
+//   探し、そのキーにもマークを引き継ぐ。
+function migrateUnsureMarks(deckId, oldCards, newCards) {
+  if (!oldCards.length || !newCards.length) return;
+  const unsure = getUnsureSet(deckId);
+  if (!unsure.size) return;
+
+  const newKeys = new Set(newCards.map(c => cardKey(c)));
+  let changed = false;
+  oldCards.forEach(oldC => {
+    const oldKey = cardKey(oldC);
+    if (!unsure.has(oldKey)) return;   // このカードには元々マークが付いていない
+    if (newKeys.has(oldKey)) return;   // キーが変わっていない（そのまま一致するので不要）
+    const match = newCards.find(n => n.question === oldC.question && n.answer === oldC.answer);
+    if (match) {
+      const newKey = cardKey(match);
+      if (!unsure.has(newKey)) { unsure.add(newKey); changed = true; }
+    }
+  });
+  if (changed) saveUnsureSet(deckId, unsure);
 }
 
 // ★ 追加：学習の続きから再開するための進捗保存・読込・削除
