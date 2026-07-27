@@ -642,6 +642,12 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
   if (!deck.filename) { deck.cardsLoaded = true; return true; }
   if (deck.cardsLoaded && !force) return true;
 
+  // ★ 直前まで一覧（list_cardsのメタ情報）で分かっていた問題数を控えておく。
+  //   これと比べて、実際に取得できたカード数が不自然に少なければ
+  //   「サーバーはok:trueを返したが、実は異常な状態だった」とみなして
+  //   失敗扱いにする（＝空データでdeck.cardsを上書きしない）ための安全策。
+  const expectedCount = typeof deck.count === 'number' ? deck.count : null;
+
   loadingDeckIds.add(deckId);
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
 
@@ -654,7 +660,19 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
-    deck.cards = data.cards || [];
+    const fetchedCards = data.cards || [];
+
+    // ★ 安全策：サーバーが ok:true を返していても、直前まで分かっていた問題数が
+    //   1件以上あったのに、取得できたカードが0件（または明らかに少ない）場合は、
+    //   通信は成功していても内容としては信用できないので「失敗」として扱う。
+    //   これにより、編集画面が空の状態で開いてしまい、そのまま公開して
+    //   サーバー側の本物のカードを空データで上書きしてしまう事故を防ぐ。
+    if (expectedCount !== null && expectedCount > 0 && fetchedCards.length === 0) {
+      console.warn(`[cardmaker] get_card_set が0件を返しましたが、一覧では${expectedCount}件のはずです。安全のため読み込み失敗として扱います。 filename=${deck.filename}`);
+      return false;
+    }
+
+    deck.cards = fetchedCards;
     deck.cardsLoaded = true;
     deck.count = deck.cards.length;
     // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
