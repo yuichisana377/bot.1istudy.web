@@ -530,6 +530,22 @@ async function selectMoveTarget(targetId) {
   if (movePickerKind === 'deck') {
     const d = decks.find(x => x.id === movePickerTargetId);
     if (!d) return;
+
+    // ★ 修正：公開済みデッキを移動する前に、必ずサーバーから最新のカード本体を
+    //   取り直す（force = true）。cardsLoaded=true のキャッシュがあっても、
+    //   それが古い可能性（他の人が後から編集・再公開した等）があるため、
+    //   syncDeckToServer で古い内容のまま上書きしてしまう事故を防ぐ。
+    if (d.filename) {
+      const loaded = await ensureDeckCardsLoaded(d.id, true);
+      if (!loaded) {
+        await showCmAlert({
+          title: '移動に失敗しました',
+          desc: 'カードの読み込みに失敗しました。通信環境を確認してもう一度お試しください。',
+        });
+        return;
+      }
+    }
+
     d.folderId = targetId;
     saveDecks(decks);
     renderDeckListUI();
@@ -616,14 +632,15 @@ async function fetchAndMergeDecks() {
 
 // ★ 公開済みデッキのカード本体（問題・解答・画像など）を、必要になった時点で取得する。
 //   ・ローカル限定（未公開）デッキは常にカードを保持しているので何もしない。
-//   ・既に読み込み済み（cardsLoaded=true）なら再取得しない。
+//   ・既に読み込み済み（cardsLoaded=true）でも、force=true が指定された場合は
+//     必ずサーバーから最新を取り直す（他の人が後から編集・移動している可能性があるため）。
 //   ・取得中は loadingDeckIds に id を入れて一覧を再描画し、「読み込み中…」を表示する。
 let loadingDeckIds = new Set();
-async function ensureDeckCardsLoaded(deckId) {
+async function ensureDeckCardsLoaded(deckId, force = false) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return false;
   if (!deck.filename) { deck.cardsLoaded = true; return true; }
-  if (deck.cardsLoaded) return true;
+  if (deck.cardsLoaded && !force) return true;
 
   loadingDeckIds.add(deckId);
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
@@ -771,7 +788,9 @@ async function openEditDeck(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
 
-  const ok = await ensureDeckCardsLoaded(deckId);
+  // ★ 編集は「サーバー全体を丸ごと上書き保存」につながる操作なので、
+  //   キャッシュ済みでも必ず最新のカードを取り直す（force = true）。
+  const ok = await ensureDeckCardsLoaded(deckId, true);
   if (!ok) {
     await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
     return;
@@ -1083,8 +1102,10 @@ async function saveRename() {
   //     サーバー側は既存ファイルの中身を維持したまま名前だけ変えたいところだが、
   //     save_cards は cards を丸ごと上書きする仕様なので、未読み込みのまま
   //     送るとカードが消えてしまう。そのため rename 前に必ず読み込んでおく。
+  //   ★ 修正：cardsLoaded=true のキャッシュがあっても、それが古い可能性があるため
+  //     force=true で必ずサーバーから最新を取り直してから上書き保存する。
   if (deck.filename) {
-    const loaded = await ensureDeckCardsLoaded(deck.id);
+    const loaded = await ensureDeckCardsLoaded(deck.id, true);
     if (!loaded) {
       showBanner('⚠ サーバーへの名前変更の反映に失敗しました（カード読み込みエラー）', '#fffbeb', '#92400e');
       return;
