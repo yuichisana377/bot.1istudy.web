@@ -1041,36 +1041,28 @@ function renderCreatedList() {
 
   let dragEl = null;
   let startY = 0;
+  // ★ 追加：ドラッグ中の「指」を識別するID。
+  //   これにより、ハンドルを掴んでいる指の動きだけをドラッグとして扱い、
+  //   もう片方の指の動きはブラウザ標準のスクロールとして自由に使えるようにする。
+  let dragTouchId = null;
 
   function getItems() {
     return Array.from(list.querySelectorAll('.created-item'));
   }
 
-  function onPointerDown(e) {
-    const handle = e.target.closest('.drag-handle');
-    if (!handle) return;
-    const item = handle.closest('.created-item');
-    if (!item) return;
-
-    e.preventDefault();
+  function beginDrag(item, clientY) {
     dragEl = item;
-    startY = e.clientY;
-
+    startY = clientY;
     dragEl.classList.add('dragging');
     dragEl.style.position = 'relative';
     dragEl.style.zIndex = '10';
     dragEl.style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
     dragEl.style.opacity = '0.92';
-
-    try { dragEl.setPointerCapture(e.pointerId); } catch(err) {}
-    dragEl.addEventListener('pointermove', onPointerMove);
-    dragEl.addEventListener('pointerup', onPointerUp, { once: true });
-    dragEl.addEventListener('pointercancel', onPointerUp, { once: true });
   }
 
-  function onPointerMove(e) {
+  function moveDrag(clientY) {
     if (!dragEl) return;
-    const dy = e.clientY - startY;
+    const dy = clientY - startY;
     dragEl.style.transform = `translateY(${dy}px)`;
 
     const dragRect = dragEl.getBoundingClientRect();
@@ -1087,29 +1079,26 @@ function renderCreatedList() {
         list.insertBefore(dragEl, other.nextSibling);
         // ★ 入れ替えのたびに基準点をリセットして、以降のtranslateYが
         //   新しい位置からの相対移動になるようにする（ジャンプを最小限にする）
-        startY = e.clientY;
+        startY = clientY;
         dragEl.style.transform = 'translateY(0px)';
         break;
       } else if (!otherIsAfter && dragCenter < otherCenter) {
         list.insertBefore(dragEl, other);
-        startY = e.clientY;
+        startY = clientY;
         dragEl.style.transform = 'translateY(0px)';
         break;
       }
     }
   }
 
-  async function onPointerUp(e) {
+  async function endDrag() {
     if (!dragEl) return;
-    try { dragEl.releasePointerCapture(e.pointerId); } catch(err) {}
-    dragEl.removeEventListener('pointermove', onPointerMove);
     dragEl.classList.remove('dragging');
     dragEl.style.transform = '';
     dragEl.style.zIndex = '';
     dragEl.style.boxShadow = '';
     dragEl.style.opacity = '';
     dragEl.style.position = '';
-    const finishedEl = dragEl;
     dragEl = null;
 
     // ★ DOM上の最終的な並び順（data-key）から deck.cards を並び替える
@@ -1130,7 +1119,64 @@ function renderCreatedList() {
     }
   }
 
-  list.addEventListener('pointerdown', onPointerDown);
+  // ── マウス操作（PC） ──
+  function onMouseDown(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const item = handle.closest('.created-item');
+    if (!item) return;
+    e.preventDefault();
+    beginDrag(item, e.clientY);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp, { once: true });
+  }
+  function onMouseMove(e) { moveDrag(e.clientY); }
+  function onMouseUp() {
+    window.removeEventListener('mousemove', onMouseMove);
+    endDrag();
+  }
+
+  // ── タッチ操作（スマホ） ──
+  // ★ ハンドルに触れた指の identifier だけを追跡し、その指のtouchmoveだけを
+  //   ドラッグ処理として扱う（＝preventDefaultする）。もう片方の指のtouchmoveは
+  //   ここで何もしないので、ブラウザ標準の縦スクロールがそのまま働く。
+  //   これにより「片方の指でカードを移動させながら、もう片方の指でスクロール」ができる。
+  function onTouchStart(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    if (dragTouchId !== null) return; // 既に別の指でドラッグ中なら何もしない
+    const item = handle.closest('.created-item');
+    if (!item) return;
+    const touch = e.changedTouches[0];
+    dragTouchId = touch.identifier;
+    e.preventDefault();
+    beginDrag(item, touch.clientY);
+  }
+  function findDragTouch(touchList) {
+    if (dragTouchId === null) return null;
+    for (let i = 0; i < touchList.length; i++) {
+      if (touchList[i].identifier === dragTouchId) return touchList[i];
+    }
+    return null;
+  }
+  function onTouchMove(e) {
+    const t = findDragTouch(e.changedTouches);
+    if (!t) return; // ドラッグ中の指以外の動き（＝スクロール用の指）はここで無視する
+    e.preventDefault();
+    moveDrag(t.clientY);
+  }
+  function onTouchEnd(e) {
+    const t = findDragTouch(e.changedTouches);
+    if (!t) return;
+    dragTouchId = null;
+    endDrag();
+  }
+
+  list.addEventListener('mousedown', onMouseDown);
+  list.addEventListener('touchstart', onTouchStart, { passive: false });
+  list.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  list.addEventListener('touchend',   onTouchEnd);
+  list.addEventListener('touchcancel', onTouchEnd);
 })();
 
 async function deleteCardFromDeck(idx) {
@@ -1251,9 +1297,9 @@ function refreshStudyCardDisplay(c) {
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
   document.getElementById('study-q-text').textContent = qText;
-  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   document.getElementById('study-a-text').textContent = aText;
-  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) {
     document.getElementById('study-e-text').textContent = c.explanation;
@@ -1595,12 +1641,25 @@ function renderStudyCard() {
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
   document.getElementById('study-q-text').textContent = qText;
-  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  // ★ フォルダをまとめてプレイしている場合、この問題がどのカードデッキ由来かを表示する
+  const deckTag = document.getElementById('study-deck-tag');
+  if (studyIsFolder) {
+    const srcDeck = decks.find(d => d.id === c.__deckId);
+    if (srcDeck) {
+      deckTag.textContent = `📇 ${srcDeck.name}`;
+      deckTag.style.display = '';
+    } else {
+      deckTag.style.display = 'none';
+    }
+  } else {
+    deckTag.style.display = 'none';
+  }
   document.getElementById('study-answer-panel').classList.remove('show');
   document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
   document.getElementById('study-a-text').textContent = aText;
-  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="">`).join('');
+  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) { document.getElementById('study-e-text').textContent = c.explanation; explWrap.style.display = ''; }
   else { explWrap.style.display = 'none'; }
@@ -1795,7 +1854,7 @@ imgInput.addEventListener('change', async () => {
 });
 function renderImgStrip(k) {
   document.getElementById('imgs-'+k).innerHTML = imgBuf[k].map((b,i)=>`
-    <div class="img-thumb"><img src="${b}" alt="">
+    <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
       <button class="img-thumb-del" onclick="removeImg('${k}',${i})">✕</button></div>`).join('');
 }
 function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
@@ -1803,7 +1862,7 @@ function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
 // ★ 追加：カード編集モーダル用の画像ストリップ描画・削除
 function renderModalImgStrip(k) {
   document.getElementById('modal-imgs-'+k).innerHTML = editImgBuf[k].map((b,i)=>`
-    <div class="img-thumb"><img src="${b}" alt="">
+    <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
       <button class="img-thumb-del" onclick="removeModalImg('${k}',${i})">✕</button></div>`).join('');
 }
 function removeModalImg(k,i) { editImgBuf[k].splice(i,1); renderModalImgStrip(k); }
@@ -1813,6 +1872,17 @@ function removeModalImg(k,i) { editImgBuf[k].splice(i,1); renderModalImgStrip(k)
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function onOverlayClick(e,id) { if(e.target===document.getElementById(id)) closeModal(id); }
+
+// ── 画像ライトボックス（タップで拡大表示） ──────
+function openImgLightbox(src) {
+  if (!src) return;
+  document.getElementById('img-lightbox-img').src = src;
+  document.getElementById('img-lightbox').classList.add('open');
+}
+function closeImgLightbox() {
+  document.getElementById('img-lightbox').classList.remove('open');
+  document.getElementById('img-lightbox-img').src = '';
+}
 
 // ── ドロワー ──────────────────────────
 function openDrawer() {
