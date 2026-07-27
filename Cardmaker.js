@@ -567,7 +567,20 @@ async function selectMoveTarget(targetId) {
 //   folder_id/published_by/incomplete など）だけを返すので、一覧表示はすぐに終わる。
 //   カード本体は、デッキを実際に開く（プレイ／編集）ときに
 //   ensureDeckCardsLoaded() で個別に取得する。
-async function fetchAndMergeDecks() {
+//
+// ★ forceReloadCards について：
+//   他の端末がデッキの中身（問題・解答）を編集してサーバーへ保存しても、
+//   この端末が以前に一度でもカード本体を読み込んでいた（cardsLoaded=true）場合、
+//   従来は「keepLoadedCards」が常に優先され、キャッシュされた古いカード内容を
+//   使い回し続けてしまっていた（list_cards はメタ情報しか返さないため、
+//   中身が変わったこと自体は検知できても、変わった内容までは取得していなかった）。
+//   その結果、「自分がデッキを作った後、他の人が中身を編集しても、
+//   自分の端末には反映されない」という不具合が起きていた。
+//   forceReloadCards=true を指定すると、サーバー側に変更があったと分かった
+//   タイミング（10秒ごとのポーリングでの検知時／アプリ復帰時）で、
+//   今まさに編集中・プレイ中でないデッキのキャッシュを破棄し、
+//   次にそのデッキを開いたときに必ずサーバーから最新の中身を取り直す。
+async function fetchAndMergeDecks(forceReloadCards = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   // ★ cache: 'no-store' を追加：これが無いと、Chromeなどのブラウザが
@@ -578,11 +591,12 @@ async function fetchAndMergeDecks() {
   const txt = await res.text();
   const data = JSON.parse(txt);
   if (!data.ok) return { changed: false, txt };
+  // ★ 今まさに編集中・プレイ中のデッキIDは、途中のデータが消えないよう保護する
+  const protectedIds = forceReloadCards ? deckIdsCurrentlyInUse() : null;
   const fetched = data.sets.map(s => {
     const existing = decks.find(d => d.filename === s.filename);
-    // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
-    //   未読み込みなら空配列のままにし、開いたときに取得する。
-    const keepLoadedCards = existing && existing.cardsLoaded;
+    const mustReload = !!(forceReloadCards && existing && !protectedIds.has(existing.id));
+    const keepLoadedCards = existing && existing.cardsLoaded && !mustReload;
     return {
       id: existing ? existing.id : genId(),
       name: s.name,
@@ -612,6 +626,23 @@ async function fetchAndMergeDecks() {
   decks = [...localOnly, ...fetched];
   saveDecks(decks);
   return { changed: true, txt };
+}
+
+// ★ 今まさに編集中・プレイ中で、カードキャッシュを破棄してはいけないデッキIDの集合を返す
+function deckIdsCurrentlyInUse() {
+  const ids = new Set();
+  const activeScreen = document.querySelector('.screen.active')?.id;
+  if (activeScreen === 'screen-edit' && currentDeckId) {
+    ids.add(currentDeckId);
+  }
+  if (activeScreen === 'screen-study') {
+    if (studyIsFolder) {
+      folderPlayDecks.forEach(d => ids.add(d.id));
+    } else if (studyDeckId) {
+      ids.add(studyDeckId);
+    }
+  }
+  return ids;
 }
 
 // ★ 公開済みデッキのカード本体（問題・解答・画像など）を、必要になった時点で取得する。
@@ -1611,6 +1642,8 @@ async function digestMessage(message) {
 //     （データはバックグラウンドで decks / localStorage に反映されるので、
 //       次に一覧へ戻った時には最新の状態になっている）
 //   ・list_cards は軽量メタ情報のみなので、このポーリング自体も軽くなった。
+//   ・forceReloadCards=true で呼び出すことで、他の人が中身を編集していた場合に
+//     読み込み済みキャッシュを破棄し、次に開いたときに最新の中身を取り直させる。
 async function checkCardsUpdate() {
   try {
     const controller = new AbortController();
@@ -1633,7 +1666,9 @@ async function checkCardsUpdate() {
     lastCardsHash = hash;
 
     // データをバックグラウンドでマージ（プレイ中・編集中の画面はそのまま）
-    await fetchAndMergeDecks();
+    // ★ forceReloadCards=true：サーバー側で何か変わったので、既に読み込み済みの
+    //   デッキのカードキャッシュも破棄し、次に開いたときに最新の中身を取り直す
+    await fetchAndMergeDecks(true);
 
     // 一覧画面を見ている時だけ、その場で再描画する
     const activeScreen = document.querySelector('.screen.active')?.id;
@@ -1655,12 +1690,13 @@ setInterval(checkCardsUpdate, 10000);
 //     復帰直後はまだ古いデータのままになりがち。
 //   → ページが「再び見える状態になった瞬間」に、10秒待たず即座に
 //     最新データを取りに行くことで解消する。
+//   ・ここも forceReloadCards=true にして、他の人の編集内容を取りこぼさないようにする。
 let isForceRefreshing = false;
 async function forceRefreshOnReturn() {
   if (isForceRefreshing) return;
   isForceRefreshing = true;
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders()]);
+    await Promise.all([fetchAndMergeDecks(true), fetchAndMergeFolders()]);
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
