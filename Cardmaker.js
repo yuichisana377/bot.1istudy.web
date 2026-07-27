@@ -998,6 +998,9 @@ async function publishDeck(deckId, isComplete = true) {
   }
 }
 
+// ★ 作成済みカード一覧の描画。各行にドラッグハンドル（⠿）を付け、
+//   data-key にカードの安定キー（cardKey）を持たせておく。
+//   ドラッグ処理側はこの data-key を使って最終的な並び順を復元する。
 function renderCreatedList() {
   const deck = decks.find(d => d.id === currentDeckId);
   const section = document.getElementById('created-section');
@@ -1005,7 +1008,8 @@ function renderCreatedList() {
   if (!deck||!deck.cards.length) { section.style.display='none'; return; }
   section.style.display='block';
   list.innerHTML = deck.cards.map((c,i) => `
-    <div class="created-item">
+    <div class="created-item" data-key="${esc(cardKey(c))}">
+      <span class="drag-handle" title="ドラッグして並び替え">⠿</span>
       <div class="created-item-num">${i+1}</div>
       <div class="created-item-body">
         <div class="created-item-q">${esc(c.question)}</div>
@@ -1017,6 +1021,117 @@ function renderCreatedList() {
       </div>
     </div>`).join('');
 }
+
+// ============================================================
+//  ★ 追加：作成済みカードのドラッグ並び替え（Pointer Events）
+//  ─────────────────────────────────────────────
+//  ・マウス／タッチの両方を同じコードで扱える Pointer Events API を使用。
+//    HTML5標準のdraggable属性はスマホでの挙動が不安定なため使わない。
+//  ・renderCreatedList() は編集のたびに #created-list の中身を毎回
+//    innerHTML で丸ごと再生成するので、各アイテムに直接リスナーを付けるのではなく
+//    #created-list 自体に1回だけイベント委任（delegation）で登録する。
+//  ・ドラッグ中はDOM上の要素を直接入れ替えて視覚的な並び替えを行い、
+//    指を離した瞬間に「今のDOM上の並び順（data-key）」を読み取って
+//    deck.cards を実際に並び替える。カードの内容そのものはcardKeyで
+//    引き当てるので、インデックスのズレによる事故が起きない。
+// ============================================================
+(function setupCardDragReorder() {
+  const list = document.getElementById('created-list');
+  if (!list) return;
+
+  let dragEl = null;
+  let startY = 0;
+
+  function getItems() {
+    return Array.from(list.querySelectorAll('.created-item'));
+  }
+
+  function onPointerDown(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const item = handle.closest('.created-item');
+    if (!item) return;
+
+    e.preventDefault();
+    dragEl = item;
+    startY = e.clientY;
+
+    dragEl.classList.add('dragging');
+    dragEl.style.position = 'relative';
+    dragEl.style.zIndex = '10';
+    dragEl.style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
+    dragEl.style.opacity = '0.92';
+
+    try { dragEl.setPointerCapture(e.pointerId); } catch(err) {}
+    dragEl.addEventListener('pointermove', onPointerMove);
+    dragEl.addEventListener('pointerup', onPointerUp, { once: true });
+    dragEl.addEventListener('pointercancel', onPointerUp, { once: true });
+  }
+
+  function onPointerMove(e) {
+    if (!dragEl) return;
+    const dy = e.clientY - startY;
+    dragEl.style.transform = `translateY(${dy}px)`;
+
+    const dragRect = dragEl.getBoundingClientRect();
+    const dragCenter = dragRect.top + dragRect.height / 2;
+
+    const items = getItems();
+    for (const other of items) {
+      if (other === dragEl) continue;
+      const r = other.getBoundingClientRect();
+      const otherCenter = r.top + r.height / 2;
+      const otherIsAfter = !!(dragEl.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+      if (otherIsAfter && dragCenter > otherCenter) {
+        list.insertBefore(dragEl, other.nextSibling);
+        // ★ 入れ替えのたびに基準点をリセットして、以降のtranslateYが
+        //   新しい位置からの相対移動になるようにする（ジャンプを最小限にする）
+        startY = e.clientY;
+        dragEl.style.transform = 'translateY(0px)';
+        break;
+      } else if (!otherIsAfter && dragCenter < otherCenter) {
+        list.insertBefore(dragEl, other);
+        startY = e.clientY;
+        dragEl.style.transform = 'translateY(0px)';
+        break;
+      }
+    }
+  }
+
+  async function onPointerUp(e) {
+    if (!dragEl) return;
+    try { dragEl.releasePointerCapture(e.pointerId); } catch(err) {}
+    dragEl.removeEventListener('pointermove', onPointerMove);
+    dragEl.classList.remove('dragging');
+    dragEl.style.transform = '';
+    dragEl.style.zIndex = '';
+    dragEl.style.boxShadow = '';
+    dragEl.style.opacity = '';
+    dragEl.style.position = '';
+    const finishedEl = dragEl;
+    dragEl = null;
+
+    // ★ DOM上の最終的な並び順（data-key）から deck.cards を並び替える
+    const orderedKeys = getItems().map(it => it.dataset.key);
+    const deck = decks.find(d => d.id === currentDeckId);
+    if (!deck) return;
+    const byKey = new Map(deck.cards.map(c => [cardKey(c), c]));
+    const newCards = orderedKeys.map(k => byKey.get(k)).filter(Boolean);
+    if (newCards.length !== deck.cards.length) { renderCreatedList(); return; } // 念のための整合性チェック
+    deck.cards = newCards;
+    saveDecks(decks);
+    renderCreatedList();
+
+    // ★ 公開済みなら並び順もサーバーへ反映する（通知はしない）
+    if (deck.filename) {
+      const ok = await syncDeckToServer(deck);
+      if (!ok) showBanner('⚠ 並び替えのサーバー反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+  }
+
+  list.addEventListener('pointerdown', onPointerDown);
+})();
 
 async function deleteCardFromDeck(idx) {
   const ok = await showCmConfirm({
@@ -1041,6 +1156,14 @@ let editingDeckId  = null;
 let editingCardKey = null;
 let editingContext = 'editor'; // 'editor'（デッキ編集画面）| 'study'（プレイ中）
 
+// ★ 追加：カード編集モーダル内での画像編集用バッファ
+//   デッキ編集画面の新規カード作成用バッファ（imgBuf）とは別に持つことで、
+//   モーダルを開いている最中に新規カード作成側のバッファを壊さないようにする。
+let editImgBuf = { q: [], a: [], e: [] };
+// ★ 追加：img-file-input の change イベントが「新規カード作成用（editor）」と
+//   「カード編集モーダル用（modal）」のどちらから呼ばれたかを区別するためのフラグ
+let imgContext = 'editor';
+
 function openCardEditModal(idx) {
   const deck = decks.find(d => d.id === currentDeckId);
   openCardEditModalCommon(deck.id, deck.cards[idx], 'editor');
@@ -1062,6 +1185,16 @@ function openCardEditModalCommon(deckId, c, context) {
   document.getElementById('modal-edit-a').value = c.answer;
   document.getElementById('modal-edit-e').value = c.explanation||'';
   ['modal-edit-q','modal-edit-a','modal-edit-e'].forEach(id => autoResize(document.getElementById(id)));
+
+  // ★ 追加：既存の画像をモーダル専用バッファへコピーして表示する
+  //   （元の配列を直接触らず、保存時にまとめて書き戻すため）
+  editImgBuf = {
+    q: [...(c.imgs_q || [])],
+    a: [...(c.imgs_a || [])],
+    e: [...(c.imgs_e || [])],
+  };
+  ['q','a','e'].forEach(k => renderModalImgStrip(k));
+
   document.getElementById('card-edit-ok').style.display  = 'none';
   document.getElementById('card-edit-err').style.display = 'none';
   openModal('modal-card-edit');
@@ -1088,6 +1221,10 @@ async function saveCardEdit() {
   card.question    = q;
   card.answer      = a;
   card.explanation = document.getElementById('modal-edit-e').value.trim();
+  // ★ 追加：画像もモーダルバッファから書き戻す
+  card.imgs_q = [...editImgBuf.q];
+  card.imgs_a = [...editImgBuf.a];
+  card.imgs_e = [...editImgBuf.e];
 
   saveDecks(decks);
   closeModal('modal-card-edit');
@@ -1633,15 +1770,25 @@ async function compressImageFile(file) {
 
 let imgTarget = null;
 const imgInput = document.getElementById('img-file-input');
-function addImage(t) { imgTarget=t; imgInput.click(); }
+// ★ 変更：デッキ編集画面の新規カード作成から呼ばれる場合
+function addImage(t) { imgTarget=t; imgContext='editor'; imgInput.click(); }
+// ★ 追加：カード編集モーダルから呼ばれる場合
+function addModalImage(t) { imgTarget=t; imgContext='modal'; imgInput.click(); }
+
 imgInput.addEventListener('change', async () => {
   const file = imgInput.files[0]; if (!file||!imgTarget) return;
   const target = imgTarget;
+  const context = imgContext; // ★ 追加：どちらの画面から呼ばれたかを確定させておく
   imgInput.value = '';
   try {
     const dataUrl = await compressImageFile(file);
-    imgBuf[target].push(dataUrl);
-    renderImgStrip(target);
+    if (context === 'modal') {
+      editImgBuf[target].push(dataUrl);
+      renderModalImgStrip(target);
+    } else {
+      imgBuf[target].push(dataUrl);
+      renderImgStrip(target);
+    }
   } catch(e) {
     await showCmAlert({ title: '画像の読み込みに失敗しました', desc: '別の画像で試してください。' });
   }
@@ -1652,6 +1799,14 @@ function renderImgStrip(k) {
       <button class="img-thumb-del" onclick="removeImg('${k}',${i})">✕</button></div>`).join('');
 }
 function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
+
+// ★ 追加：カード編集モーダル用の画像ストリップ描画・削除
+function renderModalImgStrip(k) {
+  document.getElementById('modal-imgs-'+k).innerHTML = editImgBuf[k].map((b,i)=>`
+    <div class="img-thumb"><img src="${b}" alt="">
+      <button class="img-thumb-del" onclick="removeModalImg('${k}',${i})">✕</button></div>`).join('');
+}
+function removeModalImg(k,i) { editImgBuf[k].splice(i,1); renderModalImgStrip(k); }
 
 
 // ── モーダル ──────────────────────────
