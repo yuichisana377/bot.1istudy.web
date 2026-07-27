@@ -122,7 +122,7 @@ html, body {
   position: relative; width: 72px; height: 72px;
   border-radius: 8px; overflow: hidden; border: 1px solid var(--border);
 }
-.img-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.img-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
 .img-thumb-del {
   position: absolute; top: 2px; right: 2px;
   width: 18px; height: 18px;
@@ -250,16 +250,28 @@ html, body {
 .study-progress-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
 .study-progress-fill { height: 100%; background: #2563EB; border-radius: 2px; transition: width .3s ease; }
 .study-progress-label { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.study-tag-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem; margin-bottom: .6rem;
+}
 .study-q-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: #2563EB; margin-bottom: .6rem;
+  letter-spacing: .08em; color: #2563EB; flex-shrink: 0;
+}
+/* ★ フォルダ再生時、この問題がどのデッキ（カードセット）由来かを示すバッジ */
+.study-deck-tag {
+  font-size: 11px; font-weight: 700; color: #2563EB;
+  background: #EFF4FF; border: 1px solid #bfdbfe;
+  padding: 2px 9px; border-radius: 20px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 60%;
 }
 .study-q-text {
   font-size: 18px; font-weight: 600; line-height: 1.65;
   white-space: pre-wrap; word-break: break-word; flex: 1;
 }
 .study-q-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
-.study-q-imgs img { height: 80px; border-radius: 6px; object-fit: cover; }
+.study-q-imgs img { height: 80px; border-radius: 6px; object-fit: cover; cursor: pointer; }
 .study-bottom { flex-shrink: 0; background: var(--bg); display: flex; flex-direction: column; }
 
 /* 答えを見る前のバー（前へ + 答えを見る） */
@@ -289,7 +301,7 @@ html, body {
   white-space: pre-wrap; word-break: break-word; color: var(--text);
 }
 .answer-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
-.answer-imgs img { height: 72px; border-radius: 6px; object-fit: cover; }
+.answer-imgs img { height: 72px; border-radius: 6px; object-fit: cover; cursor: pointer; }
 .expl-divider { border: none; border-top: 1px solid var(--border); margin: .75rem 0; }
 .expl-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -417,4 +429,18 @@ html, body {
 }
 .reverse-toggle-row input[type="checkbox"] {
   width: 20px; height: 20px; accent-color: #2563EB; cursor: pointer; flex-shrink: 0;
+}
+
+/* ── 画像ライトボックス（タップで拡大表示） ── */
+.img-lightbox-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.88);
+  z-index: 500; display: none; align-items: center; justify-content: center;
+  padding: 2rem 1rem calc(2rem + env(safe-area-inset-bottom, 0px));
+  cursor: zoom-out;
+}
+.img-lightbox-overlay.open { display: flex; animation: fadeInCM .15s ease; }
+.img-lightbox-overlay img {
+  max-width: 100%; max-height: 100%;
+  border-radius: 10px; object-fit: contain;
+  box-shadow: 0 8px 40px rgba(0,0,0,.4);
 }
