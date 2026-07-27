@@ -81,12 +81,15 @@ function countCardsRecursive(folderId) {
   return direct + subCount;
 }
 // フォルダ配下（サブフォルダ含む）の「わからない」カード数の合計
-// ※ カード本体が未読み込み（cardsLoaded === false）のデッキは
-//    unsureセットと突き合わせる術がないので、そのデッキ分は数えない
-//    （一覧を開いたときに一部のデッキがまだ未読み込みでも壊れないようにするため）
+// ※ カード本体が一度も読み込まれていない（d.cards が空の）デッキは
+//    unsureセットと突き合わせる術がないので、そのデッキ分は数えない。
+//    cardsLoaded=false でもキャッシュされた古いカード内容が残っていれば、
+//    それを使って（多少古い可能性はあるが）バッジを表示し続ける
+//    （そうしないと、他の人の編集を検知して再読み込みが必要になるたびに
+//    バッジが一瞬消え、マークがリセットされたように見えてしまうため）。
 function countUnsureRecursive(folderId) {
   return collectDecksInFolder(folderId).reduce((sum, d) => {
-    if (d.cardsLoaded === false) return sum;
+    if (!d.cards || !d.cards.length) return sum;
     const unsure = getUnsureSet(d.id);
     return sum + d.cards.filter(c => unsure.has(cardKey(c))).length;
   }, 0);
@@ -294,11 +297,13 @@ function renderDeckListUI() {
   const orderedDecks = [...unpublished, ...published];
 
   const deckHtml = orderedDecks.map(d => {
-    // ★ カード本体を未読み込みのデッキ（公開デッキで cardsLoaded=false）は
-    //   d.cards が空のままなので、「わからない」バッジは読み込み後にしか出せない。
-    //   ここでは読み込み済みの場合だけ計算する。
+    // ★ カード本体が一度も読み込まれていない（d.cards が空の）デッキだけ
+    //   「わからない」バッジを出せない。cardsLoaded=false でもキャッシュされた
+    //   古いカード内容が残っていればそれを使ってバッジを出し続ける
+    //   （そうしないと、他の人の編集を検知して再読み込みが必要になるたびに
+    //   バッジが一瞬消え、マークがリセットされたように見えてしまうため）。
     let unsureBadge = '';
-    if (d.cardsLoaded !== false) {
+    if (d.cards && d.cards.length) {
       const unsureSet   = getUnsureSet(d.id);
       const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
       unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
