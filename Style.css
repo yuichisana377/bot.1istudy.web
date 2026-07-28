@@ -151,10 +151,18 @@ body {
 .date-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); letter-spacing: .07em; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
 .today-tag  { font-size: 10px; background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 20px; font-weight: 700; letter-spacing: 0; }
 .date-card  { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
-.plan-row   { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-light); }
+.plan-row   { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-light); cursor: pointer; transition: background .12s; }
 .plan-row:last-child { border-bottom: none; }
+.plan-row:active { background: var(--bg); }
 .plan-row .subject  { font-size: 14px; font-weight: 600; min-width: 52px; }
 .plan-row .content  { font-size: 13px; color: var(--text-secondary); flex: 1; }
+.plan-row .note-dot { font-size: 12px; color: var(--text-tertiary); flex: 0 0 auto; }
+
+/* ★ 予定詳細モーダル */
+.detail-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 4px; }
+.detail-item .dl-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); letter-spacing: .05em; margin-bottom: 4px; }
+.detail-item .dl-value { font-size: 15px; color: var(--text); word-break: break-word; }
+.detail-item .dl-value.dl-note { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 12px; font-size: 14px; }
 
 /* ログ */
 .timeline { padding-left: 26px; position: relative; }
@@ -348,12 +356,13 @@ body {
 
 .field { margin-bottom: 0.85rem; }
 .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; }
-.field input, .field select {
+.field input, .field select, .field textarea {
   width: 100%; padding: 10px 12px; border: 1px solid var(--border);
   border-radius: var(--r-md); font-size: 16px;
   background: var(--bg); color: var(--text); outline: none; -webkit-appearance: none;
 }
-.field input:focus, .field select:focus { border-color: #888; }
+.field textarea { resize: vertical; min-height: 64px; font-family: inherit; line-height: 1.5; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: #888; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .btn-primary { background: var(--text); color: #fff; border: none; border-radius: var(--r-md); padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 6px; }
 .btn-danger  { background: none; color: #991b1b; border: 1px solid #fca5a5; border-radius: var(--r-md); padding: 13px; font-size: 15px; cursor: pointer; width: 100%; margin-top: 6px; }
