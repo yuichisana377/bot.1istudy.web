@@ -12,6 +12,10 @@ const POINT_CATEGORIES = ['提出', '宿題'];
 // ★ ポイント選択肢
 const POINT_OPTIONS = [3, 5, 10, 15];
 
+// ★ 備考をcontent文字列に埋め込むための区切り文字列
+//   Botがそのままcontentをディスコードに投稿するため、見た目が崩れない読める形にする
+const NOTE_SEP = '\n📝備考：';
+
 // ============================================================
 //  グローバル状態
 // ============================================================
@@ -285,8 +289,9 @@ const WDAYS = ['日','月','火','水','木','金','土'];
 
 function parsePlanContent(raw) {
   const cat  = raw.match(/^【(.+?)】/)?.[1] || '';
-  const text = raw.replace(/^【.+?】/, '').trim();
-  return { cat, text };
+  const rest = raw.replace(/^【.+?】/, '');
+  const [textPart, notePart] = rest.split(NOTE_SEP);
+  return { cat, text: (textPart || '').trim(), note: (notePart || '').trim() };
 }
 
 function renderPlans() {
@@ -315,14 +320,17 @@ function renderPlans() {
     const dayPlans = sortByTimetable(date, grouped[date]);
 
     const rows = dayPlans.map(p => {
-      const { cat, text } = parsePlanContent(p.content);
+      const { cat, text, note } = parsePlanContent(p.content);
       const ptsBadge = (p.points != null)
         ? `<span class="badge badge-pts">⭐ ${p.points}pt</span>`
         : '';
-      return `<div class="plan-row">
+      const noteDot = note ? `<span class="note-dot" title="備考あり">📝</span>` : '';
+      const label = `${p.date}/${p.subject}${p.content}`;
+      return `<div class="plan-row" data-label="${label.replace(/"/g, '&quot;')}" onclick="showPlanDetail(this)">
         <span class="subject">${p.subject}</span>
         <span class="badge badge-${cat}">${cat}</span>
         <span class="content">${text}</span>
+        ${noteDot}
         ${ptsBadge}
       </div>`;
     }).join('');
@@ -332,6 +340,35 @@ function renderPlans() {
       <div class="date-card">${rows}</div>
     </div>`;
   }).join('');
+}
+
+// ============================================================
+//  ★ 予定詳細モーダル
+// ============================================================
+function showPlanDetail(el) {
+  const label = el.dataset.label;
+  const plan = plans.find(p => `${p.date}/${p.subject}${p.content}` === label);
+  if (!plan) return;
+
+  const { cat, text, note } = parsePlanContent(plan.content);
+  const d = new Date(plan.date + 'T00:00:00');
+  const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${WDAYS[d.getDay()]}）`;
+
+  const rowsHtml = [
+    `<div class="detail-item"><div class="dl-label">日付</div><div class="dl-value">${dateLabel}</div></div>`,
+    `<div class="detail-item"><div class="dl-label">科目</div><div class="dl-value">${plan.subject}</div></div>`,
+    `<div class="detail-item"><div class="dl-label">カテゴリ</div><div class="dl-value"><span class="badge badge-${cat}">${cat}</span></div></div>`,
+    `<div class="detail-item"><div class="dl-label">内容</div><div class="dl-value">${text}</div></div>`,
+  ];
+  if (plan.points != null) {
+    rowsHtml.push(`<div class="detail-item"><div class="dl-label">ポイント</div><div class="dl-value">⭐ ${plan.points}pt</div></div>`);
+  }
+  if (note) {
+    rowsHtml.push(`<div class="detail-item"><div class="dl-label">備考</div><div class="dl-value dl-note">${note}</div></div>`);
+  }
+
+  document.getElementById('detail-content').innerHTML = rowsHtml.join('');
+  document.getElementById('modal-detail').classList.add('open');
 }
 
 // ============================================================
@@ -391,7 +428,12 @@ function selectPlan(el, mode) {
     const plan = plans.find(p => `${p.date}/${p.subject}${p.content}` === label);
     const ptsWrap  = document.getElementById('edit-points-wrap');
     if (plan) {
-      const { cat } = parsePlanContent(plan.content);
+      const { cat, text, note } = parsePlanContent(plan.content);
+
+      // ★ 内容・備考は現在の値を編集欄に入れておく（そのまま保存すれば変更なし）
+      document.getElementById('edit-content').value = text;
+      document.getElementById('edit-note').value = note;
+
       if (POINT_CATEGORIES.includes(cat)) {
         ptsWrap.style.display = 'block';
         // 既存のポイントが選択肢内にあればプリセット、なければ未選択のまま
@@ -443,6 +485,8 @@ function openModal(name) {
     renderSelectList('edit-list', 'edit');
     selectedPoints['edit'] = null;
     document.getElementById('edit-points-wrap').style.display = 'none';
+    document.getElementById('edit-content').value = '';
+    document.getElementById('edit-note').value = '';
   }
   if (name === 'delete') { delTarget = null; renderSelectList('del-list', 'delete'); document.getElementById('del-confirm').style.display = 'none'; }
 }
@@ -504,8 +548,10 @@ async function submitAdd() {
   if (!category) { showErr('add-err', 'カテゴリを入力してください'); return; }
   const content  = document.getElementById('add-content').value.trim();
   if (!date || !subject || !content) { showErr('add-err', '日付・科目・内容は必須です'); return; }
+  const note = document.getElementById('add-note').value.trim();
+  const contentToSend = note ? `${content}${NOTE_SEP}${note}` : content;
 
-  const body = { guild_id: GUILD_ID, date, subject, category, content };
+  const body = { guild_id: GUILD_ID, date, subject, category, content: contentToSend };
 
   if (POINT_CATEGORIES.includes(category)) {
     const points = selectedPoints['add'];
@@ -524,6 +570,7 @@ async function submitAdd() {
     if (res.ok) {
       showOk('add-ok');
       document.getElementById('add-content').value = '';
+      document.getElementById('add-note').value = '';
       selectedPoints['add'] = 5;
       document.getElementById('add-points-wrap').style.display = 'none';
       resetCal('add', '日付を選択');
@@ -543,7 +590,9 @@ async function submitEdit() {
   const d = calState['edit']?.selected; if (d) body.date = d;
   const s = document.getElementById('edit-subject').value;   if (s) body.subject = s;
   const c = getCatValue('edit'); if (c) body.category = c;
-  const t = document.getElementById('edit-content').value.trim(); if (t) body.content = t;
+  const t = document.getElementById('edit-content').value.trim();
+  const n = document.getElementById('edit-note').value.trim();
+  if (t) body.content = n ? `${t}${NOTE_SEP}${n}` : t;
 
   if (selectedPoints['edit']) body.points = selectedPoints['edit'];
 
@@ -556,6 +605,7 @@ async function submitEdit() {
       showOk('edit-ok');
       editTarget = null;
       document.getElementById('edit-content').value = '';
+      document.getElementById('edit-note').value = '';
       document.getElementById('edit-category-sel').value = '';
       document.getElementById('edit-category-inp').style.display = 'none';
       document.getElementById('edit-subject').value = '';
