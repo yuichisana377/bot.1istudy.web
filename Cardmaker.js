@@ -318,10 +318,17 @@ function renderDeckListUI() {
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
     const playDisabled = questionCount === 0 || isLoadingThis;
+    // ★ 科目名をタイトルの上に小さく表示する。表示名側に重複しないよう、
+    //   デッキ名の先頭に「科目名 」が含まれる場合はそれを取り除いて表示する。
+    const subjectLabel = d.subject
+      ? `<div class="deck-card-subject">${esc(d.subject)}</div>` : '';
+    const displayName = (d.subject && d.name.startsWith(d.subject + ' '))
+      ? d.name.slice(d.subject.length + 1) : d.name;
     return `
     <div class="deck-card">
       <div class="deck-card-info">
-        <div class="deck-card-title">${esc(d.name)}</div>
+        ${subjectLabel}
+        <div class="deck-card-title">${esc(displayName)}</div>
         <div class="deck-card-meta">
           ${questionCount} 問
           ${pubBadge}
@@ -1046,22 +1053,62 @@ function renderCreatedList() {
   //   もう片方の指の動きはブラウザ標準のスクロールとして自由に使えるようにする。
   let dragTouchId = null;
 
+  // ★ 追加：ドラッグ中に画面端（上下）に近づいたら自動スクロールするための状態。
+  const scrollContainer = document.getElementById('edit-scroll');
+  let lastClientY = 0;
+  let autoScrollRAF = null;
+
   function getItems() {
     return Array.from(list.querySelectorAll('.created-item'));
+  }
+
+  // ★ 追加：ドラッグ中、指（またはマウス）が edit-scroll の上端／下端付近に
+  //   あるあいだ、毎フレーム少しずつスクロールさせる。
+  //   端に近いほど速くスクロールする（ratioで速度を調整）。
+  //   スクロールした分だけ startY をずらし、指の位置に対するカードの
+  //   見た目の位置（translateY）がズレないようにする。
+  function autoScrollTick() {
+    if (!dragEl || !scrollContainer) { autoScrollRAF = null; return; }
+    const rect = scrollContainer.getBoundingClientRect();
+    const edge = 60;      // 端から何pxでスクロールを開始するか
+    const maxSpeed = 14;  // 1フレームあたりの最大スクロール量(px)
+    let speed = 0;
+
+    if (lastClientY < rect.top + edge) {
+      const ratio = Math.min(1, (rect.top + edge - lastClientY) / edge);
+      speed = -maxSpeed * ratio;
+    } else if (lastClientY > rect.bottom - edge) {
+      const ratio = Math.min(1, (lastClientY - (rect.bottom - edge)) / edge);
+      speed = maxSpeed * ratio;
+    }
+
+    if (speed !== 0) {
+      const before = scrollContainer.scrollTop;
+      scrollContainer.scrollTop += speed;
+      const actualDelta = scrollContainer.scrollTop - before; // 端まで来ていたらここが0になる
+      if (actualDelta !== 0) {
+        startY -= actualDelta;
+        moveDrag(lastClientY);
+      }
+    }
+    autoScrollRAF = requestAnimationFrame(autoScrollTick);
   }
 
   function beginDrag(item, clientY) {
     dragEl = item;
     startY = clientY;
+    lastClientY = clientY;
     dragEl.classList.add('dragging');
     dragEl.style.position = 'relative';
     dragEl.style.zIndex = '10';
     dragEl.style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
     dragEl.style.opacity = '0.92';
+    if (autoScrollRAF === null) autoScrollRAF = requestAnimationFrame(autoScrollTick);
   }
 
   function moveDrag(clientY) {
     if (!dragEl) return;
+    lastClientY = clientY;
     const dy = clientY - startY;
     dragEl.style.transform = `translateY(${dy}px)`;
 
@@ -1093,6 +1140,7 @@ function renderCreatedList() {
 
   async function endDrag() {
     if (!dragEl) return;
+    if (autoScrollRAF !== null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
     dragEl.classList.remove('dragging');
     dragEl.style.transform = '';
     dragEl.style.zIndex = '';
