@@ -24,6 +24,7 @@ let channels = [];
 let calState = {};
 let editTarget = null;
 let delTarget  = null;
+let detailTarget = null; // ★ 詳細モーダルで表示中の予定のlabel
 
 // ★ ポイント選択状態（'add' / 'edit' ごとに選択中のポイント値を保持）
 let selectedPoints = { add: null, edit: null };
@@ -350,6 +351,8 @@ function showPlanDetail(el) {
   const plan = plans.find(p => `${p.date}/${p.subject}${p.content}` === label);
   if (!plan) return;
 
+  detailTarget = label; // ★ 編集・削除ボタンから参照できるように保存
+
   const { cat, text, note } = parsePlanContent(plan.content);
   const d = new Date(plan.date + 'T00:00:00');
   const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${WDAYS[d.getDay()]}）`;
@@ -369,6 +372,39 @@ function showPlanDetail(el) {
 
   document.getElementById('detail-content').innerHTML = rowsHtml.join('');
   document.getElementById('modal-detail').classList.add('open');
+}
+
+// ============================================================
+//  ★ 詳細モーダル → 編集／削除モーダルへの連携
+// ============================================================
+
+/** 選択リスト(edit-list / del-list)の中から label が一致する項目を選択状態にする */
+function selectPlanByLabel(label, mode) {
+  const listId = mode === 'edit' ? 'edit-list' : 'del-list';
+  const items = document.querySelectorAll(`#${listId} .sel-item`);
+  for (const it of items) {
+    if (it.dataset.label === label) {
+      selectPlan(it, mode);
+      it.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      break;
+    }
+  }
+}
+
+/** 詳細モーダルの「編集する」ボタン */
+function editFromDetail() {
+  if (!detailTarget) return;
+  closeModal('detail');
+  openModal('edit');
+  selectPlanByLabel(detailTarget, 'edit');
+}
+
+/** 詳細モーダルの「削除する」ボタン */
+function deleteFromDetail() {
+  if (!detailTarget) return;
+  closeModal('detail');
+  openModal('delete');
+  selectPlanByLabel(detailTarget, 'delete');
 }
 
 // ============================================================
