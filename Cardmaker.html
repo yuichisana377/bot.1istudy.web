@@ -121,7 +121,9 @@
         <div class="img-strip" id="imgs-q"></div>
         <div class="block-actions">
           <button class="block-action-btn" onclick="addImage('q')">🖼 画像を追加</button>
+          <button class="block-action-btn" onclick="toggleMathPad('mathpad-q')">🧮 理数記号</button>
         </div>
+        <div class="math-pad" id="mathpad-q" data-target="ta-q" style="display:none"></div>
       </div>
 
       <div class="card-block">
@@ -132,7 +134,9 @@
         <div class="img-strip" id="imgs-a"></div>
         <div class="block-actions">
           <button class="block-action-btn" onclick="addImage('a')">🖼 画像を追加</button>
+          <button class="block-action-btn" onclick="toggleMathPad('mathpad-a')">🧮 理数記号</button>
         </div>
+        <div class="math-pad" id="mathpad-a" data-target="ta-a" style="display:none"></div>
       </div>
 
       <div class="card-block">
@@ -143,7 +147,9 @@
         <div class="img-strip" id="imgs-e"></div>
         <div class="block-actions">
           <button class="block-action-btn" onclick="addImage('e')">🖼 画像を追加</button>
+          <button class="block-action-btn" onclick="toggleMathPad('mathpad-e')">🧮 理数記号</button>
         </div>
+        <div class="math-pad" id="mathpad-e" data-target="ta-e" style="display:none"></div>
       </div>
 
       <div class="created-section" id="created-section" style="display:none">
@@ -366,23 +372,29 @@
     <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">問題文</label>
     <textarea class="modal-input" id="modal-edit-q" style="min-height:70px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
     <div class="img-strip" id="modal-imgs-q"></div>
-    <div class="block-actions" style="margin-bottom:.75rem">
+    <div class="block-actions" style="margin-bottom:.5rem">
       <button class="block-action-btn" onclick="addModalImage('q')">🖼 画像を追加</button>
+      <button class="block-action-btn" onclick="toggleMathPad('mathpad-modal-q')">🧮 理数記号</button>
     </div>
+    <div class="math-pad" id="mathpad-modal-q" data-target="modal-edit-q" style="display:none;margin-bottom:.75rem"></div>
 
     <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解答</label>
     <textarea class="modal-input" id="modal-edit-a" style="min-height:70px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
     <div class="img-strip" id="modal-imgs-a"></div>
-    <div class="block-actions" style="margin-bottom:.75rem">
+    <div class="block-actions" style="margin-bottom:.5rem">
       <button class="block-action-btn" onclick="addModalImage('a')">🖼 画像を追加</button>
+      <button class="block-action-btn" onclick="toggleMathPad('mathpad-modal-a')">🧮 理数記号</button>
     </div>
+    <div class="math-pad" id="mathpad-modal-a" data-target="modal-edit-a" style="display:none;margin-bottom:.75rem"></div>
 
     <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解説（任意）</label>
     <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
     <div class="img-strip" id="modal-imgs-e"></div>
-    <div class="block-actions" style="margin-bottom:1rem">
+    <div class="block-actions" style="margin-bottom:.5rem">
       <button class="block-action-btn" onclick="addModalImage('e')">🖼 画像を追加</button>
+      <button class="block-action-btn" onclick="toggleMathPad('mathpad-modal-e')">🧮 理数記号</button>
     </div>
+    <div class="math-pad" id="mathpad-modal-e" data-target="modal-edit-e" style="display:none;margin-bottom:1rem"></div>
 
     <div class="modal-btns">
       <button class="btn btn-ghost" onclick="closeModal('modal-card-edit')">閉じる</button>
