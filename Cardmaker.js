@@ -400,6 +400,7 @@ async function saveFolderName() {
   const input = document.getElementById('folder-name-input');
   const name = input.value.trim();
   if (!name) { shake('folder-name-input'); return; }
+  if (await warnIfBugChars(name, 'folder-name-input')) return;
 
   const btn = document.querySelector('#modal-folder-name .btn-blue');
   const targetFolder = folderNameMode === 'rename' ? folders.find(f => f.id === folderNameTargetId) : null;
@@ -845,10 +846,11 @@ async function loadSubjects() {
   }
 }
 
-function startEdit() {
+async function startEdit() {
   const subject = document.getElementById('new-subject').value;
   const input   = document.getElementById('new-set-name').value.trim();
   if (!input) { shake('new-set-name'); return; }
+  if (await warnIfBugChars(input, 'new-set-name')) return;
   const name = subject ? `${subject} ${input}` : input;
   const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId };
   decks.push(deck); saveDecks(decks);
@@ -889,11 +891,15 @@ function clearEditor() {
 async function saveCard(mode) {
   const q = document.getElementById('ta-q').value.trim();
   const a = document.getElementById('ta-a').value.trim();
+  const e = document.getElementById('ta-e').value.trim();
   const deck = decks.find(d => d.id === currentDeckId);
   if (q || a) {
     if (!q || !a) { shake(!q ? 'ta-q' : 'ta-a'); return; }
+    if (await warnIfBugChars(q, 'ta-q')) return;
+    if (await warnIfBugChars(a, 'ta-a')) return;
+    if (await warnIfBugChars(e, 'ta-e')) return;
     deck.cards.push({ id:genId(), question:q, answer:a,
-      explanation: document.getElementById('ta-e').value.trim(),
+      explanation: e,
       imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
     saveDecks(decks);
     document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
@@ -1297,6 +1303,7 @@ function openCardEditModalCommon(deckId, c, context) {
 async function saveCardEdit() {
   const q = document.getElementById('modal-edit-q').value.trim();
   const a = document.getElementById('modal-edit-a').value.trim();
+  const e = document.getElementById('modal-edit-e').value.trim();
   const errBar = document.getElementById('card-edit-err');
   if (!q || !a) {
     errBar.textContent = '✕ 問題文と解答は必須です';
@@ -1304,6 +1311,9 @@ async function saveCardEdit() {
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
   }
+  if (await warnIfBugChars(q, 'modal-edit-q')) return;
+  if (await warnIfBugChars(a, 'modal-edit-a')) return;
+  if (await warnIfBugChars(e, 'modal-edit-e')) return;
   const deck = decks.find(d => d.id === editingDeckId);
   if (!deck) { closeModal('modal-card-edit'); return; }
   const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
@@ -1314,7 +1324,7 @@ async function saveCardEdit() {
   const card = deck.cards[idx];
   card.question    = q;
   card.answer      = a;
-  card.explanation = document.getElementById('modal-edit-e').value.trim();
+  card.explanation = e;
   // ★ 追加：画像もモーダルバッファから書き戻す
   card.imgs_q = [...editImgBuf.q];
   card.imgs_a = [...editImgBuf.a];
@@ -1387,6 +1397,7 @@ async function saveRename() {
   const subject = document.getElementById('modal-rename-subject').value;
   const input   = document.getElementById('modal-rename-input').value.trim();
   if (!input) return;
+  if (await warnIfBugChars(input, 'modal-rename-input')) return;
   const deck = decks.find(d => d.id === renamingDeckId);
   const newName = subject ? `${subject} ${input}` : input;
   deck.subject = subject;
@@ -1962,6 +1973,76 @@ function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeigh
 function shake(id) {
   const el=document.getElementById(id); el.style.borderColor='#EF4444'; el.focus();
   setTimeout(()=>el.style.borderColor='',700);
+}
+
+// ============================================================
+//  ★ 追加：Windows依存文字（いわゆる「バグ文字」）の入力チェック
+//  ─────────────────────────────────────────────
+//  ・丸囲み数字（①②③…）、ローマ数字（ⅠⅡⅢ…）、㈱㈲㈹、㍾㍽㎜㎡など
+//    Shift_JIS/CP932のNEC選定IBM拡張文字（いわゆる機種依存文字）は
+//    Windows以外の環境やDB・JSON経由でのやり取りで文字化けしたり
+//    「?」「□」に化けたりする代表的な原因なので、保存前にまとめて検出する。
+//  ・壊れた絵文字などに現れる「孤立サロゲート」や、タブ・改行以外の
+//    制御文字、外字領域（PUA）も同様に弾く。
+// ============================================================
+const BUG_CHAR_RANGES = [
+  [0x2100, 0x214F], // 単位記号など（℡ № ㏍ ℻ など）
+  [0x2150, 0x218F], // ローマ数字（ⅠⅡⅢ ⅰⅱⅲ など）
+  [0x2460, 0x24FF], // 丸数字・丸文字（①②③ ㍿ など）
+  [0x3200, 0x32FF], // 丸囲み漢字（㈱㈲㈹ など）
+  [0x3300, 0x33FF], // 単位・元号の合字（㍾㍽㍼㎜㎝㎡ など）
+  [0xE000, 0xF8FF], // 外字・私用領域（機種依存の外字）
+  [0xFFF0, 0xFFFF], // 特殊用途領域
+];
+
+// ── 非表示Unicode文字（見た目に出ない・不正な文字順を偽装できる文字） ──
+// ・U+200D（ZWJ）と異体字セレクタ（VS1-16 / VS17-256）は、結合絵文字
+//   （👨‍👩‍👧‍👦など）や日本語の異体字シーケンス（IVS）で正規に使われるため対象外とする。
+const INVISIBLE_CHAR_RANGES = [
+  [0x200B, 0x200C], // ゼロ幅スペース、ZWNJ（※200Dは含まない＝ZWJは許可）
+  [0x2060, 0x2064], // Word Joiner、不可視の演算子記号など
+  [0x2066, 0x2069], // 双方向テキストの分離文字（LRI/RLI/FSI/PDI）
+  [0x202A, 0x202E], // 双方向テキストの埋め込み・上書き（LRE/RLE/PDF/LRO/RLO）
+  [0xE0000, 0xE007F], // Unicodeタグ文字（見えないままテキストを埋め込める）
+];
+const INVISIBLE_CHAR_CODES = new Set([0x00AD, 0x180E, 0xFEFF]); // ソフトハイフン／モンゴル母音分離符／BOM
+
+function isAllowedInvisible(cp) {
+  if (cp === 0x200D) return true; // ZWJ（絵文字結合）
+  if (cp >= 0xFE00 && cp <= 0xFE0F) return true; // VS1-16（異体字・絵文字表示指定）
+  if (cp >= 0xE0100 && cp <= 0xE01EF) return true; // VS17-256（IVS用）
+  return false;
+}
+
+// 文字列中の「バグ文字」だけを重複なく抽出して返す（無ければ空配列）
+function findBugChars(str) {
+  if (!str) return [];
+  const found = [];
+  for (const ch of String(str)) {
+    const cp = ch.codePointAt(0);
+    if (isAllowedInvisible(cp)) continue;
+    const isCtrl   = cp < 0x20 && ch !== '\t' && ch !== '\n' && ch !== '\r';
+    const isDel    = cp === 0x7F;
+    const isLoneSg = cp >= 0xD800 && cp <= 0xDFFF; // 孤立サロゲート（壊れた絵文字等）
+    const isRange  = BUG_CHAR_RANGES.some(([s, e]) => cp >= s && cp <= e);
+    const isInvis  = INVISIBLE_CHAR_RANGES.some(([s, e]) => cp >= s && cp <= e) || INVISIBLE_CHAR_CODES.has(cp);
+    if ((isCtrl || isDel || isLoneSg || isRange || isInvis) && !found.includes(ch)) found.push(ch);
+  }
+  return found;
+}
+
+// 該当文字があれば自前アラートで警告して true（＝入力NG）を返す
+async function warnIfBugChars(str, fieldId) {
+  const bad = findBugChars(str);
+  if (bad.length === 0) return false;
+  await showCmAlert({
+    title: '使用できない文字が含まれています',
+    desc: '丸数字・ローマ数字・㈱などの環境依存文字（いわゆるバグ文字）や、\n'
+        + '壊れた文字コードは他の端末で文字化けする原因になるため使用できません。\n\n'
+        + `該当文字：${bad.join(' ')}\n\nお手数ですが該当箇所を削除・打ち直してください。`,
+  });
+  if (fieldId) shake(fieldId);
+  return true;
 }
 
 // ============================================================
