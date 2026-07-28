@@ -1964,6 +1964,93 @@ function shake(id) {
   setTimeout(()=>el.style.borderColor='',700);
 }
 
+// ============================================================
+//  ★ 追加：理数モード（スマホのキーボードで打ちにくい記号の入力パレット）
+//  ─────────────────────────────────────────────
+//  ・√や上付き／下付き数字、±などをボタンタップでカーソル位置に挿入する。
+//  ・分数は「上付き数字」＋分数斜線(⁄)＋「下付き数字」の組み合わせで
+//    見た目上の分数（例: ¹⁄₂）を作れるようにしている（本格的なLaTeX表示はしない簡易版）。
+//  ・HTML側は各テキストエリアごとに空の <div class="math-pad" data-target="対象id">
+//    を置いておくだけでよく、中身のボタンはここで一括生成して流し込む。
+// ============================================================
+const MATH_PAD_HTML = (function(){
+  const supKeys = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹','⁺','⁻','⁽','⁾','ⁿ'];
+  const subKeys = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉','₊','₋','₍','₎'];
+  const symKeys = ['⁄','±','∓','×','÷','≤','≥','≠','≈','∞','π','θ','°','∑','∫'];
+  const keyBtn = c => `<button type="button" class="math-key" data-ch="${c}">${c}</button>`;
+  return `
+    <div class="math-row">
+      <span class="math-row-label">上付き文字（乗数など）</span>
+      ${supKeys.map(keyBtn).join('')}
+    </div>
+    <div class="math-row">
+      <span class="math-row-label">下付き文字（添字など）</span>
+      ${subKeys.map(keyBtn).join('')}
+    </div>
+    <div class="math-row">
+      <span class="math-row-label">記号（√ と ∛ はカッコごと挿入されます）</span>
+      <button type="button" class="math-key" data-open="√(" data-close=")">√</button>
+      <button type="button" class="math-key" data-open="∛(" data-close=")">∛</button>
+      ${symKeys.map(keyBtn).join('')}
+    </div>`;
+})();
+
+function initMathPads() {
+  document.querySelectorAll('.math-pad').forEach(pad => {
+    if (!pad.dataset.built) { pad.innerHTML = MATH_PAD_HTML; pad.dataset.built = '1'; }
+  });
+}
+
+// 単純な1文字挿入（選択範囲があればそこを置き換える＝ふつうの文字入力と同じ挙動）
+function mathInsertChar(el, ch) {
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
+  el.value = el.value.slice(0, start) + ch + el.value.slice(end);
+  const pos = start + ch.length;
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  autoResize(el);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// カッコ等での「囲み挿入」。選択範囲があればそれを囲み、無ければ間にカーソルを置く（√など）
+function mathInsertWrap(el, openStr, closeStr) {
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
+  const sel = el.value.slice(start, end);
+  el.value = el.value.slice(0, start) + openStr + sel + closeStr + el.value.slice(end);
+  const pos = sel ? (start + openStr.length + sel.length + closeStr.length) : (start + openStr.length);
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  autoResize(el);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// パレットの表示・非表示を切り替える（ボタン側の onclick から呼ばれる）
+function toggleMathPad(padId) {
+  const pad = document.getElementById(padId);
+  if (!pad) return;
+  const showing = pad.style.display === 'block';
+  pad.style.display = showing ? 'none' : 'block';
+}
+
+// ボタンタップは1か所に委任して処理（パレットは複数箇所に存在するため）
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.math-key');
+  if (!btn) return;
+  const pad = btn.closest('.math-pad');
+  if (!pad) return;
+  const target = document.getElementById(pad.dataset.target);
+  if (!target) return;
+  if (btn.dataset.open != null) {
+    mathInsertWrap(target, btn.dataset.open, btn.dataset.close || '');
+  } else {
+    mathInsertChar(target, btn.dataset.ch || '');
+  }
+});
+
+initMathPads();
+
 // ── 起動 ──────────────────────────────
 renderDeckList();
 
