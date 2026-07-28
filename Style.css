@@ -367,6 +367,9 @@ body {
 .btn-primary { background: var(--text); color: #fff; border: none; border-radius: var(--r-md); padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 6px; }
 .btn-danger  { background: none; color: #991b1b; border: 1px solid #fca5a5; border-radius: var(--r-md); padding: 13px; font-size: 15px; cursor: pointer; width: 100%; margin-top: 6px; }
 .modal-section-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
+.detail-actions { display: flex; gap: 10px; margin-top: 18px; }
+.detail-actions .btn-primary,
+.detail-actions .btn-danger { margin-top: 0; width: auto; flex: 1; }
 .success-bar { background: #dcfce7; color: #166534; border-radius: var(--r-sm); padding: 10px 13px; font-size: 13px; margin-bottom: 12px; display: none; }
 .error-bar   { background: #fee2e2; color: #991b1b; border-radius: var(--r-sm); padding: 10px 13px; font-size: 13px; margin-bottom: 12px; display: none; }
 
