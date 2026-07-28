@@ -108,7 +108,7 @@ html, body {
 }
 .auto-textarea::placeholder { color: var(--text-secondary); opacity: .7; }
 .block-actions {
-  display: flex; gap: .5rem; padding: .5rem 1rem .9rem;
+  display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem 1rem .9rem;
   border-top: 1px solid var(--border);
 }
 .block-action-btn {
@@ -161,6 +161,46 @@ html, body {
 }
 .editor-actions .btn { flex: 1; }
 
+/* ── 理数モード（数式記号パレット） ── */
+.math-pad {
+  margin-top: .5rem;
+  padding: .6rem .6rem .2rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.math-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: .4rem;
+}
+.math-row-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  width: 100%;
+}
+.math-key {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.math-key:active { background: var(--bg); transform: scale(0.94); }
+
 /* ── デッキ一覧 ── */
 .deck-grid { display: flex; flex-direction: column; gap: .9rem; }
 .deck-card {
@@ -169,6 +209,10 @@ html, body {
   display: flex; align-items: center; gap: .75rem;
 }
 .deck-card-info { flex: 1; min-width: 0; }
+.deck-card-subject {
+  font-size: 11px; font-weight: 700; color: var(--text-secondary);
+  margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .deck-card-title {
   font-size: 16px; font-weight: 700; margin-bottom: .25rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
