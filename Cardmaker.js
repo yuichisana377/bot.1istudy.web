@@ -387,8 +387,11 @@ function getInProgressItems() {
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     }
   }
-  items.sort((a, b) => b.updatedAt - a.updatedAt); // 新しく学習していた順
-  return items;
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const recentItems = items.filter(it => (now - it.updatedAt) <= ONE_WEEK_MS); // ★ 追加：直近1週間以内にプレイしたものだけに絞る
+  recentItems.sort((a, b) => b.updatedAt - a.updatedAt); // 新しく学習していた順
+  return recentItems;
 }
 
 function renderInProgressUI() {
