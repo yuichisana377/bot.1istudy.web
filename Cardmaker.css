@@ -452,6 +452,13 @@ html, body {
   width: 100%; padding: 1rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -8px 40px rgba(0,0,0,.15);
   animation: sheetUpCM .22s ease;
+  /* ★ 理数記号パネルなどを開くと中身が画面の高さを超えることがあるが、
+     これまでモーダル自体にスクロール手段が無く、はみ出た部分に
+     まったく触れない（スクロールできない）状態になっていたため追加。 */
+  max-height: 88vh;
+  max-height: 88dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 @keyframes sheetUpCM { from { transform: translateY(30px); opacity: 0; } }
 @media (min-width: 520px) {
