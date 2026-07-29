@@ -1283,9 +1283,9 @@ function openCardEditModalCommon(deckId, c, context) {
   editingDeckId  = deckId;
   editingCardKey = cardKey(c);
   editingContext = context;
-  document.getElementById('modal-edit-q').value = c.question;
-  document.getElementById('modal-edit-a').value = c.answer;
-  document.getElementById('modal-edit-e').value = c.explanation||'';
+  document.getElementById('modal-edit-q').value = mathToPlainText(c.question);
+  document.getElementById('modal-edit-a').value = mathToPlainText(c.answer);
+  document.getElementById('modal-edit-e').value = mathToPlainText(c.explanation||'');
   ['modal-edit-q','modal-edit-a','modal-edit-e'].forEach(id => {
     const el = document.getElementById(id);
     autoResize(el);
@@ -2054,23 +2054,112 @@ async function warnIfBugChars(str, fieldId) {
 // ============================================================
 //  ★ 追加：理数モード（分数・ルートを「教科書と同じ普通の見た目」で入力・表示する）
 //  ─────────────────────────────────────────────
-//  ・分数（\frac{}{}）とルート（\sqrt{}, \sqrt[3]{}）だけは LaTeX の記法で
-//    入力し、実際の見た目は KaTeX（外部の数式レンダリングライブラリ／CDN読み込み）
-//    で描画する。これにより分数はちゃんと横線で区切られ、ルートは根号が
-//    中身の上まで伸びる、教科書と同じような見た目になる。
-//  ・数式部分は \( ... \) で囲んだ範囲だけが数式として認識され、
-//    それ以外の日本語や数字は今まで通りの普通の文章として表示される。
+//  ・入力欄（問題文・解答など）そのものには、常に「√(4)」「(3)/(4)」のような
+//    読みやすい簡易記法だけを表示・保存する。\(\sqrt{4}\) のような生のLaTeX記法を
+//    ユーザーの目に触れさせることは一切しない。
+//  ・実際にきれいな見た目（分数の横線、根号が伸びるルートなど）で描画したい瞬間
+//    （理数モードのプレビュー欄・プレイ画面）だけ、simpleMathToLatexで内部的に
+//    LaTeXへ変換してからKaTeXに渡す。保存されるデータ自体は最後まで簡易記法のまま。
+//  ・既に「\(\sqrt{...}\)」のような旧形式（生LaTeX）で保存済みの既存カードも、
+//    simpleMathToLatexではパターンが一致しないためそのまま素通りし、
+//    今まで通りKaTeXで正しく描画される（後方互換）。
 //  ・上付き・下付き文字や±などの記号は、単独でも問題なく表示できるよう
 //    従来どおりUnicode文字をそのまま挿入する方式のままにしている。
-//  ・カード編集中は、パレット内にリアルタイムのプレビューを表示して、
-//    保存前にどう見えるかを確認できるようにしている。
 // ============================================================
 
-// 生のテキスト（\frac{}{}などの記法込み）を、指定要素に「普通の数式の見た目」で描画する。
+// 文字列 s の位置 openIdx にある '(' に対応する ')' の位置を返す（ネスト対応）。見つからなければ -1。
+function findMatchingParen(s, openIdx) {
+  let depth = 0;
+  for (let i = openIdx; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// simpleMathToLatexの内部再帰用：\( \) を付けない「素の」LaTeXへの変換。
+// √の中に分数がある等、ネストした数式の内側で使う（KaTeXの引数の中に\(\)を
+// 再度差し込むと壊れるため、ネスト部分には区切り記号を付けない）。
+function simpleMathToLatexRaw(s) {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if ((s[i] === '√' || s[i] === '∛') && s[i+1] === '(') {
+      const isCube = s[i] === '∛';
+      const closeIdx = findMatchingParen(s, i+1);
+      if (closeIdx !== -1) {
+        const inner = simpleMathToLatexRaw(s.slice(i+2, closeIdx));
+        out += isCube ? `\\sqrt[3]{${inner}}` : `\\sqrt{${inner}}`;
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+    if (s[i] === '(') {
+      const closeIdx = findMatchingParen(s, i);
+      if (closeIdx !== -1 && s[closeIdx+1] === '/' && s[closeIdx+2] === '(') {
+        const closeIdx2 = findMatchingParen(s, closeIdx+2);
+        if (closeIdx2 !== -1) {
+          const num = simpleMathToLatexRaw(s.slice(i+1, closeIdx));
+          const den = simpleMathToLatexRaw(s.slice(closeIdx+3, closeIdx2));
+          out += `\\frac{${num}}{${den}}`;
+          i = closeIdx2 + 1;
+          continue;
+        }
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return out;
+}
+
+// 簡易記法（√(...) ・ ∛(...) ・ (分子)/(分母)）を、KaTeXが描画できるLaTeX記法へ変換する。
+// 内側にネストした数式（√の中に分数がある等）も再帰的に変換する。
+// 該当するパターンが無い部分（旧形式の生LaTeXや、普通の文章）はそのまま素通しする。
+function simpleMathToLatex(raw) {
+  if (raw == null) return '';
+  const s = String(raw);
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    // √(...) ・ ∛(...)
+    if ((s[i] === '√' || s[i] === '∛') && s[i+1] === '(') {
+      const isCube = s[i] === '∛';
+      const closeIdx = findMatchingParen(s, i+1);
+      if (closeIdx !== -1) {
+        const inner = simpleMathToLatexRaw(s.slice(i+2, closeIdx));
+        out += isCube ? `\\(\\sqrt[3]{${inner}}\\)` : `\\(\\sqrt{${inner}}\\)`;
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+    // (分子)/(分母)
+    if (s[i] === '(') {
+      const closeIdx = findMatchingParen(s, i);
+      if (closeIdx !== -1 && s[closeIdx+1] === '/' && s[closeIdx+2] === '(') {
+        const closeIdx2 = findMatchingParen(s, closeIdx+2);
+        if (closeIdx2 !== -1) {
+          const num = simpleMathToLatexRaw(s.slice(i+1, closeIdx));
+          const den = simpleMathToLatexRaw(s.slice(closeIdx+3, closeIdx2));
+          out += `\\(\\frac{${num}}{${den}}\\)`;
+          i = closeIdx2 + 1;
+          continue;
+        }
+      }
+
+    }
+    out += s[i];
+    i++;
+  }
+  return out;
+}
+
+// 生のテキスト（√(4)のような簡易記法、または旧形式の\(\frac{}{}\)なども含む）を、
+// 指定要素に「普通の数式の見た目」で描画する。
 // KaTeXが読み込めていない場合（オフライン等）は記法そのままの文章として表示する。
 function setMathText(el, raw) {
   if (!el) return;
-  el.textContent = raw || '';
+  el.textContent = simpleMathToLatex(raw || '');
   if (window.renderMathInElement) {
     try {
       renderMathInElement(el, {
@@ -2083,6 +2172,8 @@ function setMathText(el, raw) {
 
 // 一覧などの1行プレビュー（改行・スタック表示ができない場所）用に、
 // 記法をできるだけ読みやすいプレーンテキストへ変換する簡易版。
+// ★ 新形式（√(4)など）は既にそのまま読みやすい形なので無変換で素通しし、
+//   旧形式（\(\sqrt{4}\)など）だけをここで読みやすい形へ変換する。
 const MATH_SUP_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','n':'ⁿ'};
 const MATH_SUB_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋'};
 function mathToPlainText(raw) {
@@ -2092,7 +2183,7 @@ function mathToPlainText(raw) {
   s = s.replace(/\\sqrt\[(.*?)\]\{([^{}]*)\}/g, (m, n, a) => `${n}√(${a})`);
   s = s.replace(/\\sqrt\{([^{}]*)\}/g, (m, a) => `√(${a})`);
   for (let i = 0; i < 3; i++) {
-    s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, (m, a, b) => `${a}⁄${b}`);
+    s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, (m, a, b) => `(${a})/(${b})`);
   }
   s = s.replace(/\^\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUP_MAP[a] ? MATH_SUP_MAP[a] : `^${a}`);
   s = s.replace(/_\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUB_MAP[a] ? MATH_SUB_MAP[a] : `_${a}`);
@@ -2121,7 +2212,7 @@ const MATH_PAD_HTML = (function(){
       <div class="math-preview"></div>
       <div class="math-row math-row-struct">
         <span class="math-row-label">分数・ルート（教科書と同じ見た目で表示されます）</span>
-        <button type="button" class="math-key math-key-wide" data-action="frac">分数<span class="math-key-hint">a⁄b</span></button>
+        <button type="button" class="math-key math-key-wide" data-action="frac">分数<span class="math-key-hint">(a)/(b)</span></button>
         <button type="button" class="math-key" data-action="sqrt">√</button>
         <button type="button" class="math-key" data-action="cbrt">∛</button>
       </div>
@@ -2205,15 +2296,15 @@ function mathInsertWrap(el, openStr, closeStr) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// 分数専用：選択範囲を分子にして \(\frac{分子}{}\) を作る。
+// 分数専用：選択範囲を分子にして (分子)/(分母) という読みやすい記法を作る。
 // 選択があれば分母側にカーソルを、無ければ分子側にカーソルを置く。
 function mathInsertFraction(el) {
   const start = el.selectionStart != null ? el.selectionStart : el.value.length;
   const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
   const sel = el.value.slice(start, end);
-  const prefix = '\\(\\frac{';
-  const middle = `${sel}}{`;
-  const suffix = '}\\)';
+  const prefix = '(';
+  const middle = `${sel})/(`;
+  const suffix = ')';
   el.value = el.value.slice(0, start) + prefix + middle + suffix + el.value.slice(end);
   const numPos = start + prefix.length;
   const denPos = start + prefix.length + middle.length;
@@ -2246,8 +2337,8 @@ document.addEventListener('click', function(e) {
   if (!target) return;
   switch (btn.dataset.action) {
     case 'frac': mathInsertFraction(target); break;
-    case 'sqrt': mathInsertWrap(target, '\\(\\sqrt{', '}\\)'); break;
-    case 'cbrt': mathInsertWrap(target, '\\(\\sqrt[3]{', '}\\)'); break;
+    case 'sqrt': mathInsertWrap(target, '√(', ')'); break;
+    case 'cbrt': mathInsertWrap(target, '∛(', ')'); break;
     default:     mathInsertChar(target, btn.dataset.ch || '');
   }
 });
