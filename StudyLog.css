@@ -496,6 +496,15 @@ html, body {
   margin-top: 2px;
 }
 .sl-task-btn:active  { opacity: .8; }
+
+/* 達成済み：通常ボタンの配色を反転（塗り→白地に文字色・枠線） */
+.sl-task-btn-done {
+  background: #fff;
+  color: var(--text);
+  border-color: var(--text);
+}
+.sl-task-btn-done:active { background: var(--bg); }
+
 .sl-task-btn:disabled {
   background: var(--bg);
   color: var(--text-tertiary);
