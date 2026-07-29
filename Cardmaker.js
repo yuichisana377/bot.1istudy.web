@@ -99,6 +99,18 @@ function collectDecksInFolder(folderId) {
   return [...direct, ...subDecks];
 }
 
+// ★ 追加：あるデッキ／フォルダが、指定フォルダの範囲内（サブフォルダ含む）に含まれるかどうか
+//   ・folderId が null の場合は「ホーム」＝アプリ全体なので、常に範囲内とみなす
+function isDeckInFolderScope(deckId, folderId) {
+  if (folderId === null) return true;
+  return collectDecksInFolder(folderId).some(d => d.id === deckId);
+}
+function isFolderInFolderScope(fid, folderId) {
+  if (folderId === null) return true;
+  if (fid === folderId) return true;
+  return folderDescendants(folderId).some(f => f.id === fid);
+}
+
 // ── ログインセッション（Login.js と共通） ──────
 const SESSION_KEY = 'sl_session';
 function getLoginSession() {
@@ -361,8 +373,9 @@ function renderBreadcrumb() {
 
 // ── プレイ中（続きから再開できる）デッキ・フォルダ ────────────────────
 //   ★ 追加：localStorage に保存されている学習進捗（cm_progress_deck_ / cm_progress_folder_）を
-//     すべて拾い出し、まだ存在するデッキ・フォルダに紐づくものだけをホーム画面に表示する。
-function getInProgressItems() {
+//     すべて拾い出し、まだ存在するデッキ・フォルダに紐づくものだけを表示する。
+//   scopeFolderId: 表示範囲。null ならホーム（アプリ全体）、フォルダidならそのフォルダ配下（サブフォルダ含む）のみ。
+function getInProgressItems(scopeFolderId) {
   const items = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -378,11 +391,13 @@ function getInProgressItems() {
     if (isFolder) {
       const folder = folders.find(f => f.id === id);
       if (!folder) continue; // フォルダが削除済みなら無視
+      if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
       items.push({ isFolder: true, id, name: folder.name, icon: '📁',
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     } else {
       const deck = decks.find(d => d.id === id);
       if (!deck) continue; // デッキが削除済みなら無視
+      if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
       items.push({ isFolder: false, id, name: deck.name, icon: '📇',
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     }
@@ -398,26 +413,22 @@ function renderInProgressUI() {
   const section = document.getElementById('inprogress-section');
   const scroll  = document.getElementById('inprogress-scroll');
   if (section && scroll) {
-    // ★ 「ホーム」＝ルート階層でのみ表示する（フォルダの中では出さない）
-    if (currentFolderId) {
+    // ★ ホームでは全体、フォルダ内ではそのフォルダ配下（サブフォルダ含む）だけに絞って表示する
+    const items = getInProgressItems(currentFolderId);
+    if (!items.length) {
       section.style.display = 'none'; scroll.innerHTML = '';
     } else {
-      const items = getInProgressItems();
-      if (!items.length) {
-        section.style.display = 'none'; scroll.innerHTML = '';
-      } else {
-        section.style.display = 'block';
-        scroll.innerHTML = items.map(it => {
-          const pct = Math.max(0, Math.min(100, Math.round(((it.idx) / it.total) * 100)));
-          return `
-          <div class="inprogress-card" onclick="resumeFromHome(${it.isFolder}, '${it.id}')">
-            <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
-            <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
-            <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
-            <div class="inprogress-resume-btn">▶️ 続きから</div>
-          </div>`;
-        }).join('');
-      }
+      section.style.display = 'block';
+      scroll.innerHTML = items.map(it => {
+        const pct = Math.max(0, Math.min(100, Math.round(((it.idx) / it.total) * 100)));
+        return `
+        <div class="inprogress-card" onclick="resumeFromHome(${it.isFolder}, '${it.id}')">
+          <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
+          <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
+          <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
+          <div class="inprogress-resume-btn">▶️ 続きから</div>
+        </div>`;
+      }).join('');
     }
   }
   renderCompletedUI(); // ★ 追加：プレイ済み（完了）欄も同時に更新する
@@ -426,7 +437,8 @@ function renderInProgressUI() {
 // ── プレイ済み（完了した）デッキ・フォルダ ────────────────────
 //   ★ 追加：localStorage に保存されている完了記録（cm_completed_deck_ / cm_completed_folder_）を
 //     すべて拾い出し、まだ存在するデッキ・フォルダに紐づく直近1週間以内のものだけを表示する。
-function getCompletedItems() {
+//   scopeFolderId: 表示範囲。null ならホーム（アプリ全体）、フォルダidならそのフォルダ配下（サブフォルダ含む）のみ。
+function getCompletedItems(scopeFolderId) {
   const items = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -442,11 +454,13 @@ function getCompletedItems() {
     if (isFolder) {
       const folder = folders.find(f => f.id === id);
       if (!folder) continue; // フォルダが削除済みなら無視
+      if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
       items.push({ isFolder: true, id, name: folder.name, icon: '📁',
         total: data.total, completedAt: data.completedAt });
     } else {
       const deck = decks.find(d => d.id === id);
       if (!deck) continue; // デッキが削除済みなら無視
+      if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
       items.push({ isFolder: false, id, name: deck.name, icon: '📇',
         total: data.total, completedAt: data.completedAt });
     }
@@ -463,10 +477,8 @@ function renderCompletedUI() {
   const scroll  = document.getElementById('completed-scroll');
   if (!section || !scroll) return;
 
-  // ★ 「ホーム」＝ルート階層でのみ表示する（フォルダの中では出さない）
-  if (currentFolderId) { section.style.display = 'none'; scroll.innerHTML = ''; return; }
-
-  const items = getCompletedItems();
+  // ★ ホームでは全体、フォルダ内ではそのフォルダ配下（サブフォルダ含む）だけに絞って表示する
+  const items = getCompletedItems(currentFolderId);
   if (!items.length) { section.style.display = 'none'; scroll.innerHTML = ''; return; }
 
   section.style.display = 'block';
