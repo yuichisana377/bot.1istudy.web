@@ -1360,13 +1360,13 @@ function refreshStudyCardDisplay(c) {
   const aText = studyReverse ? c.question : c.answer;
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
-  setMathText(document.getElementById('study-q-text'), qText);
+  setSimpleMathText(document.getElementById('study-q-text'), qText);
   document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
-  setMathText(document.getElementById('study-a-text'), aText);
+  setSimpleMathText(document.getElementById('study-a-text'), aText);
   document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) {
-    setMathText(document.getElementById('study-e-text'), c.explanation);
+    setSimpleMathText(document.getElementById('study-e-text'), c.explanation);
     explWrap.style.display = '';
   } else {
     explWrap.style.display = 'none';
@@ -1705,7 +1705,7 @@ function renderStudyCard() {
   const aText = studyReverse ? c.question : c.answer;
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
-  setMathText(document.getElementById('study-q-text'), qText);
+  setSimpleMathText(document.getElementById('study-q-text'), qText);
   document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   // ★ フォルダをまとめてプレイしている場合、この問題がどのカードデッキ由来かを表示する
   const deckTag = document.getElementById('study-deck-tag');
@@ -1723,10 +1723,10 @@ function renderStudyCard() {
   document.getElementById('study-answer-panel').classList.remove('show');
   document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
-  setMathText(document.getElementById('study-a-text'), aText);
+  setSimpleMathText(document.getElementById('study-a-text'), aText);
   document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
-  if (c.explanation) { setMathText(document.getElementById('study-e-text'), c.explanation); explWrap.style.display = ''; }
+  if (c.explanation) { setSimpleMathText(document.getElementById('study-e-text'), c.explanation); explWrap.style.display = ''; }
   else { explWrap.style.display = 'none'; }
   const pct = studyCards.length > 1 ? (studyIdx/(studyCards.length-1))*100 : 100;
   document.getElementById('study-prog-fill').style.width  = pct + '%';
@@ -2099,6 +2099,13 @@ function mathToPlainText(raw) {
   return s;
 }
 
+// 学習画面など「編集ではなく表示するだけ」の場所で使う簡易表示用ヘルパー。
+// KaTeXでの本描画はせず、mathToPlainTextで変換した崩れない文字列をそのまま入れる。
+function setSimpleMathText(el, raw) {
+  if (!el) return;
+  el.textContent = mathToPlainText(raw);
+}
+
 const MATH_PAD_HTML = (function(){
   const supKeys = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹','⁺','⁻','⁽','⁾','ⁿ'];
   const subKeys = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉','₊','₋','₍','₎'];
@@ -2110,10 +2117,10 @@ const MATH_PAD_HTML = (function(){
       <button type="button" class="math-pad-close" onclick="toggleMathPad(this.closest('.math-pad').id)" aria-label="閉じる">✕</button>
     </div>
     <div class="math-pad-body">
-      <div class="math-preview-label">プレビュー（簡易表示）</div>
+      <div class="math-preview-label">プレビュー</div>
       <div class="math-preview"></div>
       <div class="math-row math-row-struct">
-        <span class="math-row-label">分数・ルート（学習画面ではきれいな見た目で表示されます）</span>
+        <span class="math-row-label">分数・ルート（教科書と同じ見た目で表示されます）</span>
         <button type="button" class="math-key math-key-wide" data-action="frac">分数<span class="math-key-hint">a⁄b</span></button>
         <button type="button" class="math-key" data-action="sqrt">√</button>
         <button type="button" class="math-key" data-action="cbrt">∛</button>
@@ -2142,11 +2149,7 @@ function initMathPads() {
     const target  = document.getElementById(pad.dataset.target);
     const preview = pad.querySelector('.math-preview');
     if (target && preview) {
-      // ★ 編集中のプレビューはKaTeXで本描画すると、入力途中（カッコが
-      //   閉じていない等）でエラー表示になり崩れて見えることがあるため、
-      //   ここでは常に崩れない簡易表示（√(...) や a⁄b など）にする。
-      //   本格的な見た目（教科書のような分数・ルート）は学習画面の方で表示される。
-      const update = () => { preview.textContent = mathToPlainText(target.value); };
+      const update = () => setMathText(preview, target.value);
       target.addEventListener('input', update);
       pad._mathUpdate = update;
     }
