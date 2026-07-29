@@ -553,7 +553,7 @@ function renderTasks() {
     var done    = doneIds.includes(t.id);
     var pending = pendingTaskIds.has(t.id);
 
-    var btnLabel = pending ? "送信中…" : (done ? "✓ 達成済み（タップで取消）" : "達成する");
+    var btnLabel = pending ? "送信中…" : (done ? "✓ 達成済み" : "達成する");
     var btnClass = "sl-task-btn" + (done ? " sl-task-btn-done" : "");
 
     // ★ 備考は普段は隠しておき、タップで表示する（Plan.jsの詳細表示と同じ考え方）
