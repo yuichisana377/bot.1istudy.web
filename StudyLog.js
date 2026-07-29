@@ -28,6 +28,16 @@ const GUILD_ID    = "1509880344806162544";
 const SESSION_KEY = "sl_session";
 const DEFAULT_TASK_POINTS = 5;
 
+// ★ 備考をcontent文字列に埋め込むための区切り文字列（Plan.jsと同じ形式）
+const NOTE_SEP = '\n📝備考：';
+
+// ★ content から【カテゴリ】タグを除いた「内容」と「備考」を分離する（Plan.jsのparsePlanContentに相当）
+function splitContentNote(raw) {
+  const stripped = String(raw).replace(/【.*?】/, "").trim();
+  const [textPart, notePart] = stripped.split(NOTE_SEP);
+  return { text: (textPart || "").trim(), note: (notePart || "").trim() };
+}
+
 // ── セッション取得・チェック ────────────────────────────
 function getSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch(e) { return null; }
@@ -71,15 +81,19 @@ async function loadTasks() {
         const due = new Date(p.date); due.setHours(0, 0, 0, 0);
         return isTarget && due >= today;
       })
-      .map(p => ({
-        id:      `${p.date}_${p.subject}_${p.content}`,
-        subject: p.subject,
-        title:   p.content.replace(/【.*?】/, "").trim(),
-        due:     p.date,
-        // ★ サーバー側（予定管理の追加・編集画面）で設定したポイントを優先。
-        //    未設定の予定は従来どおりデフォルト5ptにフォールバック。
-        points:  (p.points != null) ? p.points : DEFAULT_TASK_POINTS,
-      }));
+      .map(p => {
+        const { text, note } = splitContentNote(p.content);
+        return {
+          id:      `${p.date}_${p.subject}_${p.content}`,
+          subject: p.subject,
+          title:   text,
+          note:    note, // ★ 備考（タップで表示するため分離）
+          due:     p.date,
+          // ★ サーバー側（予定管理の追加・編集画面）で設定したポイントを優先。
+          //    未設定の予定は従来どおりデフォルト5ptにフォールバック。
+          points:  (p.points != null) ? p.points : DEFAULT_TASK_POINTS,
+        };
+      });
 
     renderTasks();
   } catch(e) { TASKS_JSON = []; renderTasks(); }
@@ -541,14 +555,21 @@ function renderTasks() {
     var btnLabel = pending ? "送信中…" : (done ? "✓ 達成済み（タップで取消）" : "達成する");
     var btnClass = "sl-task-btn" + (done ? " sl-task-btn-done" : "");
 
+    // ★ 備考は普段は隠しておき、タップで表示する（Plan.jsの詳細表示と同じ考え方）
+    var noteDot  = t.note ? '<span class="note-dot" title="備考あり">📝</span>' : '';
+    var noteHtml = t.note ? '<div class="sl-task-note">' + esc(t.note) + '</div>' : '';
+
     return '<div class="sl-task-row' + (done ? " done-row" : "") + '">' +
-      '<div class="sl-task-body">' +
+      '<div class="sl-task-body' + (t.note ? " has-note" : "") + '"' +
+        (t.note ? ' onclick="toggleTaskNote(this)"' : '') + '>' +
         '<div class="sl-task-title' + (done ? " done" : "") + '">' + esc(t.title) + '</div>' +
         '<div class="sl-task-meta">' +
           '<span class="sl-subject-badge">' + esc(t.subject) + '</span>' +
           '<span class="sl-due">締切: ' + t.due + '</span>' +
           '<span class="sl-pts-badge">⭐ +' + t.points + 'pt</span>' +
+          noteDot +
         '</div>' +
+        noteHtml +
       '</div>' +
       '<button class="' + btnClass + '" data-task-id="' + t.id + '"' +
         (pending ? ' disabled' : '') +
@@ -557,6 +578,13 @@ function renderTasks() {
       '</button>' +
     '</div>';
   }).join("");
+}
+
+// ★ 備考のタップ表示切り替え（.sl-task-body をタップすると開閉する）
+function toggleTaskNote(bodyEl) {
+  var noteEl = bodyEl.querySelector(".sl-task-note");
+  if (!noteEl) return;
+  noteEl.classList.toggle("open");
 }
 
 // ============================================================
