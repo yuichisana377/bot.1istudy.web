@@ -164,55 +164,51 @@ html, body {
 /* ── 理数モード（数式記号パレット） ── */
 .math-pad {
   margin-top: .6rem;
-  border-radius: 14px;
   border: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: 0 2px 10px rgba(0,0,0,.05);
-  overflow: hidden;
-  animation: mathPadIn .15s ease;
-}
-@keyframes mathPadIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  border-radius: 10px;
+  background: var(--bg);
 }
 .math-pad-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: .55rem .85rem;
-  background: linear-gradient(135deg, #EFF4FF, #F5F0FF);
+  padding: .5rem .75rem;
   border-bottom: 1px solid var(--border);
 }
 .math-pad-title {
-  font-size: 12px; font-weight: 800; color: #2563EB;
-  display: flex; align-items: center; gap: .35rem; letter-spacing: .01em;
+  font-size: 12px; font-weight: 700; color: var(--text-secondary);
 }
 .math-pad-close {
-  width: 24px; height: 24px; border-radius: 50%;
-  border: none; background: rgba(0,0,0,.05); color: var(--text-secondary);
+  width: 22px; height: 22px; border-radius: 50%;
+  border: none; background: transparent; color: var(--text-secondary);
   font-size: 13px; line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.math-pad-close:active { background: rgba(0,0,0,.1); }
+.math-pad-close:active { background: var(--surface); }
 
-.math-pad-body { padding: .7rem .8rem .8rem; background: var(--bg); }
+.math-pad-body { padding: .6rem .7rem .7rem; }
 
 /* プレビュー：実際に「分数の横線」「ルートの根号」が見える形でここに表示される */
 .math-preview-label {
-  font-size: 10.5px; font-weight: 800; color: var(--text-secondary);
-  letter-spacing: .03em; margin-bottom: 5px;
+  font-size: 10.5px; font-weight: 700; color: var(--text-secondary);
+  margin-bottom: 4px;
 }
 .math-preview {
-  min-height: 22px;
+  min-height: 20px;
   background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  padding: .55rem .75rem;
-  margin-bottom: .7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .5rem .65rem;
+  margin-bottom: .6rem;
   font-size: 16px;
   color: var(--text);
-  overflow-x: auto;
+  /* ★ スマホで縦スクロールが引っかからないよう、横スクロール領域は作らない
+     （overflow-x:auto にすると、この上をタップした時に縦スクロールが
+      効かなくなることがあるため、はみ出た分は折り返す／隠すだけにする） */
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
   word-break: break-word;
+  touch-action: pan-y;
 }
 .math-preview:empty::before {
   content: '記号を入力するとここにプレビューが表示されます';
@@ -220,51 +216,32 @@ html, body {
   font-size: 12px;
 }
 
-.math-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: .6rem; }
+.math-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: .5rem; }
 .math-row:last-child { margin-bottom: 0; }
 .math-row-label {
-  width: 100%; font-size: 10.5px; font-weight: 800;
-  letter-spacing: .03em; margin-bottom: 1px;
-  display: flex; align-items: center; gap: 5px;
+  width: 100%; font-size: 10.5px; font-weight: 700; color: var(--text-secondary);
+  margin-bottom: 1px;
 }
-.math-row-label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.math-row-struct {
-  background: rgba(37,99,235,.06); border-radius: 10px;
-  padding: .5rem .5rem .55rem;
-}
-.math-row-struct .math-row-label { color: #2563EB; }
-.math-row-sup .math-row-label { color: #7C3AED; }
-.math-row-sub .math-row-label { color: #0D9488; }
-.math-row-sym .math-row-label { color: #EA580C; }
 
 .math-key {
-  min-width: 38px; height: 38px; padding: 0 10px;
-  border: 1px solid var(--border); border-radius: 10px;
+  min-width: 36px; height: 36px; padding: 0 9px;
+  border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface);
-  font-size: 16px; font-weight: 600; font-family: inherit; color: var(--text);
+  font-size: 15px; font-weight: 600; font-family: inherit; color: var(--text);
   line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer; user-select: none;
   -webkit-tap-highlight-color: transparent;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-  transition: transform .08s ease, background .12s ease, box-shadow .12s ease;
 }
-.math-key:active { transform: scale(.9); background: #EFF4FF; box-shadow: none; }
+.math-key:active { background: var(--bg); }
 
-/* 分数・ルート・上付き・下付きボタンは「数式を組み立てる」特別なボタンとして強調 */
-.math-key[data-action] {
-  font-weight: 800; color: #2563EB; background: #fff; border-color: #DBEAFE;
-}
-.math-key[data-action]:active { background: #DBEAFE; }
-.math-key-wide {
-  flex-direction: column; min-width: 58px; height: 44px; gap: 1px; padding: 0 10px;
-}
-.math-key-hint {
-  font-size: 10px; font-weight: 600; color: #60A5FA; line-height: 1;
-}
+/* 分数・ルートボタンは「数式を組み立てる」特別なボタンとして少しだけ強調 */
+.math-key[data-action] { font-weight: 700; color: #2563EB; border-color: #DBEAFE; }
+.math-key-wide { flex-direction: column; min-width: 52px; height: 40px; gap: 1px; padding: 0 8px; }
+.math-key-hint { font-size: 9.5px; font-weight: 600; color: #60A5FA; line-height: 1; }
 
 .math-pad-tip {
-  font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: .5rem;
+  font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: .4rem;
 }
 
 /* パレットが開いている間、切り替えボタン自体もひと目でわかるようハイライト */
