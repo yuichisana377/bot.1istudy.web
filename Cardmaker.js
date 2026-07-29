@@ -881,8 +881,10 @@ async function openEditDeck(deckId) {
 }
 function clearEditor() {
   ['q','a','e'].forEach(k => {
-    document.getElementById('ta-'+k).value = '';
-    autoResize(document.getElementById('ta-'+k));
+    const el = document.getElementById('ta-'+k);
+    el.value = '';
+    autoResize(el);
+    el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 数式プレビューもクリアする
     imgBuf[k] = [];
     document.getElementById('imgs-'+k).innerHTML = '';
   });
@@ -1025,8 +1027,8 @@ function renderCreatedList() {
       <span class="drag-handle" title="ドラッグして並び替え">⠿</span>
       <div class="created-item-num">${i+1}</div>
       <div class="created-item-body">
-        <div class="created-item-q">${esc(c.question)}</div>
-        <div class="created-item-a">${esc(c.answer)}</div>
+        <div class="created-item-q">${esc(mathToPlainText(c.question))}</div>
+        <div class="created-item-a">${esc(mathToPlainText(c.answer))}</div>
       </div>
       <div class="created-item-btns">
         <button class="btn btn-ghost btn-sm" onclick="openCardEditModal(${i})">編集</button>
@@ -1284,7 +1286,11 @@ function openCardEditModalCommon(deckId, c, context) {
   document.getElementById('modal-edit-q').value = c.question;
   document.getElementById('modal-edit-a').value = c.answer;
   document.getElementById('modal-edit-e').value = c.explanation||'';
-  ['modal-edit-q','modal-edit-a','modal-edit-e'].forEach(id => autoResize(document.getElementById(id)));
+  ['modal-edit-q','modal-edit-a','modal-edit-e'].forEach(id => {
+    const el = document.getElementById(id);
+    autoResize(el);
+    el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 既存の数式プレビューを反映させる
+  });
 
   // ★ 追加：既存の画像をモーダル専用バッファへコピーして表示する
   //   （元の配列を直接触らず、保存時にまとめて書き戻すため）
@@ -1354,13 +1360,13 @@ function refreshStudyCardDisplay(c) {
   const aText = studyReverse ? c.question : c.answer;
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
-  document.getElementById('study-q-text').textContent = qText;
+  setMathText(document.getElementById('study-q-text'), qText);
   document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
-  document.getElementById('study-a-text').textContent = aText;
+  setMathText(document.getElementById('study-a-text'), aText);
   document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) {
-    document.getElementById('study-e-text').textContent = c.explanation;
+    setMathText(document.getElementById('study-e-text'), c.explanation);
     explWrap.style.display = '';
   } else {
     explWrap.style.display = 'none';
@@ -1699,7 +1705,7 @@ function renderStudyCard() {
   const aText = studyReverse ? c.question : c.answer;
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
-  document.getElementById('study-q-text').textContent = qText;
+  setMathText(document.getElementById('study-q-text'), qText);
   document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   // ★ フォルダをまとめてプレイしている場合、この問題がどのカードデッキ由来かを表示する
   const deckTag = document.getElementById('study-deck-tag');
@@ -1717,10 +1723,10 @@ function renderStudyCard() {
   document.getElementById('study-answer-panel').classList.remove('show');
   document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
-  document.getElementById('study-a-text').textContent = aText;
+  setMathText(document.getElementById('study-a-text'), aText);
   document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
-  if (c.explanation) { document.getElementById('study-e-text').textContent = c.explanation; explWrap.style.display = ''; }
+  if (c.explanation) { setMathText(document.getElementById('study-e-text'), c.explanation); explWrap.style.display = ''; }
   else { explWrap.style.display = 'none'; }
   const pct = studyCards.length > 1 ? (studyIdx/(studyCards.length-1))*100 : 100;
   document.getElementById('study-prog-fill').style.width  = pct + '%';
@@ -2046,39 +2052,100 @@ async function warnIfBugChars(str, fieldId) {
 }
 
 // ============================================================
-//  ★ 追加：理数モード（スマホのキーボードで打ちにくい記号の入力パレット）
+//  ★ 追加：理数モード（分数・ルートを「教科書と同じ普通の見た目」で入力・表示する）
 //  ─────────────────────────────────────────────
-//  ・√や上付き／下付き数字、±などをボタンタップでカーソル位置に挿入する。
-//  ・分数は「上付き数字」＋分数斜線(⁄)＋「下付き数字」の組み合わせで
-//    見た目上の分数（例: ¹⁄₂）を作れるようにしている（本格的なLaTeX表示はしない簡易版）。
-//  ・HTML側は各テキストエリアごとに空の <div class="math-pad" data-target="対象id">
-//    を置いておくだけでよく、中身のボタンはここで一括生成して流し込む。
+//  ・分数（\frac{}{}）とルート（\sqrt{}, \sqrt[3]{}）だけは LaTeX の記法で
+//    入力し、実際の見た目は KaTeX（外部の数式レンダリングライブラリ／CDN読み込み）
+//    で描画する。これにより分数はちゃんと横線で区切られ、ルートは根号が
+//    中身の上まで伸びる、教科書と同じような見た目になる。
+//  ・数式部分は \( ... \) で囲んだ範囲だけが数式として認識され、
+//    それ以外の日本語や数字は今まで通りの普通の文章として表示される。
+//  ・上付き・下付き文字や±などの記号は、単独でも問題なく表示できるよう
+//    従来どおりUnicode文字をそのまま挿入する方式のままにしている。
+//  ・カード編集中は、パレット内にリアルタイムのプレビューを表示して、
+//    保存前にどう見えるかを確認できるようにしている。
 // ============================================================
+
+// 生のテキスト（\frac{}{}などの記法込み）を、指定要素に「普通の数式の見た目」で描画する。
+// KaTeXが読み込めていない場合（オフライン等）は記法そのままの文章として表示する。
+function setMathText(el, raw) {
+  if (!el) return;
+  el.textContent = raw || '';
+  if (window.renderMathInElement) {
+    try {
+      renderMathInElement(el, {
+        delimiters: [{ left: '\\(', right: '\\)', display: false }],
+        throwOnError: false,
+      });
+    } catch (e) { /* 描画に失敗しても元のプレーンテキストのまま表示される */ }
+  }
+}
+
+// 一覧などの1行プレビュー（改行・スタック表示ができない場所）用に、
+// 記法をできるだけ読みやすいプレーンテキストへ変換する簡易版。
+const MATH_SUP_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','n':'ⁿ'};
+const MATH_SUB_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋'};
+function mathToPlainText(raw) {
+  if (raw == null) return '';
+  let s = String(raw);
+  s = s.replace(/\\\(|\\\)/g, '');
+  s = s.replace(/\\sqrt\[(.*?)\]\{([^{}]*)\}/g, (m, n, a) => `${n}√(${a})`);
+  s = s.replace(/\\sqrt\{([^{}]*)\}/g, (m, a) => `√(${a})`);
+  for (let i = 0; i < 3; i++) {
+    s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, (m, a, b) => `${a}⁄${b}`);
+  }
+  s = s.replace(/\^\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUP_MAP[a] ? MATH_SUP_MAP[a] : `^${a}`);
+  s = s.replace(/_\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUB_MAP[a] ? MATH_SUB_MAP[a] : `_${a}`);
+  return s;
+}
+
 const MATH_PAD_HTML = (function(){
   const supKeys = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹','⁺','⁻','⁽','⁾','ⁿ'];
   const subKeys = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉','₊','₋','₍','₎'];
-  const symKeys = ['⁄','±','∓','×','÷','≤','≥','≠','≈','∞','π','θ','°','∑','∫'];
+  const symKeys = ['±','∓','×','÷','≤','≥','≠','≈','∞','π','θ','°','∑','∫'];
   const keyBtn = c => `<button type="button" class="math-key" data-ch="${c}">${c}</button>`;
   return `
-    <div class="math-row">
-      <span class="math-row-label">上付き文字（乗数など）</span>
-      ${supKeys.map(keyBtn).join('')}
+    <div class="math-pad-header">
+      <span class="math-pad-title">🧮 理数モード</span>
+      <button type="button" class="math-pad-close" onclick="toggleMathPad(this.closest('.math-pad').id)" aria-label="閉じる">✕</button>
     </div>
-    <div class="math-row">
-      <span class="math-row-label">下付き文字（添字など）</span>
-      ${subKeys.map(keyBtn).join('')}
-    </div>
-    <div class="math-row">
-      <span class="math-row-label">記号（√ と ∛ はカッコごと挿入されます）</span>
-      <button type="button" class="math-key" data-open="√(" data-close=")">√</button>
-      <button type="button" class="math-key" data-open="∛(" data-close=")">∛</button>
-      ${symKeys.map(keyBtn).join('')}
+    <div class="math-pad-body">
+      <div class="math-preview-label">プレビュー</div>
+      <div class="math-preview"></div>
+      <div class="math-row math-row-struct">
+        <span class="math-row-label">分数・ルート（教科書と同じ見た目で表示されます）</span>
+        <button type="button" class="math-key math-key-wide" data-action="frac">分数<span class="math-key-hint">a⁄b</span></button>
+        <button type="button" class="math-key" data-action="sqrt">√</button>
+        <button type="button" class="math-key" data-action="cbrt">∛</button>
+      </div>
+      <div class="math-row math-row-sup">
+        <span class="math-row-label">上付き文字（乗数など）</span>
+        ${supKeys.map(keyBtn).join('')}
+      </div>
+      <div class="math-row math-row-sub">
+        <span class="math-row-label">下付き文字（添字など）</span>
+        ${subKeys.map(keyBtn).join('')}
+      </div>
+      <div class="math-row math-row-sym">
+        <span class="math-row-label">記号</span>
+        ${symKeys.map(keyBtn).join('')}
+      </div>
+      <div class="math-pad-tip">💡 分数・ルートは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
     </div>`;
 })();
 
 function initMathPads() {
   document.querySelectorAll('.math-pad').forEach(pad => {
-    if (!pad.dataset.built) { pad.innerHTML = MATH_PAD_HTML; pad.dataset.built = '1'; }
+    if (pad.dataset.built) return;
+    pad.innerHTML = MATH_PAD_HTML;
+    pad.dataset.built = '1';
+    const target  = document.getElementById(pad.dataset.target);
+    const preview = pad.querySelector('.math-preview');
+    if (target && preview) {
+      const update = () => setMathText(preview, target.value);
+      target.addEventListener('input', update);
+      pad._mathUpdate = update;
+    }
   });
 }
 
@@ -2094,7 +2161,8 @@ function mathInsertChar(el, ch) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// カッコ等での「囲み挿入」。選択範囲があればそれを囲み、無ければ間にカーソルを置く（√など）
+// 「囲み挿入」。選択範囲があればそれを openStr/closeStr で囲み、無ければ間にカーソルを置く。
+// √・∛はこれ一本で、それぞれ \( \) ごと自己完結した数式として挿入される。
 function mathInsertWrap(el, openStr, closeStr) {
   const start = el.selectionStart != null ? el.selectionStart : el.value.length;
   const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
@@ -2107,12 +2175,35 @@ function mathInsertWrap(el, openStr, closeStr) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+// 分数専用：選択範囲を分子にして \(\frac{分子}{}\) を作る。
+// 選択があれば分母側にカーソルを、無ければ分子側にカーソルを置く。
+function mathInsertFraction(el) {
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
+  const sel = el.value.slice(start, end);
+  const prefix = '\\(\\frac{';
+  const middle = `${sel}}{`;
+  const suffix = '}\\)';
+  el.value = el.value.slice(0, start) + prefix + middle + suffix + el.value.slice(end);
+  const numPos = start + prefix.length;
+  const denPos = start + prefix.length + middle.length;
+  const pos = sel ? denPos : numPos;
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  autoResize(el);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 // パレットの表示・非表示を切り替える（ボタン側の onclick から呼ばれる）
+// 開いたときは対応する切り替えボタン（data-btn で紐付け）もハイライトし、プレビューも更新する
 function toggleMathPad(padId) {
   const pad = document.getElementById(padId);
   if (!pad) return;
-  const showing = pad.style.display === 'block';
-  pad.style.display = showing ? 'none' : 'block';
+  const opening = pad.style.display !== 'block';
+  pad.style.display = opening ? 'block' : 'none';
+  const btn = pad.dataset.btn ? document.getElementById(pad.dataset.btn) : null;
+  if (btn) btn.classList.toggle('math-btn-active', opening);
+  if (opening && pad._mathUpdate) pad._mathUpdate();
 }
 
 // ボタンタップは1か所に委任して処理（パレットは複数箇所に存在するため）
@@ -2123,10 +2214,11 @@ document.addEventListener('click', function(e) {
   if (!pad) return;
   const target = document.getElementById(pad.dataset.target);
   if (!target) return;
-  if (btn.dataset.open != null) {
-    mathInsertWrap(target, btn.dataset.open, btn.dataset.close || '');
-  } else {
-    mathInsertChar(target, btn.dataset.ch || '');
+  switch (btn.dataset.action) {
+    case 'frac': mathInsertFraction(target); break;
+    case 'sqrt': mathInsertWrap(target, '\\(\\sqrt{', '}\\)'); break;
+    case 'cbrt': mathInsertWrap(target, '\\(\\sqrt[3]{', '}\\)'); break;
+    default:     mathInsertChar(target, btn.dataset.ch || '');
   }
 });
 
