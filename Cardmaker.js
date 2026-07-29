@@ -1360,13 +1360,13 @@ function refreshStudyCardDisplay(c) {
   const aText = studyReverse ? c.question : c.answer;
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
-  setSimpleMathText(document.getElementById('study-q-text'), qText);
+  setMathText(document.getElementById('study-q-text'), qText);
   document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
-  setSimpleMathText(document.getElementById('study-a-text'), aText);
+  setMathText(document.getElementById('study-a-text'), aText);
   document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) {
-    setSimpleMathText(document.getElementById('study-e-text'), c.explanation);
+    setMathText(document.getElementById('study-e-text'), c.explanation);
     explWrap.style.display = '';
   } else {
     explWrap.style.display = 'none';
@@ -1705,7 +1705,7 @@ function renderStudyCard() {
   const aText = studyReverse ? c.question : c.answer;
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
-  setSimpleMathText(document.getElementById('study-q-text'), qText);
+  setMathText(document.getElementById('study-q-text'), qText);
   document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   // ★ フォルダをまとめてプレイしている場合、この問題がどのカードデッキ由来かを表示する
   const deckTag = document.getElementById('study-deck-tag');
@@ -1723,10 +1723,10 @@ function renderStudyCard() {
   document.getElementById('study-answer-panel').classList.remove('show');
   document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
-  setSimpleMathText(document.getElementById('study-a-text'), aText);
+  setMathText(document.getElementById('study-a-text'), aText);
   document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
-  if (c.explanation) { setSimpleMathText(document.getElementById('study-e-text'), c.explanation); explWrap.style.display = ''; }
+  if (c.explanation) { setMathText(document.getElementById('study-e-text'), c.explanation); explWrap.style.display = ''; }
   else { explWrap.style.display = 'none'; }
   const pct = studyCards.length > 1 ? (studyIdx/(studyCards.length-1))*100 : 100;
   document.getElementById('study-prog-fill').style.width  = pct + '%';
@@ -2153,7 +2153,30 @@ function initMathPads() {
       target.addEventListener('input', update);
       pad._mathUpdate = update;
     }
+    if (target) attachInlineSimplePreview(target);
   });
+}
+
+// ★ 追加：問題文・解答などの入力欄（ta-q / modal-edit-q など）そのものの直下に、
+//   \(\sqrt{}\) のような生のLaTeX記法ではなく「√()」のような読みやすい簡易表示を
+//   常時プレビューする。理数記号パレットをわざわざ開かなくても、入力欄を
+//   見ただけでどんな数式になっているかがひと目でわかるようにするため。
+//   （教科書と同じ本格的な見た目のプレビューは、既存の理数モードパレット内の
+//   プレビューが担当するので、ここでは崩れない軽量なテキスト表示にとどめる）
+function attachInlineSimplePreview(target) {
+  if (!target || target.dataset.simplePreviewAttached) return;
+  target.dataset.simplePreviewAttached = '1';
+  const preview = document.createElement('div');
+  preview.className = 'math-inline-simple-preview';
+  preview.style.cssText = 'margin-top:4px;padding:2px 0;font-size:13px;color:var(--text-secondary,#888);white-space:pre-wrap;word-break:break-word;';
+  target.insertAdjacentElement('afterend', preview);
+  const update = () => {
+    const plain = mathToPlainText(target.value);
+    // 数式記法を含んでいない（＝普通の文章のまま）場合は、二重表示を避けるため何も出さない
+    preview.textContent = plain === target.value ? '' : plain;
+  };
+  target.addEventListener('input', update);
+  update();
 }
 
 // 単純な1文字挿入（選択範囲があればそこを置き換える＝ふつうの文字入力と同じ挙動）
