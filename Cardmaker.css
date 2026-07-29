@@ -266,6 +266,10 @@ html, body {
   border-left: 4px solid #2563EB;
 }
 .inprogress-card:active { background: var(--bg); }
+.inprogress-subject {
+  font-size: 11px; font-weight: 700; color: var(--text-secondary);
+  margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .inprogress-title {
   font-size: 14px; font-weight: 700; margin-bottom: .35rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -299,6 +303,10 @@ html, body {
   border-left: 4px solid #16a34a;
 }
 .completed-card:active { background: var(--bg); }
+.completed-subject {
+  font-size: 11px; font-weight: 700; color: var(--text-secondary);
+  margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .completed-title {
   font-size: 14px; font-weight: 700; margin-bottom: .35rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
