@@ -128,6 +128,7 @@ window.addEventListener("load", function() {
   applySession();
   setTodayLabel();
   restoreTimer();
+  initTaskListEvents(); // ★ 課題リストのクリックをイベント委譲で処理（IDに引用符が含まれても壊れないように）
 
   Promise.all([
     loadUsers(),           // ★ 全ユーザーのnicknameMapを最初に構築
@@ -560,8 +561,7 @@ function renderTasks() {
     var noteHtml = t.note ? '<div class="sl-task-note">' + esc(t.note) + '</div>' : '';
 
     return '<div class="sl-task-row' + (done ? " done-row" : "") + '">' +
-      '<div class="sl-task-body' + (t.note ? " has-note" : "") + '"' +
-        (t.note ? ' onclick="toggleTaskNote(this)"' : '') + '>' +
+      '<div class="sl-task-body' + (t.note ? " has-note" : "") + '">' +
         '<div class="sl-task-title' + (done ? " done" : "") + '">' + esc(t.title) + '</div>' +
         '<div class="sl-task-meta">' +
           '<span class="sl-subject-badge">' + esc(t.subject) + '</span>' +
@@ -571,13 +571,33 @@ function renderTasks() {
         '</div>' +
         noteHtml +
       '</div>' +
-      '<button class="' + btnClass + '" data-task-id="' + t.id + '"' +
-        (pending ? ' disabled' : '') +
-        ' onclick="toggleTask(\'' + t.id + '\')">' +
+      '<button class="' + btnClass + '" data-task-id="' + escAttr(t.id) + '"' +
+        (pending ? ' disabled' : '') + '>' +
         btnLabel +
       '</button>' +
     '</div>';
   }).join("");
+}
+
+// ★ 課題リストのクリックをイベント委譲で処理する（一度だけ登録すればOK）
+//   ・「達成する／達成済み」ボタン → toggleTask()
+//   ・備考ありの本文（.has-note） → toggleTaskNote()
+//   inline onclick に生のIDや備考文字列を直接埋め込むと、内容に引用符（' や "）が
+//   含まれた場合にHTML/JSが壊れて達成ボタンが反応しなくなるため、この方式に変更。
+function initTaskListEvents() {
+  var el = document.getElementById("task-list");
+  if (!el || el.dataset.boundClick) return;
+  el.dataset.boundClick = "1";
+  el.addEventListener("click", function(e) {
+    var btn = e.target.closest(".sl-task-btn");
+    if (btn) {
+      if (btn.disabled) return;
+      toggleTask(btn.dataset.taskId);
+      return;
+    }
+    var body = e.target.closest(".sl-task-body.has-note");
+    if (body) toggleTaskNote(body);
+  });
 }
 
 // ★ 備考のタップ表示切り替え（.sl-task-body をタップすると開閉する）
@@ -878,6 +898,11 @@ function renderSubjectDropdown() {
 // ============================================================
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+// ★ 属性値用（esc()に加えて引用符もエスケープする。備考等の自由入力にクォートが
+//   含まれていても onclick 属性やHTML構造が壊れないようにするため）
+function escAttr(s) {
+  return esc(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // ============================================================
