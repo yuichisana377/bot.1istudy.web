@@ -9,6 +9,8 @@ const LOGIN_PATH = '/Login.html'; // ★ Cardmaker.js と同じ基準のログ�
 
 let notices = [];
 let currentViewFilename = null;
+let currentViewContent = null;
+let isEditingNotice = false;
 
 // ── ログインセッション（Login.js / Cardmaker.js と共通） ──────
 const SESSION_KEY = 'sl_session';
@@ -90,6 +92,7 @@ async function openViewModal(filename) {
     const data = await api(`/get_notice?filename=${encodeURIComponent(filename)}`);
     document.getElementById('view-loading').style.display = 'none';
     if (data.ok) {
+      currentViewContent = data.content;
       renderNoticeBody(bodyEl, filename, data.content);
       const metaParts = [];
       if (data.uploader) metaParts.push(`${data.uploader}さん`);
@@ -152,15 +155,47 @@ async function deleteCurrentNotice() {
 //  アップロードモーダル
 // ============================================================
 function openUploadModal() {
+  isEditingNotice = false;
+
   document.getElementById('upload-filename').value = '';
+  document.getElementById('upload-filename').disabled = false;
   document.getElementById('upload-content').value = '';
   document.getElementById('upload-file-input').value = '';
+  document.getElementById('upload-file-input').closest('.field').style.display = '';
   document.getElementById('upload-ok').style.display = 'none';
   document.getElementById('upload-err').style.display = 'none';
+
+  document.querySelector('#modal-upload .modal-header h3').textContent = 'お知らせをアップロード';
+  document.querySelector('#modal-upload .btn-primary').textContent = 'アップロードする';
 
   const session = getLoginSession();
   const display = document.getElementById('upload-uploader-display');
   display.textContent = session ? `${session.nickname} さん` : '未ログイン（匿名として投稿されます）';
+
+  document.getElementById('modal-upload').classList.add('open');
+}
+
+/** 詳細モーダルの「編集する」から呼ばれる：既存の内容をアップロードモーダルに読み込んで編集モードにする */
+function openEditModal() {
+  if (!currentViewFilename) return;
+
+  isEditingNotice = true;
+  closeNoticeModal('view');
+
+  document.getElementById('upload-filename').value = currentViewFilename;
+  document.getElementById('upload-filename').disabled = true; // ファイル名（種別）は変更不可
+  document.getElementById('upload-content').value = currentViewContent || '';
+  document.getElementById('upload-file-input').value = '';
+  document.getElementById('upload-file-input').closest('.field').style.display = 'none';
+  document.getElementById('upload-ok').style.display = 'none';
+  document.getElementById('upload-err').style.display = 'none';
+
+  document.querySelector('#modal-upload .modal-header h3').textContent = 'お知らせを編集';
+  document.querySelector('#modal-upload .btn-primary').textContent = '更新する';
+
+  const session = getLoginSession();
+  const display = document.getElementById('upload-uploader-display');
+  display.textContent = session ? `${session.nickname} さん` : '未ログイン（匿名として更新されます）';
 
   document.getElementById('modal-upload').classList.add('open');
 }
@@ -202,18 +237,24 @@ async function submitUpload() {
   }
   const uploader = session ? session.nickname : '匿名';
 
+  const editing = isEditingNotice;
+  const btnLabel = editing ? '更新する' : 'アップロードする';
+
   const btn = document.querySelector('#modal-upload .btn-primary');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>アップロード中…';
+  btn.innerHTML = `<span class="spinner"></span>${editing ? '更新中…' : 'アップロード中…'}`;
   try {
+    // /upload_notice は同名ファイルなら自動的に上書き（更新）してくれるため、
+    // 新規投稿・編集どちらもこのエンドポイントを使う
     const res = await api('/upload_notice', {
       method: 'POST',
       body: JSON.stringify({ filename, content, uploader, guild_id: GUILD_ID })
     });
     btn.disabled = false;
-    btn.textContent = 'アップロードする';
+    btn.textContent = btnLabel;
     if (res.ok) {
       showNoticeOk('upload-ok');
+      if (editing) currentViewContent = content;
       await loadNotices();
       setTimeout(() => closeNoticeModal('upload'), 700);
     } else {
@@ -221,7 +262,7 @@ async function submitUpload() {
     }
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = 'アップロードする';
+    btn.textContent = btnLabel;
     showNoticeErr('upload-err', 'サーバーに接続できませんでした');
   }
 }
