@@ -542,3 +542,20 @@ html, body {
   border-radius: 10px; object-fit: contain;
   box-shadow: 0 8px 40px rgba(0,0,0,.4);
 }
+
+/* ── カード編集モーダル：入力欄と「画像を追加」ボタンを近づける ── */
+#modal-card-edit textarea.modal-input { margin-bottom: .25rem; }
+#modal-card-edit .img-strip { padding: 0 0 .25rem; }
+#modal-card-edit .block-actions { padding-top: 0; border-top: none; margin-bottom: .5rem; }
+
+/* ── カード編集モーダル：保存する／閉じるボタンを画面下側に固定 ── */
+#modal-card-edit .modal-sheet { padding-bottom: 0; }
+#modal-card-edit .modal-btns {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface);
+  margin: 1rem -1.25rem 0;
+  padding: .75rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+}
