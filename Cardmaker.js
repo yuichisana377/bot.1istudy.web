@@ -397,25 +397,95 @@ function getInProgressItems() {
 function renderInProgressUI() {
   const section = document.getElementById('inprogress-section');
   const scroll  = document.getElementById('inprogress-scroll');
+  if (section && scroll) {
+    // ★ 「ホーム」＝ルート階層でのみ表示する（フォルダの中では出さない）
+    if (currentFolderId) {
+      section.style.display = 'none'; scroll.innerHTML = '';
+    } else {
+      const items = getInProgressItems();
+      if (!items.length) {
+        section.style.display = 'none'; scroll.innerHTML = '';
+      } else {
+        section.style.display = 'block';
+        scroll.innerHTML = items.map(it => {
+          const pct = Math.max(0, Math.min(100, Math.round(((it.idx) / it.total) * 100)));
+          return `
+          <div class="inprogress-card" onclick="resumeFromHome(${it.isFolder}, '${it.id}')">
+            <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
+            <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
+            <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
+            <div class="inprogress-resume-btn">▶️ 続きから</div>
+          </div>`;
+        }).join('');
+      }
+    }
+  }
+  renderCompletedUI(); // ★ 追加：プレイ済み（完了）欄も同時に更新する
+}
+
+// ── プレイ済み（完了した）デッキ・フォルダ ────────────────────
+//   ★ 追加：localStorage に保存されている完了記録（cm_completed_deck_ / cm_completed_folder_）を
+//     すべて拾い出し、まだ存在するデッキ・フォルダに紐づく直近1週間以内のものだけを表示する。
+function getCompletedItems() {
+  const items = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    let isFolder, id;
+    if (key.startsWith('cm_completed_deck_'))        { isFolder = false; id = key.slice('cm_completed_deck_'.length); }
+    else if (key.startsWith('cm_completed_folder_'))  { isFolder = true;  id = key.slice('cm_completed_folder_'.length); }
+    else continue;
+
+    const data = loadCompletionRecord(isFolder, id);
+    if (!data) continue; // 壊れている・空のデータは無視
+
+    if (isFolder) {
+      const folder = folders.find(f => f.id === id);
+      if (!folder) continue; // フォルダが削除済みなら無視
+      items.push({ isFolder: true, id, name: folder.name, icon: '📁',
+        total: data.total, completedAt: data.completedAt });
+    } else {
+      const deck = decks.find(d => d.id === id);
+      if (!deck) continue; // デッキが削除済みなら無視
+      items.push({ isFolder: false, id, name: deck.name, icon: '📇',
+        total: data.total, completedAt: data.completedAt });
+    }
+  }
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const recentItems = items.filter(it => (now - it.completedAt) <= ONE_WEEK_MS); // ★ 直近1週間以内に完了したものだけ
+  recentItems.sort((a, b) => b.completedAt - a.completedAt); // 新しく完了した順
+  return recentItems;
+}
+
+function renderCompletedUI() {
+  const section = document.getElementById('completed-section');
+  const scroll  = document.getElementById('completed-scroll');
   if (!section || !scroll) return;
 
   // ★ 「ホーム」＝ルート階層でのみ表示する（フォルダの中では出さない）
   if (currentFolderId) { section.style.display = 'none'; scroll.innerHTML = ''; return; }
 
-  const items = getInProgressItems();
+  const items = getCompletedItems();
   if (!items.length) { section.style.display = 'none'; scroll.innerHTML = ''; return; }
 
   section.style.display = 'block';
-  scroll.innerHTML = items.map(it => {
-    const pct = Math.max(0, Math.min(100, Math.round(((it.idx) / it.total) * 100)));
-    return `
-    <div class="inprogress-card" onclick="resumeFromHome(${it.isFolder}, '${it.id}')">
-      <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
-      <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
-      <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
-      <div class="inprogress-resume-btn">▶️ 続きから</div>
-    </div>`;
-  }).join('');
+  scroll.innerHTML = items.map(it => `
+    <div class="completed-card" onclick="replayFromHome(${it.isFolder}, '${it.id}')">
+      <div class="completed-title">${it.icon} ${esc(it.name)}</div>
+      <div class="completed-meta">✅ ${it.total} 問 完了</div>
+      <div class="completed-replay-btn">🔁 もう一度プレイ</div>
+    </div>`).join('');
+}
+
+// ★ 追加：ホーム画面の「プレイ済み」カードをタップしたときに、
+//   完了済みなので「続きから」ではなく、通常のプレイモード選択（すべて／わからないだけ等）を開く。
+async function replayFromHome(isFolder, id) {
+  if (isFolder) {
+    await openFolderPlayMode(id);
+  } else {
+    await openPlayMode(id);
+  }
 }
 
 // ★ 追加：ホーム画面の「プレイ中のデッキ」カードをタップしたときに、
@@ -1672,6 +1742,24 @@ function clearStudyProgress(isFolder, id) {
   try { localStorage.removeItem(progressKey(isFolder, id)); } catch(e) {}
 }
 
+// ★ 追加：学習を最後まで終えた（完了した）記録の保存・読込
+//   ・「プレイ中（続きから）」とは別のキーで、完了した日時と問題数だけを保存する
+function completedKey(isFolder, id) {
+  return (isFolder ? 'cm_completed_folder_' : 'cm_completed_deck_') + id;
+}
+function saveCompletionRecord(isFolder, id, total) {
+  if (!id || !total) return;
+  const data = { total, completedAt: Date.now() };
+  try { localStorage.setItem(completedKey(isFolder, id), JSON.stringify(data)); } catch(e) {}
+}
+function loadCompletionRecord(isFolder, id) {
+  try {
+    const data = JSON.parse(localStorage.getItem(completedKey(isFolder, id)));
+    if (!data || typeof data.completedAt !== 'number' || !data.total) return null;
+    return data;
+  } catch(e) { return null; }
+}
+
 let studyDeckId = null;
 let studyShuffled = false;   // ★ 追加：現在シャッフル済みの並びで学習中かどうか（続きから再開時の表示・保存用）
 let studyIsFolder = false;   // ★ 追加：フォルダ単位のプレイ中かどうか
@@ -1883,6 +1971,8 @@ function renderStudyCard() {
     const doneBadge = document.getElementById('study-orig-num-badge');
     if (doneBadge) doneBadge.textContent = '';
     clearStudyProgress(studyIsFolder, progressId); // ★ 完了したら続きデータは不要になるので消す
+    saveCompletionRecord(studyIsFolder, progressId, studyCards.length); // ★ 追加：完了したことを記録する
+    renderInProgressUI(); // ★ 追加：ホームの「プレイ中」「プレイ済み」欄を最新状態に更新
     return;
   }
   const c = studyCards[studyIdx];
