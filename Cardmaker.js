@@ -1759,12 +1759,8 @@ function updateStudyOriginalNumberBadge(c) {
     if (!label) return; // 「問題」ラベルが見つからなければ何もしない
     badge = document.createElement('span');
     badge.id = 'study-orig-num-badge';
-    badge.style.cssText = 'margin-left:6px;';
-    const cs = getComputedStyle(label);
-    badge.style.color = cs.color;
-    badge.style.fontWeight = cs.fontWeight;
-    badge.style.fontSize = cs.fontSize;
-    label.insertAdjacentElement('afterend', badge);
+    badge.style.cssText = 'margin-left:4px;';
+    label.appendChild(badge); // ★「問題」の文字のすぐ右（タグの中）に入れる
   }
   const deckId = c.__deckId || studyDeckId;
   const deck = decks.find(d => d.id === deckId);
