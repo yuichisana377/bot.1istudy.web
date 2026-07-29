@@ -1745,28 +1745,32 @@ function startStudyMode(mode) {
   renderStudyCard();
 }
 
-// ★ 追加：プレイ中のカードが「元のデッキ順で何問目か」をバッジ表示する。
+// ★ 追加：プレイ中のカードが「元のデッキ順で何問目か」を、
+//   青色の「問題」ラベル（.study-q-tag）の横に番号だけ表示する。
 //   ─────────────────────────────────────────
-//   study-prog-label（例:「3 / 20」）は現在の再生順（シャッフル後の順番）での
-//   位置なので、シャッフルすると元の問題番号が分からなくなってしまう。
-//   このバッジは常に元のデッキ内でのカード順（deck.cards内でのインデックス）を
-//   表示するので、シャッフルしていても「元は問題7だった」と分かる。
-//   バッジ要素はHTML側に無いので、初回はJSで動的に作って挿入する。
+//   シャッフルすると study-prog-label（例:「3 / 20」）は再生順の位置に
+//   なってしまい、元の問題番号が分からなくなる。このバッジは常に
+//   元のデッキ内でのカード順（deck.cards内でのインデックス）の番号だけを表示する。
+//   バッジ要素はHTML側に無いので、初回はJSで動的に作って隣に挿入する。
 function updateStudyOriginalNumberBadge(c) {
-  const label = document.getElementById('study-prog-label');
-  if (!label) return;
   let badge = document.getElementById('study-orig-num-badge');
   if (!badge) {
+    const label = document.querySelector('.study-q-tag');
+    if (!label) return; // 「問題」ラベルが見つからなければ何もしない
     badge = document.createElement('span');
     badge.id = 'study-orig-num-badge';
-    badge.style.cssText = 'margin-left:8px;font-size:12px;color:var(--text-secondary,#888);';
+    badge.style.cssText = 'margin-left:6px;';
+    const cs = getComputedStyle(label);
+    badge.style.color = cs.color;
+    badge.style.fontWeight = cs.fontWeight;
+    badge.style.fontSize = cs.fontSize;
     label.insertAdjacentElement('afterend', badge);
   }
   const deckId = c.__deckId || studyDeckId;
   const deck = decks.find(d => d.id === deckId);
   if (!deck) { badge.textContent = ''; return; }
   const origIdx = deck.cards.findIndex(x => cardKey(x) === cardKey(c));
-  badge.textContent = origIdx !== -1 ? `（元: 問題${origIdx + 1}/${deck.cards.length}）` : '';
+  badge.textContent = origIdx !== -1 ? String(origIdx + 1) : '';
 }
 
 function renderStudyCard() {
