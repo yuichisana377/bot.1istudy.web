@@ -859,10 +859,17 @@ body {
   font-weight: 700;
 }
 
+/* 編集・削除ボタンの行 */
+.notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 /* 削除ボタン（目立たせすぎない小さいスタイル） */
 .notice-del-btn {
   display: block;
-  margin: 4px 0 0 auto;
   width: auto;
   background: none;
   border: none;
@@ -874,5 +881,22 @@ body {
 .notice-del-btn:active,
 .notice-del-btn:hover {
   color: #991b1b;
+  text-decoration: underline;
+}
+
+/* 編集ボタン */
+.notice-edit-btn {
+  display: block;
+  width: auto;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.notice-edit-btn:active,
+.notice-edit-btn:hover {
+  color: #1e40af;
   text-decoration: underline;
 }
