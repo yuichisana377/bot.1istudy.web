@@ -449,6 +449,34 @@ html, body {
   color: var(--text-tertiary);
 }
 
+/* 備考ありマーク（📝）。行に備考があるときだけ表示される */
+.note-dot {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* 備考がある課題の本文はタップ可能にする */
+.sl-task-body.has-note {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* タップで開閉する備考欄（Planの詳細表示と同じ考え方） */
+.sl-task-note {
+  display: none;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.sl-task-note.open { display: block; }
+
 /* 達成ボタン */
 .sl-task-btn {
   height: 34px;
