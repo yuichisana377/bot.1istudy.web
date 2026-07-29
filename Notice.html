@@ -70,7 +70,10 @@
     </div>
     <div class="loading" id="view-loading" style="display:none">読み込み中…</div>
     <div class="notice-body" id="view-body"></div>
-    <button class="notice-del-btn" id="view-delete-btn" onclick="deleteCurrentNotice()">削除する</button>
+    <div class="notice-actions">
+      <button class="notice-edit-btn" id="view-edit-btn" onclick="openEditModal()">編集する</button>
+      <button class="notice-del-btn" id="view-delete-btn" onclick="deleteCurrentNotice()">削除する</button>
+    </div>
   </div>
 </div>
 
