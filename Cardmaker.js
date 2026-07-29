@@ -252,6 +252,7 @@ function renderDeckListUI() {
   if (currentFolderId && !folders.find(f => f.id === currentFolderId)) currentFolderId = null;
 
   renderBreadcrumb();
+  renderInProgressUI(); // ★ 追加：ホームにプレイ中（続きから再開できる）デッキ・フォルダを表示
 
   const grid  = document.getElementById('deck-grid');
   const empty = document.getElementById('deck-list-empty');
@@ -356,6 +357,106 @@ function renderBreadcrumb() {
   bar.style.display = 'flex';
   bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">🏠 ホーム</span>` +
     chain.map(f => `<span class="crumb-sep">/</span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
+}
+
+// ── プレイ中（続きから再開できる）デッキ・フォルダ ────────────────────
+//   ★ 追加：localStorage に保存されている学習進捗（cm_progress_deck_ / cm_progress_folder_）を
+//     すべて拾い出し、まだ存在するデッキ・フォルダに紐づくものだけをホーム画面に表示する。
+function getInProgressItems() {
+  const items = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    let isFolder, id;
+    if (key.startsWith('cm_progress_deck_'))        { isFolder = false; id = key.slice('cm_progress_deck_'.length); }
+    else if (key.startsWith('cm_progress_folder_'))  { isFolder = true;  id = key.slice('cm_progress_folder_'.length); }
+    else continue;
+
+    const data = loadStudyProgress(isFolder, id);
+    if (!data) continue; // 壊れている・空のデータは無視
+
+    if (isFolder) {
+      const folder = folders.find(f => f.id === id);
+      if (!folder) continue; // フォルダが削除済みなら無視
+      items.push({ isFolder: true, id, name: folder.name, icon: '📁',
+        idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
+    } else {
+      const deck = decks.find(d => d.id === id);
+      if (!deck) continue; // デッキが削除済みなら無視
+      items.push({ isFolder: false, id, name: deck.name, icon: '📇',
+        idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
+    }
+  }
+  items.sort((a, b) => b.updatedAt - a.updatedAt); // 新しく学習していた順
+  return items;
+}
+
+function renderInProgressUI() {
+  const section = document.getElementById('inprogress-section');
+  const scroll  = document.getElementById('inprogress-scroll');
+  if (!section || !scroll) return;
+
+  // ★ 「ホーム」＝ルート階層でのみ表示する（フォルダの中では出さない）
+  if (currentFolderId) { section.style.display = 'none'; scroll.innerHTML = ''; return; }
+
+  const items = getInProgressItems();
+  if (!items.length) { section.style.display = 'none'; scroll.innerHTML = ''; return; }
+
+  section.style.display = 'block';
+  scroll.innerHTML = items.map(it => {
+    const pct = Math.max(0, Math.min(100, Math.round(((it.idx) / it.total) * 100)));
+    return `
+    <div class="inprogress-card" onclick="resumeFromHome(${it.isFolder}, '${it.id}')">
+      <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
+      <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
+      <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
+      <div class="inprogress-resume-btn">▶️ 続きから</div>
+    </div>`;
+  }).join('');
+}
+
+// ★ 追加：ホーム画面の「プレイ中のデッキ」カードをタップしたときに、
+//   プレイモード選択（すべて／わからないだけ／続きから）を経由せず、
+//   直接「続きから」の状態でそのまま学習画面を開く。
+async function resumeFromHome(isFolder, id) {
+  if (isFolder) {
+    const folder = folders.find(f => f.id === id);
+    const targetDecks = collectDecksInFolder(id)
+      .filter(d => (d.filename ? (d.count ?? d.cards.length) : d.cards.length) > 0);
+    if (!targetDecks.length) return;
+
+    loadingFolderIds.add(id);
+    renderDeckListUI();
+    const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id)));
+    loadingFolderIds.delete(id);
+    renderDeckListUI();
+
+    if (results.some(r => !r.ok)) {
+      await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+      return;
+    }
+    folderPlayDecks = targetDecks;
+    studyIsFolder = true;
+    studyFolderId = id;
+    studyDeckId = null;
+  } else {
+    const deck = decks.find(d => d.id === id);
+    if (!deck) return;
+
+    loadingDeckIds.add(id);
+    renderDeckListUI();
+    const result = await ensureDeckCardsLoaded(id);
+    loadingDeckIds.delete(id);
+    renderDeckListUI();
+
+    if (!result.ok) {
+      await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+      return;
+    }
+    studyIsFolder = false;
+    studyDeckId = id;
+  }
+  startStudyMode('resume');
 }
 
 // ── フォルダ間の移動 ──────────────────
