@@ -392,13 +392,16 @@ function getInProgressItems(scopeFolderId) {
       const folder = folders.find(f => f.id === id);
       if (!folder) continue; // フォルダが削除済みなら無視
       if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
-      items.push({ isFolder: true, id, name: folder.name, icon: '📁',
+      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: '📁',
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     } else {
       const deck = decks.find(d => d.id === id);
       if (!deck) continue; // デッキが削除済みなら無視
       if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
-      items.push({ isFolder: false, id, name: deck.name, icon: '📇',
+      // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
+      const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
+        ? deck.name.slice(deck.subject.length + 1) : deck.name;
+      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: '📇',
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     }
   }
@@ -423,6 +426,7 @@ function renderInProgressUI() {
         const pct = Math.max(0, Math.min(100, Math.round(((it.idx) / it.total) * 100)));
         return `
         <div class="inprogress-card" onclick="resumeFromHome(${it.isFolder}, '${it.id}')">
+          ${it.subject ? `<div class="inprogress-subject">${esc(it.subject)}</div>` : ''}
           <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
           <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
           <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
@@ -455,13 +459,16 @@ function getCompletedItems(scopeFolderId) {
       const folder = folders.find(f => f.id === id);
       if (!folder) continue; // フォルダが削除済みなら無視
       if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
-      items.push({ isFolder: true, id, name: folder.name, icon: '📁',
+      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: '📁',
         total: data.total, completedAt: data.completedAt });
     } else {
       const deck = decks.find(d => d.id === id);
       if (!deck) continue; // デッキが削除済みなら無視
       if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
-      items.push({ isFolder: false, id, name: deck.name, icon: '📇',
+      // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
+      const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
+        ? deck.name.slice(deck.subject.length + 1) : deck.name;
+      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: '📇',
         total: data.total, completedAt: data.completedAt });
     }
   }
@@ -484,6 +491,7 @@ function renderCompletedUI() {
   section.style.display = 'block';
   scroll.innerHTML = items.map(it => `
     <div class="completed-card" onclick="replayFromHome(${it.isFolder}, '${it.id}')">
+      ${it.subject ? `<div class="completed-subject">${esc(it.subject)}</div>` : ''}
       <div class="completed-title">${it.icon} ${esc(it.name)}</div>
       <div class="completed-meta">✅ ${it.total} 問 完了</div>
       <div class="completed-replay-btn">🔁 もう一度プレイ</div>
