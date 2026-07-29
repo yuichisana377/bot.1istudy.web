@@ -1266,17 +1266,56 @@ let editImgBuf = { q: [], a: [], e: [] };
 //   「カード編集モーダル用（modal）」のどちらから呼ばれたかを区別するためのフラグ
 let imgContext = 'editor';
 
-function openCardEditModal(idx) {
+// ★ 追加：カード編集モーダルを開く前に、公開済みデッキなら
+//   サーバーから最新のカードを読み込み直しておく（一度だけ）。
+//   ─────────────────────────────────────────
+//   他の端末・他の人が先に編集して公開していた場合、古いキャッシュの
+//   まま編集して保存すると、その人の変更を上書きして消してしまう。
+//   これを防ぐため、モーダルを開く直前に必ず最新化する。
+//   （失敗時は loadDeckCardsWithRecovery が再試行/中止をユーザーに委ねる）
+async function reloadCardBeforeEdit(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck || !deck.filename) return true; // 未公開デッキはローカルのみなので不要
+  return await loadDeckCardsWithRecovery(deckId);
+}
+
+async function openCardEditModal(idx) {
   const deck = decks.find(d => d.id === currentDeckId);
-  openCardEditModalCommon(deck.id, deck.cards[idx], 'editor');
+  if (!deck) return;
+  const key = cardKey(deck.cards[idx]);
+
+  const ok = await reloadCardBeforeEdit(deck.id);
+  if (!ok) return; // ユーザーが読み込みを中止した
+
+  const freshDeck = decks.find(d => d.id === currentDeckId);
+  if (!freshDeck) return;
+  renderCreatedList(); // ★ 読み込み直した最新の内容を一覧にも反映しておく
+  const freshCard = freshDeck.cards.find(c => cardKey(c) === key);
+  if (!freshCard) {
+    // 読み込み直した結果、このカードが既に削除されていた場合
+    await showCmAlert({ title: 'このカードは既に削除されています', desc: '最新の内容に更新しました。' });
+    return;
+  }
+  openCardEditModalCommon(freshDeck.id, freshCard, 'editor');
 }
 
 // ★ プレイ中に今表示しているカードを編集する
-function editCurrentStudyCard() {
+async function editCurrentStudyCard() {
   const c = studyCards[studyIdx];
   if (!c) return;
   const deckId = c.__deckId || studyDeckId; // ★
-  openCardEditModalCommon(deckId, c, 'study');
+  const key = cardKey(c);
+
+  const ok = await reloadCardBeforeEdit(deckId);
+  if (!ok) return; // ユーザーが読み込みを中止した
+
+  const deck = decks.find(d => d.id === deckId);
+  const freshCard = deck ? deck.cards.find(x => cardKey(x) === key) : null;
+  if (!freshCard) {
+    await showCmAlert({ title: 'このカードは既に削除されています', desc: '最新の内容に更新しました。' });
+    return;
+  }
+  openCardEditModalCommon(deckId, freshCard, 'study');
 }
 
 function openCardEditModalCommon(deckId, c, context) {
@@ -1326,7 +1365,6 @@ async function saveCardEdit() {
   if (idx === -1) { closeModal('modal-card-edit'); return; }
 
   // 既存オブジェクトを直接書き換える
-  // → studyCards 側も同じ参照を持っているので、これだけで学習画面にも反映される
   const card = deck.cards[idx];
   card.question    = q;
   card.answer      = a;
@@ -1335,6 +1373,19 @@ async function saveCardEdit() {
   card.imgs_q = [...editImgBuf.q];
   card.imgs_a = [...editImgBuf.a];
   card.imgs_e = [...editImgBuf.e];
+
+  // ★ studyCards 側（プレイ中の配列）にも同期する。
+  //   以前は deck.cards と同じオブジェクト参照だったため自動的に反映されていたが、
+  //   カード編集前に deck.cards を丸ごと読み込み直すようになったため、
+  //   もはや同じ参照とは限らない。取りこぼさないよう明示的に書き戻す。
+  const studySameIdx = studyCards.findIndex(sc =>
+    cardKey(sc) === editingCardKey && (sc.__deckId || studyDeckId) === deck.id
+  );
+  if (studySameIdx !== -1) {
+    const sc = studyCards[studySameIdx];
+    sc.question = q; sc.answer = a; sc.explanation = e;
+    sc.imgs_q = [...editImgBuf.q]; sc.imgs_a = [...editImgBuf.a]; sc.imgs_e = [...editImgBuf.e];
+  }
 
   saveDecks(decks);
   closeModal('modal-card-edit');
@@ -1345,10 +1396,17 @@ async function saveCardEdit() {
     renderCreatedList();
   }
 
-  // ★ 公開済みならサーバー側にも反映する（通知はしない）
+  // ★ 公開済みならサーバー（GitHub）側にも反映する
   if (deck.filename) {
     const ok = await syncDeckToServer(deck);
-    if (!ok) showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    if (ok) {
+      showBanner('💾 保存しました', '#dcfce7', '#166534');
+    } else {
+      showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+  } else {
+    // 未公開デッキはローカル保存のみ
+    showBanner('💾 保存しました（ローカル）', '#dcfce7', '#166534');
   }
 }
 
@@ -1687,6 +1745,30 @@ function startStudyMode(mode) {
   renderStudyCard();
 }
 
+// ★ 追加：プレイ中のカードが「元のデッキ順で何問目か」をバッジ表示する。
+//   ─────────────────────────────────────────
+//   study-prog-label（例:「3 / 20」）は現在の再生順（シャッフル後の順番）での
+//   位置なので、シャッフルすると元の問題番号が分からなくなってしまう。
+//   このバッジは常に元のデッキ内でのカード順（deck.cards内でのインデックス）を
+//   表示するので、シャッフルしていても「元は問題7だった」と分かる。
+//   バッジ要素はHTML側に無いので、初回はJSで動的に作って挿入する。
+function updateStudyOriginalNumberBadge(c) {
+  const label = document.getElementById('study-prog-label');
+  if (!label) return;
+  let badge = document.getElementById('study-orig-num-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'study-orig-num-badge';
+    badge.style.cssText = 'margin-left:8px;font-size:12px;color:var(--text-secondary,#888);';
+    label.insertAdjacentElement('afterend', badge);
+  }
+  const deckId = c.__deckId || studyDeckId;
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) { badge.textContent = ''; return; }
+  const origIdx = deck.cards.findIndex(x => cardKey(x) === cardKey(c));
+  badge.textContent = origIdx !== -1 ? `（元: 問題${origIdx + 1}/${deck.cards.length}）` : '';
+}
+
 function renderStudyCard() {
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
   if (studyIdx >= studyCards.length) {
@@ -1694,6 +1776,8 @@ function renderStudyCard() {
     document.getElementById('study-done').style.display    = 'flex';
     document.getElementById('study-prog-fill').style.width  = '100%';
     document.getElementById('study-prog-label').textContent = `${studyCards.length} / ${studyCards.length}`;
+    const doneBadge = document.getElementById('study-orig-num-badge');
+    if (doneBadge) doneBadge.textContent = '';
     clearStudyProgress(studyIsFolder, progressId); // ★ 完了したら続きデータは不要になるので消す
     return;
   }
@@ -1731,6 +1815,7 @@ function renderStudyCard() {
   const pct = studyCards.length > 1 ? (studyIdx/(studyCards.length-1))*100 : 100;
   document.getElementById('study-prog-fill').style.width  = pct + '%';
   document.getElementById('study-prog-label').textContent = `${studyIdx+1} / ${studyCards.length}`;
+  updateStudyOriginalNumberBadge(c); // ★ 追加：シャッフル時も元の問題番号がわかるように表示
   // ★ 答えを見る前・見た後、両方の「前へ」ボタンの有効/無効を同期
   document.getElementById('study-prev').disabled     = studyIdx === 0;
   document.getElementById('study-prev-pre').disabled = studyIdx === 0;
@@ -1766,12 +1851,8 @@ function toggleUnsure() {
   updateUnsureBtn();
 }
 
-function editCurrentStudyCard() {
-  const c = studyCards[studyIdx];
-  if (!c) return;
-  const deckId = c.__deckId || studyDeckId; // ★
-  openCardEditModalCommon(deckId, c, 'study');
-}
+// ★ 修正：editCurrentStudyCard は重複定義されていたため削除。
+//   実体は上（reloadCardBeforeEdit の近く）で定義したものを使う。
 function studyMove(dir) { studyIdx += dir; renderStudyCard(); }
 
 function shuffleStudy() {
