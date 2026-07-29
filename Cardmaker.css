@@ -248,6 +248,39 @@ html, body {
 .block-action-btn.math-btn-active { background: #2563EB; color: #fff; }
 .block-action-btn.math-btn-active:active { background: #1D4ED8; }
 
+/* ── プレイ中のデッキ（ホーム） ── */
+.inprogress-section { margin-bottom: 1.1rem; }
+.inprogress-label {
+  font-size: 13px; font-weight: 700; color: var(--text-secondary);
+  margin-bottom: .5rem; padding-left: 2px;
+}
+.inprogress-scroll {
+  display: flex; gap: .75rem; overflow-x: auto; padding: 2px 2px .3rem;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.inprogress-scroll::-webkit-scrollbar { display: none; }
+.inprogress-card {
+  flex: 0 0 auto; width: 190px; background: var(--surface);
+  border-radius: var(--r-lg); box-shadow: var(--shadow);
+  padding: .9rem .95rem; cursor: pointer;
+  border-left: 4px solid #2563EB;
+}
+.inprogress-card:active { background: var(--bg); }
+.inprogress-title {
+  font-size: 14px; font-weight: 700; margin-bottom: .35rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.inprogress-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: .5rem; }
+.inprogress-bar-track {
+  height: 5px; border-radius: 3px; background: var(--border);
+  overflow: hidden; margin-bottom: .6rem;
+}
+.inprogress-bar-fill { height: 100%; background: #2563EB; }
+.inprogress-resume-btn {
+  font-size: 12px; font-weight: 700; color: #2563EB;
+  display: flex; align-items: center; gap: 4px;
+}
+
 /* ── デッキ一覧 ── */
 .deck-grid { display: flex; flex-direction: column; gap: .9rem; }
 .deck-card {
