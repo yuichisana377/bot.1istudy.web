@@ -855,13 +855,29 @@ function restoreTimer() {
     if (!saved) return;
     var elapsed = Math.floor((Date.now() - parseInt(saved)) / 1000);
     if (elapsed <= 0 || elapsed >= 10800) { localStorage.removeItem(LS_TIMER); return; }
-    elapsedAtPause = elapsed; timerSec = elapsed; timerIsPaused = true;
+
+    // ★ サイトを離れていた／タブを閉じていた間も計測は続いていた扱いにし、
+    //   「再開」クリックを待たず自動的に計測中の状態へ復帰させる。
+    //   （LS_TIMERは休憩中は削除される仕様なので、ここに値が残っている
+    //     ＝ユーザーが自分で止めたのではなく、ページを離れただけと判定できる）
+    timerSec        = elapsed;
+    elapsedAtPause  = elapsed;
+    timerRunning    = true;
+    timerIsPaused   = false;
+    timerStartEpoch = parseInt(saved); // 開始時刻は変えずそのまま維持
+
+    // 離れていた間の5分区切りポイントを二重付与しないよう、
+    // 経過分数から「本来もう付与されているはずの区切り」まで進めておく
+    lastAwardedMin = Math.floor(elapsed / 60 / 5) * 5;
+
     updateTimerUI();
+    document.getElementById("btn-start").disabled       = true;
     document.getElementById("btn-pause").disabled       = false;
     document.getElementById("btn-stop").disabled        = false;
-    document.getElementById("btn-start").disabled       = true;
-    document.getElementById("btn-pause").textContent    = "▶ 再開";
-    document.getElementById("timer-status").textContent = "前回の計測が残っています（再開で復元）";
+    document.getElementById("btn-pause").textContent    = "⏸ 休憩";
+    document.getElementById("timer-status").textContent = "計測中...（離れていた間も継続していました）";
+
+    startInterval();
   } catch(e) {}
 }
 
