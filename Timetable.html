@@ -69,6 +69,15 @@
     color: var(--text);
     line-height: 1.3;
   }
+
+  /* ★ タップして詳細を表示できるコマ */
+  .period-row {
+    cursor: pointer;
+    transition: background .12s ease;
+  }
+  .period-row:active {
+    background: var(--bg);
+  }
 </style>
 </head>
 <body>
@@ -276,6 +285,21 @@
       <p>この予定を削除しますか？</p>
       <strong id="del-label"></strong>
       <button class="btn-danger" onclick="submitDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ★ 時間割 詳細モーダル（タップして表示） -->
+<div class="modal-bg" id="modal-tt-detail" onclick="onBgClick(event,'tt-detail')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3>授業の詳細</h3>
+      <button class="modal-close" onclick="closeModal('tt-detail')">✕</button>
+    </div>
+    <div class="detail-list" id="tt-detail-content"></div>
+    <div class="detail-actions">
+      <button class="btn-primary" onclick="editFromTTDetail()">この時間割を変更する</button>
     </div>
   </div>
 </div>
