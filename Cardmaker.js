@@ -24,17 +24,60 @@ let folders = loadFoldersCache(); // { id, name, parentId }
 let currentFolderId = null; // null = ルート
 
 // ── 一覧（ホーム画面）の並び順 ──────────────
-//   フォルダ本体はサーバー共有だが、「この端末でどの順番に並べたいか」は
-//   人によって好みが違うので、あえてサーバーには同期せずこの端末内だけで
-//   保持する（フォルダを開いている場所＝スコープごとに別々の並び順を持てる）。
-const LIST_ORDER_KEY = 'cardmaker_list_order_v1';
+//   フォルダ・公開済みデッキの並び順は、サーバー（GitHub上の list_order.json）に
+//   保存され全員で共有される。folders.json と同じく「サーバーが正で、ローカルの
+//   キャッシュは届くまでの間だけ即座に表示するために使う」という考え方。
+//   ─ 一方、未公開（自分だけの下書き）デッキは他人からは見えないデータなので、
+//     その並び順はサーバーへは送らず、この端末だけのローカル保存にとどめる。
+const LIST_ORDER_KEY = 'cardmaker_list_order_v1';                 // この端末で最終的に表示する並び順（共有分＋自分の下書き分）
+const SHARED_ORDER_CACHE_KEY = 'cardmaker_shared_order_cache_v1'; // サーバーから取得した「みんなの並び順」のキャッシュ
 function loadListOrderMap() { try { return JSON.parse(localStorage.getItem(LIST_ORDER_KEY)) || {}; } catch { return {}; } }
 function saveListOrderMap(m) { localStorage.setItem(LIST_ORDER_KEY, JSON.stringify(m)); }
+function loadSharedOrderCache() { try { return JSON.parse(localStorage.getItem(SHARED_ORDER_CACHE_KEY)) || {}; } catch { return {}; } }
+function saveSharedOrderCache(m) { localStorage.setItem(SHARED_ORDER_CACHE_KEY, JSON.stringify(m)); }
 function orderScopeKey(folderId) { return folderId || '__root__'; }
-function getSavedListOrder(folderId) {
-  const map = loadListOrderMap();
-  return map[orderScopeKey(folderId)] || null;
+
+let sharedOrderCache = loadSharedOrderCache(); // { [scope]: [key, ...] } ← サーバーから取得したもの
+
+// そのキーが「みんなで共有される項目（フォルダ／公開済みデッキ）」かどうか。
+// 未公開デッキは data-key に "localdeck:" というプレフィックスを付けているので判別できる。
+function isSharedOrderKey(key) {
+  return key.startsWith('folder:') || key.startsWith('deck:');
 }
+
+// サーバー側の並び順（sharedOrder）を、この端末のローカル並び順（localOrder）に
+// 「差し込む」形でマージする。
+//   ・共有項目（フォルダ／公開済みデッキ）どうしの並びは、サーバー側を正として反映する
+//     → 誰か他の人が並び替えても、ここでその結果を取り込める
+//   ・自分だけの下書きデッキ（localdeck:）は、これまで通りこの端末での位置を保つ
+//   ・localOrderにまだ無かった新しい共有項目は末尾に追加する
+function mergeSharedOrderIntoLocal(localOrder, sharedOrder) {
+  if (!sharedOrder || !sharedOrder.length) return localOrder || [];
+  const base = localOrder || [];
+  let si = 0;
+  const result = base.map(k => {
+    if (!isSharedOrderKey(k)) return k; // 自分だけの下書きはそのままの位置を保つ
+    if (si < sharedOrder.length) return sharedOrder[si++];
+    return k;
+  });
+  while (si < sharedOrder.length) result.push(sharedOrder[si++]); // 新しく増えた共有項目は末尾に
+  return result;
+}
+
+function getSavedListOrder(folderId) {
+  const scope = orderScopeKey(folderId);
+  const map = loadListOrderMap();
+  const local = map[scope] || null;
+  const shared = sharedOrderCache[scope];
+  if (shared && shared.length) {
+    const merged = mergeSharedOrderIntoLocal(local, shared);
+    map[scope] = merged; // 次回以降もすぐ使えるよう、マージ結果をこの端末にも保存しておく
+    saveListOrderMap(map);
+    return merged.length ? merged : null;
+  }
+  return local;
+}
+// この端末で確定した並び順（共有分＋下書き分）をまるごとローカルに保存する。
 function saveListOrder(folderId, keys) {
   const map = loadListOrderMap();
   map[orderScopeKey(folderId)] = keys;
@@ -54,6 +97,44 @@ function applySavedListOrder(items, folderId) {
 // ★ 長押しして並び替えた直後、そのままタップ扱いされてフォルダが開いてしまわないための
 //   ガード。endDrag() 時にタイムスタンプを記録し、直後のクリックはopenFolder側で無視する。
 let cmDragJustEndedAt = 0;
+
+// ★ サーバーから「みんなの並び順」を取得してキャッシュに反映する
+async function fetchAndMergeOrder() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  const res = await fetch(`${API_BASE}list_order`, { signal: controller.signal, cache: 'no-store' });
+  clearTimeout(timer);
+  const data = await res.json();
+  if (!data.ok) return false;
+  sharedOrderCache = data.order || {};
+  saveSharedOrderCache(sharedOrderCache);
+  return true;
+}
+
+// ★ この端末でドラッグして決めた並び順のうち「みんなで共有される部分」だけを
+//   サーバーへ反映する（自分だけの下書きデッキの並びは送らない）。
+async function pushSharedOrderToServer(folderId, keys) {
+  const sharedKeys = keys.filter(isSharedOrderKey);
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${API_BASE}save_order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: orderScopeKey(folderId), keys: sharedKeys }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (data.ok) {
+      sharedOrderCache[orderScopeKey(folderId)] = sharedKeys;
+      saveSharedOrderCache(sharedOrderCache);
+    }
+    return !!data.ok;
+  } catch (e) {
+    return false;
+  }
+}
 
 // ★ サーバーからフォルダ一覧を取得してキャッシュに反映する
 async function fetchAndMergeFolders() {
@@ -285,6 +366,7 @@ function showScreen(id) {
   if (id === 'list') {
     decks = loadDecks();
     folders = loadFoldersCache();
+    sharedOrderCache = loadSharedOrderCache();
     renderDeckListUI();
     setTimeout(() => renderDeckList(), 0);
   }
@@ -370,8 +452,12 @@ function renderDeckListUI() {
       ? `<div class="deck-card-subject">${esc(d.subject)}</div>` : '';
     const displayName = (d.subject && d.name.startsWith(d.subject + ' '))
       ? d.name.slice(d.subject.length + 1) : d.name;
-    return { key: `deck:${d.id}`, html: `
-    <div class="deck-card" data-key="deck:${d.id}">
+    // ★ 並び順のキー：公開済みデッキは全員が同じ filename を持つので、それを共有キーにする。
+    //   未公開（自分だけの下書き）デッキは他人には見えないデータなので、他の端末とは
+    //   絶対に一致しないローカル専用キー（localdeck:）にし、サーバーには送らない。
+    const orderKey = d.filename ? `deck:${d.filename}` : `localdeck:${d.id}`;
+    return { key: orderKey, html: `
+    <div class="deck-card" data-key="${orderKey}">
       <div class="deck-card-info">
         ${subjectLabel}
         <div class="deck-card-title">${esc(displayName)}</div>
@@ -987,7 +1073,7 @@ async function renderDeckList() {
   folders = loadFoldersCache();
   renderDeckListUI();
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
     renderDeckListUI();
   } catch(e) {}
 }
@@ -1604,6 +1690,15 @@ function renderCreatedList() {
     // ★ DOM上の最終的な並び順（data-key）をこのフォルダのスコープに保存する
     const orderedKeys = getItems().map(it => it.dataset.key);
     saveListOrder(currentFolderId, orderedKeys);
+
+    // ★ フォルダ／公開済みデッキ（＝みんなに共有される項目）が含まれていれば、
+    //   サーバーにも反映して他の人の一覧にも同じ並びを届ける。
+    //   自分だけの下書きデッキしか含まれていない場合はサーバー通信自体を省略する。
+    if (orderedKeys.some(isSharedOrderKey)) {
+      pushSharedOrderToServer(currentFolderId, orderedKeys).then(ok => {
+        if (!ok) showBanner('⚠ 並び替えのサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e');
+      });
+    }
 
     // ★ 指を離した瞬間に発生するクリックで意図せずフォルダが開かないようにするガード
     cmDragJustEndedAt = Date.now();
@@ -2946,7 +3041,7 @@ async function forceRefreshOnReturn() {
   if (isForceRefreshing) return;
   isForceRefreshing = true;
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
@@ -2992,3 +3087,31 @@ async function checkFoldersUpdate() {
 
 // 10秒ごとにチェック
 setInterval(checkFoldersUpdate, 10000);
+
+// ===== JSON変更監視（共有の並び順 list_order.json） =====
+let lastOrderHash = null;
+
+async function checkOrderUpdate() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE}list_order`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
+
+    if (lastOrderHash === null) { lastOrderHash = hash; return; }
+    if (hash === lastOrderHash) return;
+    lastOrderHash = hash;
+
+    await fetchAndMergeOrder();
+
+    const activeScreen = document.querySelector('.screen.active')?.id;
+    if (activeScreen === 'screen-list') {
+      renderDeckListUI();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkOrderUpdate, 10000);
