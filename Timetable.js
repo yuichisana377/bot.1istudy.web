@@ -267,21 +267,18 @@ function renderTimetable() {
       const itemsHtml = items.length
         ? `<div class="items-row">${items.map(it => `<span class="item-tag">📎 ${it}</span>`).join('')}</div>` : '';
       const hwHtml = hw.map(h => {
-        const cat  = h.content.match(/^【(.+?)】/)?.[1] || '';
-        const text = h.content.replace(/^【.+?】/, '').trim();
+        const { cat, text } = parsePlanContent(h.content);
         return `<div class="homework-row">
           <span class="tt-badge tt-badge-${cat}">${cat}</span>
           <span class="homework-text">${text}</span>
         </div>`;
       }).join('');
-      const noteDot = (changeOv && changeOv.note)
-        ? `<span title="備考あり" style="font-size:11px;margin-left:4px">📝</span>` : '';
       const changedBadge = isChanged
         ? `<span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:20px;font-weight:700;margin-left:4px">変更</span>` : '';
 
       return `<div class="period-row" onclick="showTTDetail('${dateStr}', ${periodNum})">
         <div class="period-num">${periodNum}</div>
-        <div class="period-subject${subject ? '' : ' empty'}">${subject || 'ー'}${changedBadge}${noteDot}</div>
+        <div class="period-subject${subject ? '' : ' empty'}">${subject || 'ー'}${changedBadge}</div>
         <div class="period-right">
           ${itemsHtml}
           ${hwHtml}
@@ -403,9 +400,9 @@ function showTTDetail(dateStr, period) {
     const hw = ttHomeworks.filter(h => h.date === dateStr && h.subject === subject);
     if (hw.length) {
       const hwHtml = hw.map(h => {
-        const cat  = h.content.match(/^【(.+?)】/)?.[1] || '';
-        const text = h.content.replace(/^【.+?】/, '').trim();
-        return `<div style="margin-bottom:4px"><span class="tt-badge tt-badge-${cat}">${cat}</span> ${text}</div>`;
+        const { cat, text, note: hwNote } = parsePlanContent(h.content);
+        const hwNoteHtml = hwNote ? `<div class="dl-note" style="margin-top:4px">${hwNote}</div>` : '';
+        return `<div style="margin-bottom:6px"><span class="tt-badge tt-badge-${cat}">${cat}</span> ${text}${hwNoteHtml}</div>`;
       }).join('');
       rows.push(`<div class="detail-item"><div class="dl-label">課題・提出物</div><div class="dl-value">${hwHtml}</div></div>`);
     }
