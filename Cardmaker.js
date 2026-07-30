@@ -23,6 +23,38 @@ const MAX_FOLDER_DEPTH = 3;
 let folders = loadFoldersCache(); // { id, name, parentId }
 let currentFolderId = null; // null = ルート
 
+// ── 一覧（ホーム画面）の並び順 ──────────────
+//   フォルダ本体はサーバー共有だが、「この端末でどの順番に並べたいか」は
+//   人によって好みが違うので、あえてサーバーには同期せずこの端末内だけで
+//   保持する（フォルダを開いている場所＝スコープごとに別々の並び順を持てる）。
+const LIST_ORDER_KEY = 'cardmaker_list_order_v1';
+function loadListOrderMap() { try { return JSON.parse(localStorage.getItem(LIST_ORDER_KEY)) || {}; } catch { return {}; } }
+function saveListOrderMap(m) { localStorage.setItem(LIST_ORDER_KEY, JSON.stringify(m)); }
+function orderScopeKey(folderId) { return folderId || '__root__'; }
+function getSavedListOrder(folderId) {
+  const map = loadListOrderMap();
+  return map[orderScopeKey(folderId)] || null;
+}
+function saveListOrder(folderId, keys) {
+  const map = loadListOrderMap();
+  map[orderScopeKey(folderId)] = keys;
+  saveListOrderMap(map);
+}
+// items: [{key, html}] の配列。保存済みの並び順があればそれを優先して並べ替え、
+// まだ並び順に登場しない新しいフォルダ・デッキ（新規作成分など）は末尾に追加する。
+function applySavedListOrder(items, folderId) {
+  const saved = getSavedListOrder(folderId);
+  if (!saved || !saved.length) return items;
+  const byKey = new Map(items.map(it => [it.key, it]));
+  const result = [];
+  saved.forEach(k => { const it = byKey.get(k); if (it) { result.push(it); byKey.delete(k); } });
+  items.forEach(it => { if (byKey.has(it.key)) result.push(it); });
+  return result;
+}
+// ★ 長押しして並び替えた直後、そのままタップ扱いされてフォルダが開いてしまわないための
+//   ガード。endDrag() 時にタイムスタンプを記録し、直後のクリックはopenFolder側で無視する。
+let cmDragJustEndedAt = 0;
+
 // ★ サーバーからフォルダ一覧を取得してキャッシュに反映する
 async function fetchAndMergeFolders() {
   const controller = new AbortController();
@@ -280,7 +312,7 @@ function renderDeckListUI() {
   }
   empty.style.display='none'; grid.style.display='flex';
 
-  const folderHtml = childFolders.map(f => {
+  const folderItems = childFolders.map(f => {
   const cnt = countDecksRecursive(f.id);
   const totalCards = countCardsRecursive(f.id);
   const unsureCount = countUnsureRecursive(f.id);              // ★ 追加
@@ -288,8 +320,8 @@ function renderDeckListUI() {
   const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;
   const folderUnsureBadge = unsureCount > 0                     // ★ 追加
     ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
-  return `
-  <div class="deck-card folder-card" onclick="openFolder('${f.id}')">
+  return { key: `folder:${f.id}`, html: `
+  <div class="deck-card folder-card" data-key="folder:${f.id}" onclick="openFolder('${f.id}')">
     <div class="deck-card-info">
       <div class="deck-card-title">📁 ${esc(f.name)}</div>
       <div class="deck-card-meta">${cnt} デッキ・${totalCards} 問${folderUnsureBadge}</div>
@@ -299,14 +331,15 @@ function renderDeckListUI() {
         ${folderPlayDisabled?'disabled':''}>${isLoadingThisFolder ? '読み込み中…' : '▶ プレイ'}</button>
       <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">✏️</button>
     </div>
-  </div>`;
-}).join('');
+  </div>` };
+});
   // ★ 非公開・公開のグループ位置はそのまま、各グループ内だけ新しい順（下が古い）に反転
+  //   （※ ユーザーが手で並び替えた後は、下の applySavedListOrder() がこの初期順を上書きする）
   const unpublished = childDecks.filter(d => !d.filename).slice().reverse();
   const published    = childDecks.filter(d =>  d.filename).slice().reverse();
   const orderedDecks = [...unpublished, ...published];
 
-  const deckHtml = orderedDecks.map(d => {
+  const deckItems = orderedDecks.map(d => {
     // ★ カード本体を未読み込みのデッキ（公開デッキで cardsLoaded=false）は
     //   d.cards が空のままなので、「わからない」バッジは読み込み後にしか出せない。
     //   ここでは読み込み済みの場合だけ計算する。
@@ -337,8 +370,8 @@ function renderDeckListUI() {
       ? `<div class="deck-card-subject">${esc(d.subject)}</div>` : '';
     const displayName = (d.subject && d.name.startsWith(d.subject + ' '))
       ? d.name.slice(d.subject.length + 1) : d.name;
-    return `
-    <div class="deck-card">
+    return { key: `deck:${d.id}`, html: `
+    <div class="deck-card" data-key="deck:${d.id}">
       <div class="deck-card-info">
         ${subjectLabel}
         <div class="deck-card-title">${esc(displayName)}</div>
@@ -353,10 +386,12 @@ function renderDeckListUI() {
           ${playDisabled?'disabled':''}>${isLoadingThis ? '読み込み中…' : '▶ プレイ'}</button>
         <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>✏️</button>
       </div>
-    </div>`;
-  }).join('');
+    </div>` };
+  });
 
-  grid.innerHTML = folderHtml + deckHtml;
+  // ★ フォルダ・デッキを合わせ、保存済みの並び順（ユーザーがドラッグして決めた順）があれば適用する
+  const combinedItems = applySavedListOrder([...folderItems, ...deckItems], currentFolderId);
+  grid.innerHTML = combinedItems.map(it => it.html).join('');
 }
 
 // ── パンくずリスト ────────────────────
@@ -559,6 +594,9 @@ async function resumeFromHome(isFolder, id) {
 
 // ── フォルダ間の移動 ──────────────────
 function openFolder(id) {
+  // ★ 一覧の並び替え（長押しドラッグ）を終えた直後のタップは無視する
+  //   （指を離した瞬間に発生するクリックで、意図せずフォルダが開いてしまうのを防ぐ）
+  if (Date.now() - cmDragJustEndedAt < 300) return;
   currentFolderId = id;
   renderDeckListUI();
   const body = document.querySelector('#screen-list .cm-scroll-body');
@@ -1432,6 +1470,192 @@ function renderCreatedList() {
   list.addEventListener('touchmove',  onTouchMove,  { passive: false });
   list.addEventListener('touchend',   onTouchEnd);
   list.addEventListener('touchcancel', onTouchEnd);
+})();
+
+// ============================================================
+//  ★ 追加：ホーム画面（デッキ・フォルダ一覧）の並び替え
+//  ─────────────────────────────────────────────
+//  ・スマホは横幅に余裕がないため、編集画面のような専用ハンドル（⠿）は
+//    追加しない。代わりにカード本体（ボタン部分を除く）を長押しすると
+//    そのまま並び替えモードに入る、という編集画面と同じ「掴んで動かす」
+//    操作感をボタン無しで実現する。
+//  ・短いタップはこれまで通り（フォルダを開く／何もしない）。
+//    長押し＋移動、または長押しだけでも「ドラッグ扱い」とし、
+//    指を離した瞬間に発生するクリックは openFolder 側で無視する
+//    （cmDragJustEndedAt によるガード。冒頭のstate変数として定義済み）。
+//  ・並び順はフォルダ・デッキ共通の data-key（例: "folder:xxx" / "deck:yyy"）で
+//    保存し、フォルダ／デッキが混在したまま自由に並び替えられる。
+//  ・renderDeckListUI() は毎回 #deck-grid の中身を丸ごと再生成するので、
+//    要素ごとにリスナーを付けず、#deck-grid自体に1回だけイベント委任する。
+// ============================================================
+(function setupListDragReorder() {
+  const grid = document.getElementById('deck-grid');
+  if (!grid) return;
+
+  const LONG_PRESS_MS  = 380; // これだけ指を止めたままにすると並び替えモードに入る
+  const MOVE_CANCEL_PX = 10;  // 判定前にこれ以上動いたら「スクロール」とみなし長押しをキャンセル
+
+  let pressTimer = null;
+  let pressItem = null;
+  let pressPointerId = null;
+  let pressStartX = 0, pressStartY = 0;
+
+  let dragEl = null;
+  let startY = 0;
+  let lastClientY = 0;
+  let autoScrollRAF = null;
+  let scrollParent = null;
+
+  function getItems() {
+    return Array.from(grid.querySelectorAll(':scope > .deck-card'));
+  }
+
+  // ★ HTML構造に依存せず、実際にスクロールしている祖先要素を探す
+  //   （このページの実際のスクロール領域は .cm-scroll-body だが、
+  //   将来レイアウトが変わっても壊れないように動的に探す）
+  function findScrollParent(el) {
+    let node = el.parentElement;
+    while (node) {
+      const style = getComputedStyle(node);
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function autoScrollTick() {
+    if (!dragEl || !scrollParent) { autoScrollRAF = null; return; }
+    const rect = scrollParent.getBoundingClientRect();
+    const edge = 60, maxSpeed = 14;
+    let speed = 0;
+    if (lastClientY < rect.top + edge) {
+      speed = -maxSpeed * Math.min(1, (rect.top + edge - lastClientY) / edge);
+    } else if (lastClientY > rect.bottom - edge) {
+      speed = maxSpeed * Math.min(1, (lastClientY - (rect.bottom - edge)) / edge);
+    }
+    if (speed !== 0) {
+      const before = scrollParent.scrollTop;
+      scrollParent.scrollTop += speed;
+      const actualDelta = scrollParent.scrollTop - before;
+      if (actualDelta !== 0) { startY -= actualDelta; moveDrag(lastClientY); }
+    }
+    autoScrollRAF = requestAnimationFrame(autoScrollTick);
+  }
+
+  function beginDrag(item, clientY) {
+    dragEl = item;
+    startY = clientY;
+    lastClientY = clientY;
+    scrollParent = findScrollParent(grid);
+    dragEl.classList.add('dragging');
+    dragEl.style.position = 'relative';
+    dragEl.style.zIndex = '10';
+    dragEl.style.boxShadow = '0 6px 18px rgba(0,0,0,.20)';
+    dragEl.style.opacity = '0.92';
+    dragEl.style.touchAction = 'none';
+    dragEl.style.transform = 'scale(1.02)';
+    if (navigator.vibrate) navigator.vibrate(12); // ★ つかんだ瞬間に軽い振動でフィードバック（対応端末のみ）
+    if (autoScrollRAF === null) autoScrollRAF = requestAnimationFrame(autoScrollTick);
+  }
+
+  function moveDrag(clientY) {
+    if (!dragEl) return;
+    lastClientY = clientY;
+    const dy = clientY - startY;
+    dragEl.style.transform = `translateY(${dy}px) scale(1.02)`;
+
+    const dragRect = dragEl.getBoundingClientRect();
+    const dragCenter = dragRect.top + dragRect.height / 2;
+
+    const items = getItems();
+    for (const other of items) {
+      if (other === dragEl) continue;
+      const r = other.getBoundingClientRect();
+      const otherCenter = r.top + r.height / 2;
+      const otherIsAfter = !!(dragEl.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (otherIsAfter && dragCenter > otherCenter) {
+        grid.insertBefore(dragEl, other.nextSibling);
+        startY = clientY;
+        dragEl.style.transform = 'translateY(0px) scale(1.02)';
+        break;
+      } else if (!otherIsAfter && dragCenter < otherCenter) {
+        grid.insertBefore(dragEl, other);
+        startY = clientY;
+        dragEl.style.transform = 'translateY(0px) scale(1.02)';
+        break;
+      }
+    }
+  }
+
+  function endDrag() {
+    if (!dragEl) return;
+    if (autoScrollRAF !== null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
+    dragEl.classList.remove('dragging');
+    dragEl.style.transform = '';
+    dragEl.style.zIndex = '';
+    dragEl.style.boxShadow = '';
+    dragEl.style.opacity = '';
+    dragEl.style.position = '';
+    dragEl.style.touchAction = '';
+    dragEl = null;
+
+    // ★ DOM上の最終的な並び順（data-key）をこのフォルダのスコープに保存する
+    const orderedKeys = getItems().map(it => it.dataset.key);
+    saveListOrder(currentFolderId, orderedKeys);
+
+    // ★ 指を離した瞬間に発生するクリックで意図せずフォルダが開かないようにするガード
+    cmDragJustEndedAt = Date.now();
+  }
+
+  function cancelPress() {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    pressItem = null; pressPointerId = null;
+  }
+
+  function onPointerDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (dragEl) return; // 既に別の指・別のポインタでドラッグ中
+    const item = e.target.closest('.deck-card');
+    if (!item || item.parentElement !== grid) return;
+    // ▶プレイ／✏️メニューなどのボタンから始まった場合は、通常のタップ操作を優先する
+    if (e.target.closest('button, .btn, .icon-btn, a')) return;
+
+    pressItem = item;
+    pressPointerId = e.pointerId;
+    pressStartX = e.clientX;
+    pressStartY = e.clientY;
+
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      if (!pressItem) return;
+      try { pressItem.setPointerCapture(pressPointerId); } catch (_) {}
+      beginDrag(pressItem, pressStartY);
+    }, LONG_PRESS_MS);
+  }
+
+  function onPointerMove(e) {
+    if (dragEl && e.pointerId === pressPointerId) {
+      e.preventDefault();
+      moveDrag(e.clientY);
+      return;
+    }
+    if (pressTimer && e.pointerId === pressPointerId) {
+      const dx = e.clientX - pressStartX, dy = e.clientY - pressStartY;
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) cancelPress(); // 長押し確定前に動いたらスクロール操作とみなす
+    }
+  }
+
+  function onPointerUp(e) {
+    if (dragEl && e.pointerId === pressPointerId) endDrag();
+    cancelPress();
+  }
+
+  grid.addEventListener('pointerdown', onPointerDown);
+  grid.addEventListener('pointermove', onPointerMove, { passive: false });
+  grid.addEventListener('pointerup', onPointerUp);
+  grid.addEventListener('pointercancel', onPointerUp);
 })();
 
 async function deleteCardFromDeck(idx) {
