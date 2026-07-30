@@ -323,7 +323,15 @@ html, body {
   background: var(--surface); border-radius: var(--r-lg);
   box-shadow: var(--shadow); padding: 1rem 1rem 1rem 1.1rem;
   display: flex; align-items: center; gap: .75rem;
+  /* ★ 追加：カード本体を長押しして並び替えられるようにしたため、
+     長押し時にOS標準のテキスト選択／コールアウトメニューが
+     出てしまわないようにしておく */
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
+/* ★ 追加：並び替え中（JS側でこのクラスを付け外しする）は自前のtransformで動かすので
+   CSSトランジションは切っておく。他のカードは並び替え中、少しなめらかに位置が動く。 */
+.deck-card.dragging { transition: none; }
+.deck-grid .deck-card:not(.dragging) { transition: transform .15s ease; }
 .deck-card-info { flex: 1; min-width: 0; }
 .deck-card-subject {
   font-size: 11px; font-weight: 700; color: var(--text-secondary);
@@ -365,8 +373,13 @@ html, body {
 .empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
 
 /* ── フォルダ ── */
-.folder-card { cursor: pointer; }
-.folder-card:active { background: var(--bg); }
+/* ★ 追加：フォルダはデッキと見分けやすいよう、ごく薄い黄色っぽい背景にする */
+.folder-card {
+  cursor: pointer;
+  background: #FFFDF2;
+  border: 1px solid #FBF6DA;
+}
+.folder-card:active { background: #FFF9E0; }
 
 .folder-breadcrumb {
   display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
