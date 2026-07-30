@@ -97,6 +97,13 @@ function applySavedListOrder(items, folderId) {
 // ★ 長押しして並び替えた直後、そのままタップ扱いされてフォルダが開いてしまわないための
 //   ガード。endDrag() 時にタイムスタンプを記録し、直後のクリックはopenFolder側で無視する。
 let cmDragJustEndedAt = 0;
+// ★ 追加：ホーム画面（フォルダ・デッキ一覧）を長押しドラッグで並び替え中かどうか。
+//   ドラッグ中に renderDeckListUI() が呼ばれて #deck-grid の中身が丸ごと
+//   作り直されると、掴んでいた要素が新しいDOMから浮いた状態になり、
+//   その後の指の動きで古い要素が新しいgridに再挿入されて「同じ項目が
+//   一時的に2つ表示される」不具合が起きるため、ドラッグ中は再描画を
+//   スキップするためのガードに使う。
+let cmListDragActive = false;
 
 // ★ サーバーから「みんなの並び順」を取得してキャッシュに反映する
 async function fetchAndMergeOrder() {
@@ -374,6 +381,12 @@ function showScreen(id) {
 
 // ── デッキ一覧 ────────────────────────
 function renderDeckListUI() {
+  // ★ 追加：フォルダ/デッキを長押しドラッグ中は #deck-grid を再生成しない。
+  //   （バックグラウンドポーリングなどからここが呼ばれてDOMが作り直されると、
+  //   ドラッグ中の要素が新しいDOMから浮いてしまい、その後の指の動きで
+  //   古い要素が再挿入されて項目が2つ表示されてしまうため）
+  //   ドラッグ終了後、次のポーリング（最大10秒後）で最新状態に更新される。
+  if (cmListDragActive) return;
   // 表示中のフォルダが（他端末での削除などで）無くなっていたらルートに戻す
   if (currentFolderId && !folders.find(f => f.id === currentFolderId)) currentFolderId = null;
 
@@ -1581,10 +1594,25 @@ function renderCreatedList() {
   const LONG_PRESS_MS  = 380; // これだけ指を止めたままにすると並び替えモードに入る
   const MOVE_CANCEL_PX = 10;  // 判定前にこれ以上動いたら「スクロール」とみなし長押しをキャンセル
 
+  // ★ 修正：grid には常に touch-action: none を設定しておく。
+  //   以前は長押しが確定した瞬間（beginDrag内）にだけ設定していたが、
+  //   その場合「長押し判定中（最大380ms）にわずかでも指が動く」→
+  //   ブラウザが先に「これはスクロールだ」と判断してネイティブスクロールを
+  //   開始してしまう → その後 touch-action や preventDefault() を変更しても
+  //   一度始まったネイティブスクロールは止められない、という状態になり、
+  //   「縦にドラッグしようとすると画面がスクロールされて移動できない」
+  //   不具合の原因になっていた。
+  //   ネイティブスクロールを最初から無効化する代わりに、下の
+  //   「長押し確定前の手動スクロール処理」で同等の見た目を再現する。
+  grid.style.touchAction = 'none';
+
   let pressTimer = null;
   let pressItem = null;
   let pressPointerId = null;
   let pressStartX = 0, pressStartY = 0;
+  let pressLastY = 0;          // 手動スクロール中、直前のY座標
+  let pressScrollParent = null; // 長押し確定前／手動スクロール中に動かすスクロール対象
+  let isManualScrolling = false; // 長押しをキャンセルし、手動スクロールに切り替わった状態
 
   let dragEl = null;
   let startY = 0;
@@ -1632,6 +1660,7 @@ function renderCreatedList() {
 
   function beginDrag(item, clientY) {
     dragEl = item;
+    cmListDragActive = true; // ★ ドラッグ中は renderDeckListUI() 側で再描画をスキップさせる
     startY = clientY;
     lastClientY = clientY;
     scrollParent = findScrollParent(grid);
@@ -1686,6 +1715,7 @@ function renderCreatedList() {
     dragEl.style.position = '';
     dragEl.style.touchAction = '';
     dragEl = null;
+    cmListDragActive = false; // ★ 再描画スキップガードを解除（次のポーリングで最新状態に更新される）
 
     // ★ DOM上の最終的な並び順（data-key）をこのフォルダのスコープに保存する
     const orderedKeys = getItems().map(it => it.dataset.key);
@@ -1707,6 +1737,8 @@ function renderCreatedList() {
   function cancelPress() {
     if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
     pressItem = null; pressPointerId = null;
+    isManualScrolling = false;
+    pressScrollParent = null;
   }
 
   function onPointerDown(e) {
@@ -1721,6 +1753,11 @@ function renderCreatedList() {
     pressPointerId = e.pointerId;
     pressStartX = e.clientX;
     pressStartY = e.clientY;
+    pressLastY = e.clientY;
+    // ★ grid が touch-action:none のため、指を置いた時点でスクロール対象を
+    //   あらかじめ求めておく（長押し確定前に動いたら、これを手動で動かす）
+    pressScrollParent = findScrollParent(grid);
+    isManualScrolling = false;
 
     pressTimer = setTimeout(() => {
       pressTimer = null;
@@ -1736,15 +1773,34 @@ function renderCreatedList() {
       moveDrag(e.clientY);
       return;
     }
-    if (pressTimer && e.pointerId === pressPointerId) {
+    if (pressPointerId === null || e.pointerId !== pressPointerId) return; // 追跡中の指以外は無視
+
+    // 長押し確定前：しきい値を超えて動いたら「スクロールしたいのだ」とみなし、
+    // 長押し判定をキャンセルして手動スクロールに切り替える
+    if (pressTimer) {
       const dx = e.clientX - pressStartX, dy = e.clientY - pressStartY;
-      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) cancelPress(); // 長押し確定前に動いたらスクロール操作とみなす
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+        isManualScrolling = true;
+      } else {
+        return; // まだしきい値未満なら何もしない（判定待ち）
+      }
+    }
+
+    // ★ 手動スクロール中：grid の touch-action:none によりネイティブスクロールが
+    //   起きない代わりに、ここでスクロール位置を直接動かして同じ見た目を再現する
+    if (isManualScrolling && pressScrollParent) {
+      e.preventDefault();
+      const dy = e.clientY - pressLastY;
+      pressScrollParent.scrollTop -= dy;
+      pressLastY = e.clientY;
     }
   }
 
   function onPointerUp(e) {
-    if (dragEl && e.pointerId === pressPointerId) endDrag();
-    cancelPress();
+    if (dragEl && e.pointerId === pressPointerId) { endDrag(); cancelPress(); return; }
+    if (e.pointerId === pressPointerId) cancelPress();
   }
 
   grid.addEventListener('pointerdown', onPointerDown);
