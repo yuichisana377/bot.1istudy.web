@@ -249,7 +249,7 @@ function renderTimetable() {
       if (periodHolidayOv) {
         const phReason = periodHolidayOv.reason || '休み';
         const phNote   = periodHolidayOv.note   ? `（${periodHolidayOv.note}）` : '';
-        return `<div class="period-row">
+        return `<div class="period-row" onclick="showTTDetail('${dateStr}', ${periodNum})">
           <div class="period-num">${periodNum}</div>
           <div class="period-subject" style="color:var(--text-tertiary)">🚫 ${phReason}${phNote}</div>
           <div class="period-right"></div>
@@ -279,7 +279,7 @@ function renderTimetable() {
       const changedBadge = isChanged
         ? `<span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:20px;font-weight:700;margin-left:4px">変更</span>` : '';
 
-      return `<div class="period-row">
+      return `<div class="period-row" onclick="showTTDetail('${dateStr}', ${periodNum})">
         <div class="period-num">${periodNum}</div>
         <div class="period-subject${subject ? '' : ' empty'}">${subject || 'ー'}${changedBadge}</div>
         <div class="period-right">
@@ -362,6 +362,108 @@ async function loadTTOverrides() {
 }
 function saveTTOverrideLocal() {
   localStorage.setItem('tt_overrides_' + GUILD_ID, JSON.stringify(ttOverrides));
+}
+
+// ============================================================
+//  ★ 時間割 詳細モーダル（コマをタップして表示）
+// ============================================================
+let ttDetailTarget = null; // { date, period } ← 詳細モーダルで表示中のコマ
+
+function showTTDetail(dateStr, period) {
+  const dayKey      = dateToDayKey(dateStr);
+  const basePeriods = TIMETABLE[dayKey] || [];
+  const base        = basePeriods[period - 1];
+
+  const holidayOv = ttOverrides[`period_holiday:${dateStr}:${period}`];
+  const changeOv  = ttOverrides[`change:${dateStr}:${period}`];
+
+  ttDetailTarget = { date: dateStr, period };
+
+  const d = new Date(dateStr + 'T00:00:00');
+  const wIdx = DAY_KEYS.indexOf(dayKey);
+  const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日${wIdx >= 0 ? `（${DAY_NAMES[wIdx]}）` : ''}`;
+
+  const rows = [
+    `<div class="detail-item"><div class="dl-label">日付</div><div class="dl-value">${dateLabel}</div></div>`,
+    `<div class="detail-item"><div class="dl-label">時限</div><div class="dl-value">${period}時限</div></div>`,
+  ];
+
+  if (holidayOv) {
+    const note = holidayOv.note ? `（${holidayOv.note}）` : '';
+    rows.push(`<div class="detail-item"><div class="dl-label">状態</div><div class="dl-value">🚫 ${holidayOv.reason || '休み'}${note}</div></div>`);
+  } else {
+    const subject = changeOv ? (changeOv.subject || (base && base.subject)) : (base && base.subject);
+    const items   = changeOv ? (changeOv.items || [])                      : ((base && base.items) || []);
+
+    rows.push(`<div class="detail-item"><div class="dl-label">科目</div><div class="dl-value">${subject || 'ー'}${changeOv ? ' <span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:20px;font-weight:700">変更あり</span>' : ''}</div></div>`);
+
+    if (items.length) {
+      rows.push(`<div class="detail-item"><div class="dl-label">持ち物</div><div class="dl-value">${items.map(it => `📎 ${it}`).join('　')}</div></div>`);
+    }
+
+    const hw = ttHomeworks.filter(h => h.date === dateStr && h.subject === subject);
+    if (hw.length) {
+      const hwHtml = hw.map(h => {
+        const cat  = h.content.match(/^【(.+?)】/)?.[1] || '';
+        const text = h.content.replace(/^【.+?】/, '').trim();
+        return `<div style="margin-bottom:4px"><span class="tt-badge tt-badge-${cat}">${cat}</span> ${text}</div>`;
+      }).join('');
+      rows.push(`<div class="detail-item"><div class="dl-label">課題・提出物</div><div class="dl-value">${hwHtml}</div></div>`);
+    }
+
+    if (changeOv && changeOv.note) {
+      rows.push(`<div class="detail-item"><div class="dl-label">備考</div><div class="dl-value dl-note">${changeOv.note}</div></div>`);
+    }
+  }
+
+  document.getElementById('tt-detail-content').innerHTML = rows.join('');
+  document.getElementById('modal-tt-detail').classList.add('open');
+}
+
+// ★ 詳細モーダルの「この時間割を変更する」ボタン
+//   → 時間割編集モーダルを開き、タップしたコマの日付・時限をあらかじめ入力しておく
+function editFromTTDetail() {
+  if (!ttDetailTarget) return;
+  const { date, period } = ttDetailTarget;
+
+  closeModal('tt-detail');
+  openTTEditModal();
+
+  // 対象日付をセット
+  calState['tt-edit'].selected = date;
+  const [y, m, dd] = date.split('-');
+  const dateEl = document.getElementById('tt-edit-date-text');
+  dateEl.textContent = `${y}年${parseInt(m)}月${parseInt(dd)}日`;
+  dateEl.style.color = 'var(--text)';
+  renderCal('tt-edit');
+
+  // 時限をセット
+  const periodEl = document.getElementById('tt-edit-period');
+  if (periodEl) periodEl.value = String(period);
+
+  const holidayOv = ttOverrides[`period_holiday:${date}:${period}`];
+  const changeOv  = ttOverrides[`change:${date}:${period}`];
+
+  if (holidayOv) {
+    // すでに「1コマ休み」になっているコマ → 休みタブを開いて現在の内容を表示
+    switchTTMode('period-holiday');
+    document.getElementById('tt-edit-period-holiday-reason').value = holidayOv.reason || '休み';
+    document.getElementById('tt-edit-period-holiday-note').value   = holidayOv.note   || '';
+  } else {
+    // 授業変更タブを開いて、現在の内容（変更済みならその内容、なければ通常の時間割）を初期値にする
+    switchTTMode('change');
+    const dayKey = dateToDayKey(date);
+    const base   = (TIMETABLE[dayKey] || [])[period - 1];
+
+    const subject = changeOv ? (changeOv.subject || (base && base.subject)) : (base && base.subject);
+    const items   = changeOv ? (changeOv.items || [])                      : ((base && base.items) || []);
+    const note    = changeOv ? (changeOv.note || '')                       : '';
+
+    const subjEl = document.getElementById('tt-edit-subject');
+    if (subjEl) subjEl.value = subject || '';
+    document.getElementById('tt-edit-items').value = items.join(',');
+    document.getElementById('tt-edit-note').value  = note;
+  }
 }
 
 // ============================================================
