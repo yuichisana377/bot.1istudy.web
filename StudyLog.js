@@ -751,7 +751,11 @@ function updateTimerUI() {
 function startInterval() {
   timerInterval = setInterval(function() {
     timerSec = Math.floor((Date.now() - timerStartEpoch) / 1000);
-    if (timerSec >= 10800) { timerStop(); return; }
+    if (timerSec >= 10800) {
+      notifyUser("StudyLog", "3時間が経過したため、タイマーを自動的に停止しました。");
+      timerStop();
+      return;
+    }
     var curMin = Math.floor(timerSec / 60);
     if (curMin > 0 && curMin % 5 === 0 && curMin > lastAwardedMin) {
       lastAwardedMin = curMin;
@@ -764,8 +768,40 @@ function startInterval() {
   }, 500);
 }
 
+// ── ブラウザ通知（他のタブを見ていても気づけるように） ──────
+// 許可されていれば端末通知、未許可・未対応ならalert()にフォールバック。
+// ※ タブそのものを閉じている場合はどちらも動作しません（JSが動いていないため）。
+function ensureNotifyPermission() {
+  if (typeof Notification === "undefined") return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function notifyUser(title, body) {
+  // ★ Discord連携済みなら本人のDiscordへ直接DM通知を送る（bot.py側で /id連携 済みの場合のみ）。
+  //   これはブラウザのタブを閉じていても、他のサイトを見ていても届く。
+  //   未連携・送信失敗の場合はブラウザ通知（またはalert）にフォールバックする。
+  api("notify_dm", {
+    method: "POST",
+    body: JSON.stringify({ guild_id: GUILD_ID, student_id: STUDENT.id, title: title, message: body })
+  }).then(function(res) {
+    if (!res || !res.ok) notifyUserBrowserOnly(title, body);
+  }).catch(function() {
+    notifyUserBrowserOnly(title, body);
+  });
+}
+
+function notifyUserBrowserOnly(title, body) {
+  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try { new Notification(title, { body: body }); return; } catch(e) {}
+  }
+  alert(body);
+}
+
 function timerStart() {
   if (timerRunning) return;
+  ensureNotifyPermission(); // ★ ユーザー操作（クリック）のタイミングで許可をリクエスト
   timerRunning    = true;
   timerIsPaused   = false;
   timerStartEpoch = Date.now() - elapsedAtPause * 1000;
@@ -854,7 +890,12 @@ function restoreTimer() {
     var saved = localStorage.getItem(LS_TIMER);
     if (!saved) return;
     var elapsed = Math.floor((Date.now() - parseInt(saved)) / 1000);
-    if (elapsed <= 0 || elapsed >= 10800) { localStorage.removeItem(LS_TIMER); return; }
+    if (elapsed <= 0) { localStorage.removeItem(LS_TIMER); return; }
+    if (elapsed >= 10800) {
+      localStorage.removeItem(LS_TIMER);
+      notifyUser("StudyLog", "前回の計測から3時間以上経過していたため、計測を破棄しました。");
+      return;
+    }
 
     // ★ サイトを離れていた／タブを閉じていた間も計測は続いていた扱いにし、
     //   「再開」クリックを待たず自動的に計測中の状態へ復帰させる。
