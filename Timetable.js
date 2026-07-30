@@ -274,18 +274,17 @@ function renderTimetable() {
           <span class="homework-text">${text}</span>
         </div>`;
       }).join('');
-      const noteHtml = (changeOv && changeOv.note)
-        ? `<div style="font-size:11px;color:#1e40af;margin-top:2px">📝 ${changeOv.note}</div>` : '';
+      const noteDot = (changeOv && changeOv.note)
+        ? `<span title="備考あり" style="font-size:11px;margin-left:4px">📝</span>` : '';
       const changedBadge = isChanged
         ? `<span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:20px;font-weight:700;margin-left:4px">変更</span>` : '';
 
       return `<div class="period-row" onclick="showTTDetail('${dateStr}', ${periodNum})">
         <div class="period-num">${periodNum}</div>
-        <div class="period-subject${subject ? '' : ' empty'}">${subject || 'ー'}${changedBadge}</div>
+        <div class="period-subject${subject ? '' : ' empty'}">${subject || 'ー'}${changedBadge}${noteDot}</div>
         <div class="period-right">
           ${itemsHtml}
           ${hwHtml}
-          ${noteHtml}
         </div>
       </div>`;
     }).join('');
