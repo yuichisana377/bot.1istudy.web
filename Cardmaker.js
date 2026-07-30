@@ -520,7 +520,11 @@ async function resumeFromHome(isFolder, id) {
 
     loadingFolderIds.add(id);
     renderDeckListUI();
-    const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id)));
+    // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。
+    //   キャッシュ済み（cardsLoaded=true）のまま開くと、他の人が直した最新の
+    //   修正内容がプレイ画面に反映されない＝「もう直っていたのに気づかず
+    //   重複して編集してしまう」事故につながるため。
+    const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id, true)));
     loadingFolderIds.delete(id);
     renderDeckListUI();
 
@@ -538,7 +542,8 @@ async function resumeFromHome(isFolder, id) {
 
     loadingDeckIds.add(id);
     renderDeckListUI();
-    const result = await ensureDeckCardsLoaded(id);
+    // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。理由は上と同じ。
+    const result = await ensureDeckCardsLoaded(id, true);
     loadingDeckIds.delete(id);
     renderDeckListUI();
 
@@ -1797,7 +1802,9 @@ async function openFolderPlayMode(folderId) {
   loadingFolderIds.add(folderId);
   renderDeckListUI();
 
-  const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id)));
+  // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。
+  //   キャッシュ済みでも取り直すことで、他の人が直した修正がすぐプレイ画面に反映される。
+  const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id, true)));
 
   loadingFolderIds.delete(folderId);
   renderDeckListUI();
@@ -1842,15 +1849,20 @@ async function openFolderPlayMode(folderId) {
 
   openModal('modal-play-mode');
 }
-// ★ 公開済みデッキはカード本体が未読み込みの可能性があるので、
-//   プレイモードを開く前に ensureDeckCardsLoaded() で取得しておく。
+// ★ プレイ開始のたびに、必ずサーバーから最新のカードを取り直す（force=true）。
+//   ─────────────────────────────────────────────
+//   以前は cardsLoaded=true（一度読み込み済み）のデッキはキャッシュのまま
+//   プレイ画面を開いていたため、他の人が先に修正していても気づけず、
+//   「同じ間違いをまた編集してしまう」「もう直っていたのに気づかない」
+//   といったすれ違いが起きやすかった。プレイのたびに読み込み直すことで、
+//   誰かが編集した直後でも次にプレイした人にはほぼ即座に反映される。
 async function openPlayMode(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
   studyIsFolder = false;
   studyDeckId = deckId;
 
-  const result = await ensureDeckCardsLoaded(deckId);
+  const result = await ensureDeckCardsLoaded(deckId, true);
   if (!result.ok) {
     await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
     return;
