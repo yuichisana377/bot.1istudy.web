@@ -398,9 +398,8 @@ function renderDeckListUI() {
 
   const childFolders = folderChildren(currentFolderId);
   const childDecks   = decks.filter(d => (d.folderId || null) === currentFolderId);
-  const remoteDrafts = getVisibleRemoteDrafts(currentFolderId); // ★ 追加：他の人が公開予定で作成中のデッキ
 
-  if (!childFolders.length && !childDecks.length && !remoteDrafts.length) {
+  if (!childFolders.length && !childDecks.length) {
     grid.style.display='none'; empty.style.display='block';
     document.getElementById('deck-list-empty-text').textContent =
       currentFolderId ? 'このフォルダにはまだ何もありません' : 'まだデッキがありません';
@@ -445,23 +444,29 @@ function renderDeckListUI() {
       const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
       unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
     }
+    // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
+    //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
+    //   （pubBadge の判定でも使うため、先に計算しておく）
+    const questionCount = d.filename ? (d.count ?? d.cards.length) : d.cards.length;
     // ★ 公開状態バッジ：作成中／非公開／公開済み／未完成 のいずれか1つだけを表示する。
     //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
     //   分かりにくいので同じ場所に1つだけ出すよう統合した）
-    //   ★ 追加：まだ公開していないデッキのうち、作成時に「公開予定」を選んだもの
-    //   （d.planPublish が false 以外＝未設定の既存デッキも含めてデフォルトtrue扱い）は
-    //   「作成中」バッジを出し、公開予定ではない（自分だけのメモ用途）デッキは
-    //   これまで通り「非公開」バッジを出す。
+    //   ★ 追加：
+    //   ・まだ公開していないデッキ（filenameなし）のうち、作成時に「公開予定」を
+    //     選んだもの（d.planPublish が false 以外＝未設定の既存デッキも含めてデフォルトtrue扱い）は
+    //     「作成中」バッジを出す（この端末だけの表示。サーバーへの登録に失敗した場合など）。
+    //   ・サーバーには既に登録済み（filenameあり）だが、まだカードが1枚も無く「未完成」
+    //     フラグが立っている＝作成ボタンを押した直後でまだ内容を作っている最中のデッキも
+    //     同じく「作成中」として扱い、他の人の一覧にも同じバッジで表示させる。
     const pubBadge = !d.filename
       ? (d.planPublish !== false
           ? `<span class="pub-badge inprogress">🟠 作成中</span>`
           : `<span class="pub-badge local">🔴 非公開</span>`)
-      : d.incomplete
-        ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
-        : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
-    // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
-    //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
-    const questionCount = d.filename ? (d.count ?? d.cards.length) : d.cards.length;
+      : (d.incomplete && questionCount === 0)
+        ? `<span class="pub-badge inprogress">🟠 作成中${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+        : d.incomplete
+          ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+          : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
@@ -495,28 +500,8 @@ function renderDeckListUI() {
     </div>` };
   });
 
-  // ★ 追加：他の人が「公開予定」で作成中のデッキ（カード本体はまだ無く、名前だけの状態）。
-  //   実体が無いのでプレイ／編集などの操作ボタンは出さず、表示のみにする。
-  const remoteDraftItems = remoteDrafts.map(it => {
-    const subjectLabel = it.subject
-      ? `<div class="deck-card-subject">${esc(it.subject)}</div>` : '';
-    const displayName = (it.subject && it.name && it.name.startsWith(it.subject + ' '))
-      ? it.name.slice(it.subject.length + 1) : (it.name || '');
-    const creatorLabel = it.creator_nickname ? `（${esc(it.creator_nickname)}）` : '';
-    return { key: `remotedraft:${it.id}`, html: `
-    <div class="deck-card deck-card-remote-draft" data-key="remotedraft:${it.id}">
-      <div class="deck-card-info">
-        ${subjectLabel}
-        <div class="deck-card-title">${esc(displayName)}</div>
-        <div class="deck-card-meta">
-          <span class="pub-badge inprogress">🟠 作成中${creatorLabel}</span>
-        </div>
-      </div>
-    </div>` };
-  });
-
   // ★ フォルダ・デッキを合わせ、保存済みの並び順（ユーザーがドラッグして決めた順）があれば適用する
-  const combinedItems = applySavedListOrder([...folderItems, ...deckItems, ...remoteDraftItems], currentFolderId);
+  const combinedItems = applySavedListOrder([...folderItems, ...deckItems], currentFolderId);
   grid.innerHTML = combinedItems.map(it => it.html).join('');
 }
 
@@ -917,9 +902,6 @@ async function selectMoveTarget(targetId) {
     if (d.filename) {
       const ok = await syncDeckToServer(d);
       if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
-    } else if (isRegisteredDraft(d)) {
-      // ★ 追加：作成中デッキとして登録済みなら、みんなに見えているフォルダ位置も更新する
-      updateInProgress(d);
     }
     return;
   }
@@ -940,90 +922,6 @@ async function selectMoveTarget(targetId) {
   } catch(e) {
     await showCmAlert({ title: 'フォルダの移動に失敗しました', desc: e.message });
   }
-}
-
-// ── 作成中デッキ（公開予定で、まだ公開していないもの）をみんなで共有表示する ──
-//   ・「作成」を押した時点で id/name/subject/folder_id/作成者 だけをサーバーに登録し、
-//     他の人の一覧にも「🟠 作成中（〇〇さん）」として表示できるようにする。
-//   ・カード本体（問題・解答）はサーバー側に一切送らない。
-//   ・以下の register/update/remove は、成功しなくてもローカルの操作自体は
-//     止めない（＝失敗しても静かに諦める。次のポーリングで整合性が取れることもある）。
-let inProgressRemoteCache = []; // list_in_progress のキャッシュ（他の人の作成中デッキ）
-
-function isRegisteredDraft(deck) {
-  // このデッキが「作成中デッキ」としてサーバーに登録される（べき）対象かどうか
-  return !!deck && !deck.filename && deck.planPublish !== false;
-}
-
-async function registerInProgress(deck) {
-  try {
-    const session = getLoginSession();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    await fetch(`${API_BASE}register_in_progress`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: deck.id, name: deck.name, subject: deck.subject || null,
-        folder_id: deck.folderId || null,
-        creator_id: session ? session.student_id : null,
-        creator_nickname: session ? session.nickname : '匿名',
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-  } catch(e) {}
-}
-
-async function updateInProgress(deck) {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    await fetch(`${API_BASE}update_in_progress`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: deck.id, name: deck.name, subject: deck.subject || null, folder_id: deck.folderId || null }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-  } catch(e) {}
-}
-
-async function removeInProgress(deckId) {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    await fetch(`${API_BASE}remove_in_progress`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: deckId }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-  } catch(e) {}
-}
-
-// ★ list_in_progress（軽量メタ情報のみ）を取得してキャッシュに反映する（画面描画はしない）
-async function fetchInProgressList() {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${API_BASE}list_in_progress`, { signal: controller.signal, cache: 'no-store' });
-    clearTimeout(timer);
-    const data = await res.json();
-    if (!data.ok) return false;
-    inProgressRemoteCache = data.items || [];
-    return true;
-  } catch(e) { return false; }
-}
-
-// 指定フォルダ（null=ルート）に表示すべき「他の人が作成中」の項目を返す。
-//   ・自分がこの端末で作成した下書きは、既にローカルのdecksに実体があるので重複表示しない。
-//   ・参照先フォルダが既に削除されている場合はルート扱いで表示する。
-function getVisibleRemoteDrafts(folderId) {
-  const localIds = new Set(decks.map(d => d.id));
-  return inProgressRemoteCache.filter(it => {
-    if (!it || !it.id || localIds.has(it.id)) return false;
-    const fid = (it.folder_id && folders.find(f => f.id === it.folder_id)) ? it.folder_id : null;
-    return (fid || null) === (folderId || null);
-  });
 }
 
 // ★ list_cards（軽量メタ情報のみ）を取得して decks にマージする共通処理（画面描画はしない）
@@ -1200,7 +1098,7 @@ async function renderDeckList() {
   folders = loadFoldersCache();
   renderDeckListUI();
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchInProgressList()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
     renderDeckListUI();
   } catch(e) {}
 }
@@ -1269,8 +1167,6 @@ async function menuDelete() {
       if (!localOnly) return;
     }
   }
-  // ★ 追加：作成中デッキとしてサーバーに登録済みだった場合は、そのエントリも削除する
-  if (deck && isRegisteredDraft(deck)) removeInProgress(deck.id);
   decks = decks.filter(d => d.id !== menuTargetId);
   saveDecks(decks); renderDeckList();
 }
@@ -1310,10 +1206,64 @@ async function startEdit() {
   const planPublish = document.getElementById('new-plan-publish').checked;
   const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish };
   decks.push(deck); saveDecks(decks);
-  // ★ 追加：公開予定でデッキを作成したら、その時点で名前だけサーバーに登録し、
-  //   他の人の一覧にも「作成中」として表示されるようにする（カード本体は送らない）
-  if (isRegisteredDraft(deck)) registerInProgress(deck);
+  // ★ 追加：公開予定なら、この時点（作成ボタンを押した直後）でサーバーにも
+  //   「まだ中身は空・作成中」として登録し、他の人の一覧にもすぐ表示されるようにする。
+  //   （失敗しても致命的ではないので、その場合はこれまで通りこの端末だけの
+  //     下書きとして続行する＝一覧のバッジは「作成中」のまま変わらない）
+  if (planPublish) {
+    await announceNewDeckToServer(deck.id);
+  }
   openEditDeck(deck.id);
+}
+
+// ★ 追加：デッキ作成直後、公開予定なら中身が空の状態でもサーバーに登録して
+//   「🟠 作成中」として他の人の一覧にも表示されるようにする処理。
+//   ・save_cards は既存のAPIをそのまま利用する（cards: [] ・ incomplete: true ・ silent: true）。
+//   ・カード枚数が0件のまま incomplete=true のデッキは「作成中」バッジとして
+//     区別して表示する（renderDeckListUI 側のロジックを参照）。
+//   ・Discordへの通知は送らない（silent:true）。
+async function announceNewDeckToServer(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+  const session = getLoginSession();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${API_BASE}save_cards`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: deck.name,
+        cards: [],
+        guild_id: GUILD_ID,
+        subject: deck.subject || null,
+        folder_id: deck.folderId || null,
+        publisher_id: session ? session.student_id : null,
+        publisher_nickname: session ? session.nickname : '匿名',
+        silent: true,      // ★ 作成しただけなのでDiscord通知はしない
+        incomplete: true,  // ★ まだカードが無いので「未完成（作成中）」扱いにする
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    // ★ POST完了までの間に他の同期処理でdecks配列が入れ替わっている可能性があるため、
+    //   必ずこの時点で最新のdecksからidで探し直してから更新・保存する。
+    decks = loadDecks();
+    const target = decks.find(d => d.id === deckId);
+    if (target) {
+      target.filename = data.filename;
+      target.count = 0;
+      target.cardsLoaded = true;
+      target.published_by = session ? session.nickname : '匿名';
+      target.incomplete = true;
+      saveDecks(decks);
+    }
+  } catch (e) {
+    // ★ サーバー登録に失敗した場合は、これまで通りこの端末だけの下書き
+    //   （filenameなし）として続行する。次にカードを保存して公開すれば
+    //   その時にサーバーへ反映される。
+  }
 }
 
 // ── カード編集画面 ────────────────────
@@ -1461,8 +1411,6 @@ async function publishDeck(deckId, isComplete = true) {
       target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持（サーバーにも保存済み）
       saveDecks(decks);
     }
-    // ★ 追加：公開できたので「作成中」として登録していたエントリはもう不要
-    removeInProgress(deckId);
     renderDeckListUI();
     showBanner(
       isComplete ? '✓ 保存して公開しました！' : '🟡 未完成として公開しました（通知なし）',
@@ -2188,6 +2136,16 @@ async function openRename(id) {
   const currentName = currentSubject && deck.name.startsWith(currentSubject + ' ')
     ? deck.name.slice(currentSubject.length + 1) : deck.name;
   document.getElementById('modal-rename-input').value = currentName;
+  // ★ 追加：まだサーバー未登録（非公開・作成中のローカル下書き）のデッキだけ
+  //   「公開予定」トグルを表示する。既にサーバー登録済み（filenameあり）の
+  //   デッキは、公開予定を取り消したい場合は既存の「非公開に戻す」メニューを使う。
+  const planRow = document.getElementById('modal-rename-plan-publish-row');
+  if (!deck.filename) {
+    planRow.style.display = '';
+    document.getElementById('modal-rename-plan-publish').checked = deck.planPublish !== false;
+  } else {
+    planRow.style.display = 'none';
+  }
   const sel = document.getElementById('modal-rename-subject');
   sel.innerHTML = '<option value="">読み込み中…</option>';
   openModal('modal-rename');
@@ -2212,11 +2170,26 @@ async function saveRename() {
   if (await warnIfBugChars(input, 'modal-rename-input')) return;
   const deck = decks.find(d => d.id === renamingDeckId);
   const newName = subject ? `${subject} ${input}` : input;
+  // ★ 追加：まだサーバー未登録のデッキのみ、公開予定トグルの変更を反映する
+  const wasPlanPublish = deck.planPublish !== false;
+  let planPublishChanged = false;
+  if (!deck.filename) {
+    const nowPlanPublish = document.getElementById('modal-rename-plan-publish').checked;
+    if (nowPlanPublish !== wasPlanPublish) planPublishChanged = true;
+    deck.planPublish = nowPlanPublish;
+  }
   deck.subject = subject;
   deck.name    = newName;
   saveDecks(decks);
   closeModal('modal-rename');
   renderDeckListUI();
+
+  // ★ 追加：公開予定が「なし→あり」に変わった場合、この時点でサーバーへ登録し、
+  //   他の人の一覧にも「作成中」として表示されるようにする。
+  if (!deck.filename && planPublishChanged && deck.planPublish) {
+    await announceNewDeckToServer(deck.id);
+    renderDeckListUI();
+  }
 
   // ★ 公開済みならサーバー側のファイルも更新する（通知はしない）
   //   ※ カード本体が未読み込みでも、renameだけならcardsが空でも
@@ -2234,9 +2207,6 @@ async function saveRename() {
     }
     const ok = await syncDeckToServer(deck);
     if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
-  } else if (isRegisteredDraft(deck)) {
-    // ★ 追加：作成中デッキとして登録済みなら、みんなに見えている名前も更新する
-    updateInProgress(deck);
   }
 }
 
@@ -3274,7 +3244,7 @@ async function forceRefreshOnReturn() {
   if (isForceRefreshing) return;
   isForceRefreshing = true;
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchInProgressList()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
