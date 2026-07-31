@@ -398,8 +398,9 @@ function renderDeckListUI() {
 
   const childFolders = folderChildren(currentFolderId);
   const childDecks   = decks.filter(d => (d.folderId || null) === currentFolderId);
+  const remoteDrafts = getVisibleRemoteDrafts(currentFolderId); // ★ 追加：他の人が公開予定で作成中のデッキ
 
-  if (!childFolders.length && !childDecks.length) {
+  if (!childFolders.length && !childDecks.length && !remoteDrafts.length) {
     grid.style.display='none'; empty.style.display='block';
     document.getElementById('deck-list-empty-text').textContent =
       currentFolderId ? 'このフォルダにはまだ何もありません' : 'まだデッキがありません';
@@ -494,8 +495,28 @@ function renderDeckListUI() {
     </div>` };
   });
 
+  // ★ 追加：他の人が「公開予定」で作成中のデッキ（カード本体はまだ無く、名前だけの状態）。
+  //   実体が無いのでプレイ／編集などの操作ボタンは出さず、表示のみにする。
+  const remoteDraftItems = remoteDrafts.map(it => {
+    const subjectLabel = it.subject
+      ? `<div class="deck-card-subject">${esc(it.subject)}</div>` : '';
+    const displayName = (it.subject && it.name && it.name.startsWith(it.subject + ' '))
+      ? it.name.slice(it.subject.length + 1) : (it.name || '');
+    const creatorLabel = it.creator_nickname ? `（${esc(it.creator_nickname)}）` : '';
+    return { key: `remotedraft:${it.id}`, html: `
+    <div class="deck-card deck-card-remote-draft" data-key="remotedraft:${it.id}">
+      <div class="deck-card-info">
+        ${subjectLabel}
+        <div class="deck-card-title">${esc(displayName)}</div>
+        <div class="deck-card-meta">
+          <span class="pub-badge inprogress">🟠 作成中${creatorLabel}</span>
+        </div>
+      </div>
+    </div>` };
+  });
+
   // ★ フォルダ・デッキを合わせ、保存済みの並び順（ユーザーがドラッグして決めた順）があれば適用する
-  const combinedItems = applySavedListOrder([...folderItems, ...deckItems], currentFolderId);
+  const combinedItems = applySavedListOrder([...folderItems, ...deckItems, ...remoteDraftItems], currentFolderId);
   grid.innerHTML = combinedItems.map(it => it.html).join('');
 }
 
@@ -896,6 +917,9 @@ async function selectMoveTarget(targetId) {
     if (d.filename) {
       const ok = await syncDeckToServer(d);
       if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    } else if (isRegisteredDraft(d)) {
+      // ★ 追加：作成中デッキとして登録済みなら、みんなに見えているフォルダ位置も更新する
+      updateInProgress(d);
     }
     return;
   }
@@ -916,6 +940,90 @@ async function selectMoveTarget(targetId) {
   } catch(e) {
     await showCmAlert({ title: 'フォルダの移動に失敗しました', desc: e.message });
   }
+}
+
+// ── 作成中デッキ（公開予定で、まだ公開していないもの）をみんなで共有表示する ──
+//   ・「作成」を押した時点で id/name/subject/folder_id/作成者 だけをサーバーに登録し、
+//     他の人の一覧にも「🟠 作成中（〇〇さん）」として表示できるようにする。
+//   ・カード本体（問題・解答）はサーバー側に一切送らない。
+//   ・以下の register/update/remove は、成功しなくてもローカルの操作自体は
+//     止めない（＝失敗しても静かに諦める。次のポーリングで整合性が取れることもある）。
+let inProgressRemoteCache = []; // list_in_progress のキャッシュ（他の人の作成中デッキ）
+
+function isRegisteredDraft(deck) {
+  // このデッキが「作成中デッキ」としてサーバーに登録される（べき）対象かどうか
+  return !!deck && !deck.filename && deck.planPublish !== false;
+}
+
+async function registerInProgress(deck) {
+  try {
+    const session = getLoginSession();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    await fetch(`${API_BASE}register_in_progress`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: deck.id, name: deck.name, subject: deck.subject || null,
+        folder_id: deck.folderId || null,
+        creator_id: session ? session.student_id : null,
+        creator_nickname: session ? session.nickname : '匿名',
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch(e) {}
+}
+
+async function updateInProgress(deck) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    await fetch(`${API_BASE}update_in_progress`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: deck.id, name: deck.name, subject: deck.subject || null, folder_id: deck.folderId || null }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch(e) {}
+}
+
+async function removeInProgress(deckId) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    await fetch(`${API_BASE}remove_in_progress`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: deckId }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch(e) {}
+}
+
+// ★ list_in_progress（軽量メタ情報のみ）を取得してキャッシュに反映する（画面描画はしない）
+async function fetchInProgressList() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE}list_in_progress`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) return false;
+    inProgressRemoteCache = data.items || [];
+    return true;
+  } catch(e) { return false; }
+}
+
+// 指定フォルダ（null=ルート）に表示すべき「他の人が作成中」の項目を返す。
+//   ・自分がこの端末で作成した下書きは、既にローカルのdecksに実体があるので重複表示しない。
+//   ・参照先フォルダが既に削除されている場合はルート扱いで表示する。
+function getVisibleRemoteDrafts(folderId) {
+  const localIds = new Set(decks.map(d => d.id));
+  return inProgressRemoteCache.filter(it => {
+    if (!it || !it.id || localIds.has(it.id)) return false;
+    const fid = (it.folder_id && folders.find(f => f.id === it.folder_id)) ? it.folder_id : null;
+    return (fid || null) === (folderId || null);
+  });
 }
 
 // ★ list_cards（軽量メタ情報のみ）を取得して decks にマージする共通処理（画面描画はしない）
@@ -1092,7 +1200,7 @@ async function renderDeckList() {
   folders = loadFoldersCache();
   renderDeckListUI();
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchInProgressList()]);
     renderDeckListUI();
   } catch(e) {}
 }
@@ -1161,6 +1269,8 @@ async function menuDelete() {
       if (!localOnly) return;
     }
   }
+  // ★ 追加：作成中デッキとしてサーバーに登録済みだった場合は、そのエントリも削除する
+  if (deck && isRegisteredDraft(deck)) removeInProgress(deck.id);
   decks = decks.filter(d => d.id !== menuTargetId);
   saveDecks(decks); renderDeckList();
 }
@@ -1200,6 +1310,9 @@ async function startEdit() {
   const planPublish = document.getElementById('new-plan-publish').checked;
   const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish };
   decks.push(deck); saveDecks(decks);
+  // ★ 追加：公開予定でデッキを作成したら、その時点で名前だけサーバーに登録し、
+  //   他の人の一覧にも「作成中」として表示されるようにする（カード本体は送らない）
+  if (isRegisteredDraft(deck)) registerInProgress(deck);
   openEditDeck(deck.id);
 }
 
@@ -1348,6 +1461,8 @@ async function publishDeck(deckId, isComplete = true) {
       target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持（サーバーにも保存済み）
       saveDecks(decks);
     }
+    // ★ 追加：公開できたので「作成中」として登録していたエントリはもう不要
+    removeInProgress(deckId);
     renderDeckListUI();
     showBanner(
       isComplete ? '✓ 保存して公開しました！' : '🟡 未完成として公開しました（通知なし）',
@@ -2119,6 +2234,9 @@ async function saveRename() {
     }
     const ok = await syncDeckToServer(deck);
     if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
+  } else if (isRegisteredDraft(deck)) {
+    // ★ 追加：作成中デッキとして登録済みなら、みんなに見えている名前も更新する
+    updateInProgress(deck);
   }
 }
 
@@ -3156,7 +3274,7 @@ async function forceRefreshOnReturn() {
   if (isForceRefreshing) return;
   isForceRefreshing = true;
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchInProgressList()]);
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
