@@ -107,6 +107,11 @@
       <select id="new-subject" style="width:100%;max-width:360px;padding:12px 14px;border:2px solid var(--border);border-radius:var(--r-md);font-family:inherit;font-size:16px;color:var(--text);background:var(--surface);outline:none;-webkit-appearance:none;margin-bottom:.75rem;transition:border-color .15s">
         <option value="">科目を選択（任意）</option>
       </select>
+      <!-- ★ 追加：このデッキを公開予定にするかどうかのトグル（デフォルトON＝公開予定） -->
+      <label class="reverse-toggle-row" style="width:100%;max-width:360px" onclick="event.stopPropagation()">
+        <span>🌐 公開予定のデッキにする</span>
+        <input type="checkbox" id="new-plan-publish" checked>
+      </label>
       <input class="set-name-input" id="new-set-name" type="text"
              placeholder="セット名を入力" maxlength="60"
              onkeydown="if(event.key==='Enter')startEdit()">
