@@ -1614,6 +1614,38 @@ function renderCreatedList() {
   let pressScrollParent = null; // 長押し確定前／手動スクロール中に動かすスクロール対象
   let isManualScrolling = false; // 長押しをキャンセルし、手動スクロールに切り替わった状態
 
+  // ★ 追加：touch-action:none によりネイティブスクロールの慣性（フリックした後
+  //   スーッと流れる動き）が失われてしまうため、手動で同等の慣性スクロールを
+  //   再現するための状態。指を離す直前の速度を記録し、pointerup後に減速させながら
+  //   scrollTopを動かし続ける。
+  let pressLastMoveTime = 0;
+  let pressVelocityY = 0;      // px/ms
+  let momentumRAF = null;
+
+  function stopMomentum() {
+    if (momentumRAF !== null) { cancelAnimationFrame(momentumRAF); momentumRAF = null; }
+  }
+
+  function startMomentum(scrollEl, initialVelocity) {
+    stopMomentum();
+    let velocity = initialVelocity; // px/ms
+    let lastTime = performance.now();
+    const FRICTION = 0.0025; // 大きいほど早く減速する
+    const MIN_VELOCITY = 0.02; // これ未満になったら停止
+
+    function tick(now) {
+      const dt = now - lastTime;
+      lastTime = now;
+      // 速度を時間経過に応じて減衰させる
+      const decay = Math.exp(-FRICTION * dt);
+      velocity *= decay;
+      if (Math.abs(velocity) < MIN_VELOCITY) { momentumRAF = null; return; }
+      scrollEl.scrollTop -= velocity * dt;
+      momentumRAF = requestAnimationFrame(tick);
+    }
+    momentumRAF = requestAnimationFrame(tick);
+  }
+
   let dragEl = null;
   let startY = 0;
   let lastClientY = 0;
@@ -1749,11 +1781,15 @@ function renderCreatedList() {
     // ▶プレイ／✏️メニューなどのボタンから始まった場合は、通常のタップ操作を優先する
     if (e.target.closest('button, .btn, .icon-btn, a')) return;
 
+    stopMomentum(); // ★ 慣性スクロール中に指を置いたら、まずそれを止めて掴み直せるようにする
+
     pressItem = item;
     pressPointerId = e.pointerId;
     pressStartX = e.clientX;
     pressStartY = e.clientY;
     pressLastY = e.clientY;
+    pressLastMoveTime = performance.now();
+    pressVelocityY = 0;
     // ★ grid が touch-action:none のため、指を置いた時点でスクロール対象を
     //   あらかじめ求めておく（長押し確定前に動いたら、これを手動で動かす）
     pressScrollParent = findScrollParent(grid);
@@ -1792,15 +1828,28 @@ function renderCreatedList() {
     //   起きない代わりに、ここでスクロール位置を直接動かして同じ見た目を再現する
     if (isManualScrolling && pressScrollParent) {
       e.preventDefault();
+      const now = performance.now();
       const dy = e.clientY - pressLastY;
+      const dt = Math.max(1, now - pressLastMoveTime); // 0除算・異常値を避ける
       pressScrollParent.scrollTop -= dy;
+      // ★ 直近の指の速度を記録しておく（指を離した瞬間の慣性スクロールに使う）。
+      //   一気に飛ばず、直前の値とブレンドして滑らかにする。
+      pressVelocityY = pressVelocityY * 0.7 + (dy / dt) * 0.3;
       pressLastY = e.clientY;
+      pressLastMoveTime = now;
     }
   }
 
   function onPointerUp(e) {
     if (dragEl && e.pointerId === pressPointerId) { endDrag(); cancelPress(); return; }
-    if (e.pointerId === pressPointerId) cancelPress();
+    if (e.pointerId === pressPointerId) {
+      // ★ 手動スクロール中に指を離した場合、そのときの速度で慣性スクロールを開始する
+      //   （ネイティブスクロールのフリック挙動を再現し、スワイプの感触を戻す）
+      if (isManualScrolling && pressScrollParent && Math.abs(pressVelocityY) > 0.03) {
+        startMomentum(pressScrollParent, pressVelocityY);
+      }
+      cancelPress();
+    }
   }
 
   grid.addEventListener('pointerdown', onPointerDown);
