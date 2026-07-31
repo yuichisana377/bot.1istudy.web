@@ -444,11 +444,17 @@ function renderDeckListUI() {
       const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
       unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
     }
-    // ★ 公開状態バッジ：未公開／公開済み／未完成 のいずれか1つだけを表示する。
+    // ★ 公開状態バッジ：作成中／非公開／公開済み／未完成 のいずれか1つだけを表示する。
     //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
     //   分かりにくいので同じ場所に1つだけ出すよう統合した）
+    //   ★ 追加：まだ公開していないデッキのうち、作成時に「公開予定」を選んだもの
+    //   （d.planPublish が false 以外＝未設定の既存デッキも含めてデフォルトtrue扱い）は
+    //   「作成中」バッジを出し、公開予定ではない（自分だけのメモ用途）デッキは
+    //   これまで通り「非公開」バッジを出す。
     const pubBadge = !d.filename
-      ? `<span class="pub-badge local">🔴 非公開</span>`
+      ? (d.planPublish !== false
+          ? `<span class="pub-badge inprogress">🟠 作成中</span>`
+          : `<span class="pub-badge local">🔴 非公開</span>`)
       : d.incomplete
         ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
         : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
@@ -1124,6 +1130,7 @@ async function menuUnpublish() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '削除失敗');
     deck.filename = null; deck.count = undefined; deck.published_by = null; deck.incomplete = false;
+    deck.planPublish = false; // ★ 追加：明示的に非公開へ戻した場合は「作成中」ではなく「非公開」表示にする
     saveDecks(decks); renderDeckListUI();
     showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
   } catch(e) {
@@ -1161,6 +1168,7 @@ async function menuDelete() {
 // ── 新規作成 ──────────────────────────
 function openNewSet() {
   document.getElementById('new-set-name').value = '';
+  document.getElementById('new-plan-publish').checked = true; // ★ 追加：毎回デフォルトで「公開予定」に戻す
   showScreen('new');
   loadSubjects();
   setTimeout(() => document.getElementById('new-set-name').focus(), 200);
@@ -1188,7 +1196,9 @@ async function startEdit() {
   if (!input) { shake('new-set-name'); return; }
   if (await warnIfBugChars(input, 'new-set-name')) return;
   const name = subject ? `${subject} ${input}` : input;
-  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId };
+  // ★ 追加：このデッキを公開予定として作成するかどうか（デフォルトtrue＝公開予定）
+  const planPublish = document.getElementById('new-plan-publish').checked;
+  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish };
   decks.push(deck); saveDecks(decks);
   openEditDeck(deck.id);
 }
