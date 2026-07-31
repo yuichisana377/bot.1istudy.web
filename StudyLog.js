@@ -782,12 +782,18 @@ function notifyUser(title, body) {
   // ★ Discord連携済みなら本人のDiscordへ直接DM通知を送る（bot.py側で /id連携 済みの場合のみ）。
   //   これはブラウザのタブを閉じていても、他のサイトを見ていても届く。
   //   未連携・送信失敗の場合はブラウザ通知（またはalert）にフォールバックする。
+  console.log("[notifyUser] /notify_dm 呼び出し開始", { guild_id: GUILD_ID, student_id: STUDENT.id, title: title, body: body });
   api("notify_dm", {
     method: "POST",
     body: JSON.stringify({ guild_id: GUILD_ID, student_id: STUDENT.id, title: title, message: body })
   }).then(function(res) {
-    if (!res || !res.ok) notifyUserBrowserOnly(title, body);
-  }).catch(function() {
+    console.log("[notifyUser] /notify_dm 応答:", res);
+    if (!res || !res.ok) {
+      console.warn("[notifyUser] DM失敗 or 未連携。ブラウザ通知にフォールバック。理由:", res && res.error);
+      notifyUserBrowserOnly(title, body);
+    }
+  }).catch(function(err) {
+    console.error("[notifyUser] /notify_dm 通信エラー。ブラウザ通知にフォールバック。", err);
     notifyUserBrowserOnly(title, body);
   });
 }
