@@ -1,4 +1,4 @@
-// ============================================================
+// ============================================================ 754
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
 //  → 累計ポイントはヘッダーバッジに表示
@@ -751,7 +751,7 @@ function updateTimerUI() {
 function startInterval() {
   timerInterval = setInterval(function() {
     timerSec = Math.floor((Date.now() - timerStartEpoch) / 1000);
-    if (timerSec >= 10800) {
+    if (timerSec >= 60) {  #編集中
       notifyUser("StudyLog", "3時間が経過したため、タイマーを自動的に停止しました。");
       timerStop();
       return;
