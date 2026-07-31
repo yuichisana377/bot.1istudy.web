@@ -1667,57 +1667,24 @@ function renderCreatedList() {
   const LONG_PRESS_MS  = 380; // これだけ指を止めたままにすると並び替えモードに入る
   const MOVE_CANCEL_PX = 10;  // 判定前にこれ以上動いたら「スクロール」とみなし長押しをキャンセル
 
-  // ★ 修正：grid には常に touch-action: none を設定しておく。
-  //   以前は長押しが確定した瞬間（beginDrag内）にだけ設定していたが、
-  //   その場合「長押し判定中（最大380ms）にわずかでも指が動く」→
-  //   ブラウザが先に「これはスクロールだ」と判断してネイティブスクロールを
-  //   開始してしまう → その後 touch-action や preventDefault() を変更しても
-  //   一度始まったネイティブスクロールは止められない、という状態になり、
-  //   「縦にドラッグしようとすると画面がスクロールされて移動できない」
-  //   不具合の原因になっていた。
-  //   ネイティブスクロールを最初から無効化する代わりに、下の
-  //   「長押し確定前の手動スクロール処理」で同等の見た目を再現する。
-  grid.style.touchAction = 'none';
+  // ★ 修正：grid の touch-action は 'pan-y'（縦スクロールはブラウザのネイティブ処理に任せる）にする。
+  //   以前は常に 'none' にして、その代わりJSで手動スクロール（慣性込み）を
+  //   再現していたが、ネイティブのスクロール感（滑らかさ・慣性・ラバーバンド等）
+  //   には及ばず「うまくスクロールできない」原因になっていた。
+  //   ─────────────────────────────────────────
+  //   'pan-y' にしておくと、指を動かした瞬間にブラウザ側がそれを
+  //   「スクロールしたいのだ」と判断してネイティブスクロールを開始してくれる
+  //   （その際 pointercancel が飛んでくるので、下の onPointerUp 側で
+  //   長押し判定を自動的にキャンセルできる）。
+  //   一方、指を止めたまま LONG_PRESS_MS 経過すれば、その時点ではまだ
+  //   ネイティブスクロールは始まっていないので、こちらで安全にドラッグ
+  //   （並び替え）モードへ移行できる。
+  grid.style.touchAction = 'pan-y';
 
   let pressTimer = null;
   let pressItem = null;
   let pressPointerId = null;
   let pressStartX = 0, pressStartY = 0;
-  let pressLastY = 0;          // 手動スクロール中、直前のY座標
-  let pressScrollParent = null; // 長押し確定前／手動スクロール中に動かすスクロール対象
-  let isManualScrolling = false; // 長押しをキャンセルし、手動スクロールに切り替わった状態
-
-  // ★ 追加：touch-action:none によりネイティブスクロールの慣性（フリックした後
-  //   スーッと流れる動き）が失われてしまうため、手動で同等の慣性スクロールを
-  //   再現するための状態。指を離す直前の速度を記録し、pointerup後に減速させながら
-  //   scrollTopを動かし続ける。
-  let pressLastMoveTime = 0;
-  let pressVelocityY = 0;      // px/ms
-  let momentumRAF = null;
-
-  function stopMomentum() {
-    if (momentumRAF !== null) { cancelAnimationFrame(momentumRAF); momentumRAF = null; }
-  }
-
-  function startMomentum(scrollEl, initialVelocity) {
-    stopMomentum();
-    let velocity = initialVelocity; // px/ms
-    let lastTime = performance.now();
-    const FRICTION = 0.0025; // 大きいほど早く減速する
-    const MIN_VELOCITY = 0.02; // これ未満になったら停止
-
-    function tick(now) {
-      const dt = now - lastTime;
-      lastTime = now;
-      // 速度を時間経過に応じて減衰させる
-      const decay = Math.exp(-FRICTION * dt);
-      velocity *= decay;
-      if (Math.abs(velocity) < MIN_VELOCITY) { momentumRAF = null; return; }
-      scrollEl.scrollTop -= velocity * dt;
-      momentumRAF = requestAnimationFrame(tick);
-    }
-    momentumRAF = requestAnimationFrame(tick);
-  }
 
   let dragEl = null;
   let startY = 0;
@@ -1842,8 +1809,6 @@ function renderCreatedList() {
   function cancelPress() {
     if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
     pressItem = null; pressPointerId = null;
-    isManualScrolling = false;
-    pressScrollParent = null;
   }
 
   function onPointerDown(e) {
@@ -1854,19 +1819,10 @@ function renderCreatedList() {
     // ▶プレイ／✏️メニューなどのボタンから始まった場合は、通常のタップ操作を優先する
     if (e.target.closest('button, .btn, .icon-btn, a')) return;
 
-    stopMomentum(); // ★ 慣性スクロール中に指を置いたら、まずそれを止めて掴み直せるようにする
-
     pressItem = item;
     pressPointerId = e.pointerId;
     pressStartX = e.clientX;
     pressStartY = e.clientY;
-    pressLastY = e.clientY;
-    pressLastMoveTime = performance.now();
-    pressVelocityY = 0;
-    // ★ grid が touch-action:none のため、指を置いた時点でスクロール対象を
-    //   あらかじめ求めておく（長押し確定前に動いたら、これを手動で動かす）
-    pressScrollParent = findScrollParent(grid);
-    isManualScrolling = false;
 
     pressTimer = setTimeout(() => {
       pressTimer = null;
@@ -1885,44 +1841,20 @@ function renderCreatedList() {
     if (pressPointerId === null || e.pointerId !== pressPointerId) return; // 追跡中の指以外は無視
 
     // 長押し確定前：しきい値を超えて動いたら「スクロールしたいのだ」とみなし、
-    // 長押し判定をキャンセルして手動スクロールに切り替える
+    // 長押し判定をキャンセルする。ここで preventDefault はしない
+    // （touch-action: pan-y のおかげで、ブラウザ側が既にネイティブスクロールを
+    //   開始してくれているので、それをそのまま活かす）。
     if (pressTimer) {
       const dx = e.clientX - pressStartX, dy = e.clientY - pressStartY;
       if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
-        isManualScrolling = true;
-      } else {
-        return; // まだしきい値未満なら何もしない（判定待ち）
+        cancelPress();
       }
-    }
-
-    // ★ 手動スクロール中：grid の touch-action:none によりネイティブスクロールが
-    //   起きない代わりに、ここでスクロール位置を直接動かして同じ見た目を再現する
-    if (isManualScrolling && pressScrollParent) {
-      e.preventDefault();
-      const now = performance.now();
-      const dy = e.clientY - pressLastY;
-      const dt = Math.max(1, now - pressLastMoveTime); // 0除算・異常値を避ける
-      pressScrollParent.scrollTop -= dy;
-      // ★ 直近の指の速度を記録しておく（指を離した瞬間の慣性スクロールに使う）。
-      //   一気に飛ばず、直前の値とブレンドして滑らかにする。
-      pressVelocityY = pressVelocityY * 0.7 + (dy / dt) * 0.3;
-      pressLastY = e.clientY;
-      pressLastMoveTime = now;
     }
   }
 
   function onPointerUp(e) {
     if (dragEl && e.pointerId === pressPointerId) { endDrag(); cancelPress(); return; }
-    if (e.pointerId === pressPointerId) {
-      // ★ 手動スクロール中に指を離した場合、そのときの速度で慣性スクロールを開始する
-      //   （ネイティブスクロールのフリック挙動を再現し、スワイプの感触を戻す）
-      if (isManualScrolling && pressScrollParent && Math.abs(pressVelocityY) > 0.03) {
-        startMomentum(pressScrollParent, pressVelocityY);
-      }
-      cancelPress();
-    }
+    if (e.pointerId === pressPointerId) cancelPress();
   }
 
   grid.addEventListener('pointerdown', onPointerDown);
