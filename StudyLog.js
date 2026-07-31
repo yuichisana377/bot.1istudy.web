@@ -751,7 +751,7 @@ function updateTimerUI() {
 function startInterval() {
   timerInterval = setInterval(function() {
     timerSec = Math.floor((Date.now() - timerStartEpoch) / 1000);
-    if (timerSec >= 60) {
+    if (timerSec >= 10800) {
       notifyUser("StudyLog", "3時間が経過したため、タイマーを自動的に停止しました。");
       timerStop();
       return;
