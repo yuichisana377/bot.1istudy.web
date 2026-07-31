@@ -1229,18 +1229,30 @@ async function announceNewDeckToServer(deckId) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
+    // ★ 修正：以前はここで常に cards: [] を送ってしまっていたため、
+    //   （例：デッキ名編集モーダルで「公開予定」を後からONにした場合など）
+    //   既にローカルで作成済みのカードが無視され、サーバー側は「0枚」として
+    //   登録されてしまっていた。その結果、次に編集画面を開いた際に強制的な
+    //   最新化（force reload）でローカルのカードがサーバー側の0枚で
+    //   上書きされて消えてしまう、という重大な不具合につながっていた。
+    //   ここでは必ず「今ローカルにある実際のカード」をそのまま送る
+    //   （まだ1枚も無ければ結果的に空配列になるだけで、これまで通り）。
+    const cards = deck.cards.map(c => ({
+      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
+      imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [],
+    }));
     const res = await fetch(`${API_BASE}save_cards`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: deck.name,
-        cards: [],
+        cards,
         guild_id: GUILD_ID,
         subject: deck.subject || null,
         folder_id: deck.folderId || null,
         publisher_id: session ? session.student_id : null,
         publisher_nickname: session ? session.nickname : '匿名',
         silent: true,      // ★ 作成しただけなのでDiscord通知はしない
-        incomplete: true,  // ★ まだカードが無いので「未完成（作成中）」扱いにする
+        incomplete: true,  // ★ まだ「保存して公開」を経ていないので「未完成（作成中）」扱いにする
       }),
       signal: controller.signal,
     });
@@ -1253,7 +1265,7 @@ async function announceNewDeckToServer(deckId) {
     const target = decks.find(d => d.id === deckId);
     if (target) {
       target.filename = data.filename;
-      target.count = 0;
+      target.count = cards.length; // ★ 修正：実際に送ったカード数を反映する（常に0にしない）
       target.cardsLoaded = true;
       target.published_by = session ? session.nickname : '匿名';
       target.incomplete = true;
