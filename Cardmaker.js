@@ -1704,6 +1704,20 @@ function renderCreatedList() {
   let autoScrollRAF = null;
   let scrollParent = null;
 
+  // ★ 修正：iOS Safariなどは touch-action の値を「タッチ開始(touchstart)時点」で
+  //   確定してしまい、その後にJSから書き換えても無視される（＝長押し成立後の
+  //   beginDrag()内でtouchActionを'none'にしても手遅れで、指を動かすと
+  //   ネイティブスクロールが優先されてドラッグに追従できなくなる）。
+  //   そのため、タッチ開始と同時に対象カードだけ touch-action:none にしておき、
+  //   長押しが成立する前に指が動いた場合（＝本来スクロールしたかった場合）は
+  //   ネイティブスクロールの代わりにJSで手動的にスクロールさせる。
+  let touchActionItem = null;   // touch-actionをnoneにした対象（後で元に戻すため）
+  let manualScrollActive = false;
+  let manualScrollParent = null;
+  let manualScrollLastY = 0;
+  let manualScrollPointerId = null; // ★ cancelPress()でpressPointerIdがnullになった後も
+                                     //   同じ指の動きを追跡し続けるための専用ID
+
   function getItems() {
     return Array.from(grid.querySelectorAll(':scope > .deck-card'));
   }
@@ -1836,6 +1850,16 @@ function renderCreatedList() {
     pressStartX = e.clientX;
     pressStartY = e.clientY;
 
+    if (e.pointerType === 'touch') {
+      // ★ 長押し成立を待たず、タッチ開始と同時にnoneにするのがポイント
+      //   （後から変更しても効かないため）
+      touchActionItem = item;
+      touchActionItem.style.touchAction = 'none';
+      manualScrollParent = findScrollParent(item);
+      manualScrollLastY = e.clientY;
+      manualScrollActive = false;
+    }
+
     pressTimer = setTimeout(() => {
       pressTimer = null;
       if (!pressItem) return;
@@ -1850,23 +1874,45 @@ function renderCreatedList() {
       moveDrag(e.clientY);
       return;
     }
+    // ★ 長押し判定キャンセル後も、cancelPress()でpressPointerIdはnullに
+    //   なってしまうため、同じ指の手動スクロールは別IDで追跡を続ける。
+    if (manualScrollActive && e.pointerId === manualScrollPointerId) {
+      e.preventDefault();
+      const delta = manualScrollLastY - e.clientY; // 指を上に動かした→下にスクロール
+      if (manualScrollParent) manualScrollParent.scrollTop += delta;
+      manualScrollLastY = e.clientY;
+      return;
+    }
+
     if (pressPointerId === null || e.pointerId !== pressPointerId) return; // 追跡中の指以外は無視
 
     // 長押し確定前：しきい値を超えて動いたら「スクロールしたいのだ」とみなし、
-    // 長押し判定をキャンセルする。ここで preventDefault はしない
-    // （touch-action: pan-y のおかげで、ブラウザ側が既にネイティブスクロールを
-    //   開始してくれているので、それをそのまま活かす）。
+    // 長押し判定をキャンセルする。
+    // ★ タッチの場合は touch-action:none にしてあるためネイティブスクロールは
+    //   もう発生しないので、以降はこちらで手動スクロールを行う。
     if (pressTimer) {
       const dx = e.clientX - pressStartX, dy = e.clientY - pressStartY;
       if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        if (e.pointerType === 'touch') {
+          manualScrollPointerId = e.pointerId;
+          manualScrollActive = true;
+        }
         cancelPress();
       }
     }
   }
 
+  function resetTouchAction() {
+    if (touchActionItem) { touchActionItem.style.touchAction = ''; touchActionItem = null; }
+    manualScrollActive = false;
+    manualScrollParent = null;
+    manualScrollPointerId = null;
+  }
+
   function onPointerUp(e) {
-    if (dragEl && e.pointerId === pressPointerId) { endDrag(); cancelPress(); return; }
-    if (e.pointerId === pressPointerId) cancelPress();
+    if (dragEl && e.pointerId === pressPointerId) { endDrag(); cancelPress(); resetTouchAction(); return; }
+    if (e.pointerId === pressPointerId) { cancelPress(); resetTouchAction(); return; }
+    if (e.pointerId === manualScrollPointerId) { resetTouchAction(); }
   }
 
   grid.addEventListener('pointerdown', onPointerDown);
