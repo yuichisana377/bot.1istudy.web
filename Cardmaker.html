@@ -217,6 +217,11 @@
 
     <div class="study-bottom">
       <div class="study-answer-panel" id="study-answer-panel">
+        <!-- ★ 追加：自動採点の判定結果（○/✕）とユーザーの入力内容を表示 -->
+        <div class="study-grade-result" id="study-grade-result" style="display:none">
+          <div class="grade-mark" id="grade-mark"></div>
+          <div class="grade-user-answer" id="grade-user-answer"></div>
+        </div>
         <div class="answer-tag">解答</div>
         <div class="answer-text" id="study-a-text"></div>
         <div class="answer-imgs" id="study-a-imgs"></div>
@@ -226,10 +231,16 @@
           <div class="expl-text" id="study-e-text"></div>
         </div>
       </div>
-      <!-- 答えを見る前：前へ + 答えを見る -->
+      <!-- ★ 追加：自動採点モードの時だけ表示する解答入力欄 -->
+      <div class="study-answer-input-wrap" id="study-answer-input-wrap" style="display:none">
+        <input type="text" class="study-answer-input" id="study-answer-input"
+               placeholder="解答を入力してください…"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();revealAnswer();}">
+      </div>
+      <!-- 答えを見る前：前へ + 答えを見る（自動採点ONの時は「採点する」に文言変更） -->
       <div class="study-reveal-bar" id="study-reveal-bar">
         <button class="btn btn-ghost" id="study-prev-pre" onclick="studyMove(-1)" disabled>← 前へ</button>
-        <button class="btn btn-blue" onclick="revealAnswer()">答えを見る</button>
+        <button class="btn btn-blue" id="reveal-answer-btn" onclick="revealAnswer()">答えを見る</button>
       </div>
       <!-- 答えを見た後：前へ / わからない / 次へ -->
       <div class="study-nav" id="study-nav" style="display:none">
@@ -307,7 +318,13 @@
     <!-- ★ 反転モードのトグル -->
     <label class="reverse-toggle-row" onclick="event.stopPropagation()">
       <span>🔄 問題と解答を逆にする</span>
-      <input type="checkbox" id="reverse-mode-checkbox">
+      <input type="checkbox" id="reverse-mode-checkbox" onchange="onReverseModeToggleChange()">
+    </label>
+
+    <!-- ★ 追加：自動採点のトグル（反転モードの時は意味が無いため非表示にする） -->
+    <label class="reverse-toggle-row" id="auto-grade-toggle-row" onclick="event.stopPropagation()">
+      <span>✅ 自動採点する（解答入力）</span>
+      <input type="checkbox" id="auto-grade-checkbox">
     </label>
 
     <!-- ★ 続きから再開（前回途中で終えたデータがある時だけ表示） -->
