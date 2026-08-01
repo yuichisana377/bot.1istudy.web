@@ -901,7 +901,7 @@ async function selectMoveTarget(targetId) {
     renderDeckListUI();
     // ★ 公開済みデッキはサーバー側（みんなの共有フォルダ情報）にも反映する
     if (d.filename) {
-      const ok = await syncDeckToServer(d);
+      const ok = await queueSyncDeckToServer(d);
       if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
     }
     return;
@@ -1299,6 +1299,9 @@ async function openEditDeck(deckId) {
   //   キャッシュ済みでも必ず最新のカードを取り直す。失敗した場合は
   //   loadDeckCardsWithRecovery が「もう一度試す／空のまま開く」を
   //   ユーザーに選ばせるので、行き止まりにならない。
+  // ★ 修正：直前の操作（カード追加/削除など）のサーバー同期がまだ完了していない
+  //   場合に備え、強制リロードの前に必ずその完了を待つ（データ消失防止）。
+  await waitForPendingSync(deckId);
   const ok = await loadDeckCardsWithRecovery(deckId);
   if (!ok) return; // ユーザーが「やめる」を選んだ場合は編集画面を開かない
 
@@ -1341,7 +1344,7 @@ async function saveCard(mode) {
     //   （openEditDeck → loadDeckCardsWithRecovery）でサーバー側の
     //   古い（まだこのカードを知らない）データに上書きされ、
     //   せっかく追加したカードがローカルごと消えてしまう不具合があった。
-    if (deck.filename) syncDeckToServer(deck);
+    if (deck.filename) queueSyncDeckToServer(deck);
   }
   if (mode === 'publish') {
     // ★ 未ログインチェック（公開ボタンを押した時だけ）／自前UIで確認する
@@ -1607,7 +1610,7 @@ function renderCreatedList() {
 
     // ★ 公開済みなら並び順もサーバーへ反映する（通知はしない）
     if (deck.filename) {
-      const ok = await syncDeckToServer(deck);
+      const ok = await queueSyncDeckToServer(deck);
       if (!ok) showBanner('⚠ 並び替えのサーバー反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
     }
   }
@@ -1949,7 +1952,7 @@ async function deleteCardFromDeck(idx) {
   // ★ 修正：追加時と同じ理由で、削除もサーバー登録済みなら即座に反映しておく
   //   （そうしないと、次に編集画面を開いたときの強制リロードで
   //     削除前の古いカードがサーバーから復活してしまう）
-  if (deck.filename) syncDeckToServer(deck);
+  if (deck.filename) queueSyncDeckToServer(deck);
 }
 async function confirmLeaveEdit() {
   const ok = await showCmConfirm({
@@ -1982,27 +1985,31 @@ let imgContext = 'editor';
 async function reloadCardBeforeEdit(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck || !deck.filename) return true; // 未公開デッキはローカルのみなので不要
+  // ★ 修正：例えば「10番のカードを作って次へ→すぐ6番を編集」のように、
+  //   直前の追加/削除のサーバー同期（queueSyncDeckToServer）がまだ完了していない
+  //   状態でここに来ることがある。その状態でいきなり強制リロードすると、
+  //   サーバーがまだ知らない直前の変更がこの端末からも消えてしまうため、
+  //   まず保留中の同期処理の完了を待ってから最新化する。
+  await waitForPendingSync(deckId);
   return await loadDeckCardsWithRecovery(deckId);
 }
 
 async function openCardEditModal(idx) {
   const deck = decks.find(d => d.id === currentDeckId);
   if (!deck) return;
-  const key = cardKey(deck.cards[idx]);
-
-  const ok = await reloadCardBeforeEdit(deck.id);
-  if (!ok) return; // ユーザーが読み込みを中止した
-
-  const freshDeck = decks.find(d => d.id === currentDeckId);
-  if (!freshDeck) return;
-  renderCreatedList(); // ★ 読み込み直した最新の内容を一覧にも反映しておく
-  const freshCard = freshDeck.cards.find(c => cardKey(c) === key);
-  if (!freshCard) {
-    // 読み込み直した結果、このカードが既に削除されていた場合
-    await showCmAlert({ title: 'このカードは既に削除されています', desc: '最新の内容に更新しました。' });
-    return;
-  }
-  openCardEditModalCommon(freshDeck.id, freshCard, 'editor');
+  // ★ 修正：ここは「今まさにこの端末で開いているデッキ編集画面」の中で、
+  //   同じデッキの別のカードを編集するケース。openEditDeck() が
+  //   この編集セッションの最初に既にサーバーから最新化しており、それ以降の
+  //   追加・削除もローカル→サーバーの順に同期キューへ積まれている。
+  //   ここで毎回さらに強制的にサーバーから取り直すと、
+  //   直前に送った変更がサーバー側にまだ反映しきっていない（反映に数秒かかる等）
+  //   タイミングでは、その反映前の古い内容で上書きしてしまい、
+  //   「10番を作って次へ→すぐ6番を編集」のような操作でカードが消える事故に
+  //   つながっていた。この画面の中で編集する分には、この端末のローカルの内容が
+  //   最新であることは保証されているため、強制リロードはしない。
+  const freshCard = deck.cards[idx];
+  if (!freshCard) return;
+  openCardEditModalCommon(deck.id, freshCard, 'editor');
 }
 
 // ★ プレイ中に今表示しているカードを編集する
@@ -2104,7 +2111,7 @@ async function saveCardEdit() {
 
   // ★ 公開済みならサーバー（GitHub）側にも反映する
   if (deck.filename) {
-    const ok = await syncDeckToServer(deck);
+    const ok = await queueSyncDeckToServer(deck);
     if (ok) {
       showBanner('💾 保存しました', '#dcfce7', '#166534');
     } else {
@@ -2210,14 +2217,40 @@ async function saveRename() {
   //     最新化する。失敗時も loadDeckCardsWithRecovery が回復手段を提示するので、
   //     rename操作だけがずっとできなくなる、ということはない。
   if (deck.filename) {
+    // ★ 追加：この直後の強制リロードでローカルの変更（追加/削除など未同期分）が
+    //   消えてしまわないよう、まず直前の同期処理が終わるのを待つ。
+    await waitForPendingSync(deck.id);
     const loaded = await loadDeckCardsWithRecovery(deck.id);
     if (!loaded) {
       showBanner('⚠ 名前の変更はローカルには反映されています（サーバーへの反映は未実施）', '#fffbeb', '#92400e');
       return;
     }
-    const ok = await syncDeckToServer(deck);
+    const ok = await queueSyncDeckToServer(deck);
     if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
   }
+}
+
+// ★ 追加：デッキごとに「直近のサーバー同期処理」を1本の待ち合わせ可能なPromiseとして
+//   直列に繋いでおくための仕組み。
+//   ─────────────────────────────────────────────
+//   カードを次々に追加・削除する場面（例：10問作って「次へ」で連続作成）では、
+//   1回1回の syncDeckToServer() 完了を待たずに次の操作へ進めるようにしたい
+//   （待つとテンポが悪くなる）一方で、「作成済みリストから別の問題（例：6番）を
+//   タップして編集する」ときは reloadCardBeforeEdit() が強制的にサーバーから
+//   最新カードを取り直すため、直前の追加分の同期がまだ完了していないと
+//   その追加分がサーバーに存在しないまま上書き取得されて消えてしまう。
+//   これを防ぐため、同期を開始するときは必ず queueSyncDeckToServer() を通し、
+//   強制リロードの直前で waitForPendingSync() を使ってその完了を待ち合わせる。
+const deckSyncPromises = new Map(); // deckId -> 直近の同期処理のPromise
+function queueSyncDeckToServer(deck) {
+  const prev = deckSyncPromises.get(deck.id) || Promise.resolve();
+  const next = prev.then(() => syncDeckToServer(deck)).catch(() => false);
+  deckSyncPromises.set(deck.id, next);
+  return next;
+}
+async function waitForPendingSync(deckId) {
+  const pending = deckSyncPromises.get(deckId);
+  if (pending) { try { await pending; } catch(e) {} }
 }
 
 // ★ 公開済みデッキの内容をサーバーに反映する共通処理（通知なし）
