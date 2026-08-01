@@ -999,7 +999,14 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
   //   これと比べて、実際に取得できたカード数が不自然に少なければ
   //   「サーバーはok:trueを返したが、実は異常な状態だった」とみなして
   //   失敗扱いにする（＝空データでdeck.cardsを上書きしない）ための安全策。
-  const expectedCount = typeof deck.count === 'number' ? deck.count : null;
+  //   ★ 修正：deck.count（サーバー由来のメタ情報）だけでなく、この端末に
+  //     既に読み込み済みのカード実数（deck.cards.length）も比較対象に含める。
+  //     何らかの理由でサーバーへの同期がまだ済んでいない状態でも、
+  //     「今ローカルにある枚数より減っている」場合は同じく異常とみなし、
+  //     せっかく手元にあるカードを空／少ない件数で上書きしないようにする。
+  const knownCount = deck.cardsLoaded ? deck.cards.length : 0;
+  const metaCount = typeof deck.count === 'number' ? deck.count : 0;
+  const expectedCount = Math.max(knownCount, metaCount) || null;
 
   loadingDeckIds.add(deckId);
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
@@ -1015,14 +1022,15 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     if (!data.ok) throw new Error(data.error || '不明なエラー');
     const fetchedCards = data.cards || [];
 
-    // ★ 安全策：サーバーが ok:true を返していても、直前まで分かっていた問題数が
-    //   1件以上あったのに、取得できたカードが0件の場合は、通信は成功していても
-    //   内容としては信用できないので「失敗」として扱う。
-    //   これにより、編集画面が空の状態で開いてしまい、そのまま公開して
-    //   サーバー側の本物のカードを空データで上書きしてしまう事故を防ぐ。
-    if (expectedCount !== null && expectedCount > 0 && fetchedCards.length === 0) {
-      console.warn(`[cardmaker] get_card_set が0件を返しましたが、一覧では${expectedCount}件のはずです。 filename=${deck.filename}`);
-      return { ok: false, reason: 'mismatch', expectedCount, fetchedCount: 0 };
+    // ★ 安全策：サーバーが ok:true を返していても、直前まで分かっていた問題数
+    //   （または、この端末に既に読み込み済みだった実際の枚数）より
+    //   取得できたカード数が少ない場合は、通信は成功していても内容としては
+    //   信用できないので「失敗」として扱う。
+    //   これにより、編集画面が空／一部欠けた状態で開いてしまい、そのまま公開して
+    //   サーバー側（または手元）の本物のカードを少ないデータで上書きしてしまう事故を防ぐ。
+    if (expectedCount !== null && expectedCount > 0 && fetchedCards.length < expectedCount) {
+      console.warn(`[cardmaker] get_card_set が${fetchedCards.length}件しか返しませんでしたが、${expectedCount}件のはずです。 filename=${deck.filename}`);
+      return { ok: false, reason: 'mismatch', expectedCount, fetchedCount: fetchedCards.length };
     }
 
     deck.cards = fetchedCards;
@@ -1327,6 +1335,13 @@ async function saveCard(mode) {
       imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
     saveDecks(decks);
     document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+    // ★ 修正：サーバー登録済み（filenameあり＝「作成中」含む）のデッキは、
+    //   カードを1枚追加するたびに必ずサーバーへも反映しておく。
+    //   ここで反映しないと、編集画面を出てもう一度開いたときの強制リロード
+    //   （openEditDeck → loadDeckCardsWithRecovery）でサーバー側の
+    //   古い（まだこのカードを知らない）データに上書きされ、
+    //   せっかく追加したカードがローカルごと消えてしまう不具合があった。
+    if (deck.filename) syncDeckToServer(deck);
   }
   if (mode === 'publish') {
     // ★ 未ログインチェック（公開ボタンを押した時だけ）／自前UIで確認する
@@ -1931,6 +1946,10 @@ async function deleteCardFromDeck(idx) {
   deck.cards.splice(idx, 1); saveDecks(decks);
   document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
   renderCreatedList();
+  // ★ 修正：追加時と同じ理由で、削除もサーバー登録済みなら即座に反映しておく
+  //   （そうしないと、次に編集画面を開いたときの強制リロードで
+  //     削除前の古いカードがサーバーから復活してしまう）
+  if (deck.filename) syncDeckToServer(deck);
 }
 async function confirmLeaveEdit() {
   const ok = await showCmConfirm({
