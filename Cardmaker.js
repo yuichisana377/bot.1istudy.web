@@ -452,18 +452,20 @@ function renderDeckListUI() {
     // ★ 公開状態バッジ：作成中／非公開／公開済み／未完成 のいずれか1つだけを表示する。
     //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
     //   分かりにくいので同じ場所に1つだけ出すよう統合した）
-    //   ★ 追加：
-    //   ・まだ公開していないデッキ（filenameなし）のうち、作成時に「公開予定」を
-    //     選んだもの（d.planPublish が false 以外＝未設定の既存デッキも含めてデフォルトtrue扱い）は
-    //     「作成中」バッジを出す（この端末だけの表示。サーバーへの登録に失敗した場合など）。
-    //   ・サーバーには既に登録済み（filenameあり）だが、まだカードが1枚も無く「未完成」
-    //     フラグが立っている＝作成ボタンを押した直後でまだ内容を作っている最中のデッキも
-    //     同じく「作成中」として扱い、他の人の一覧にも同じバッジで表示させる。
+    //   ★ 修正：以前は「サーバー登録済み・カード0枚」の場合だけを「作成中」と判定していたため、
+    //     まだ一度も「公開して保存」（＝完成／未完成の選択）を経ていないデッキでも、
+    //     ただの「保存」ボタンでカードを追加しただけで questionCount>0 になった途端に
+    //     「未完成」バッジへ変わってしまっていた（＝「保存しただけなのに未完成と表示される」不具合）。
+    //     ここでは d.notYetPublished（＝一度も明示的な「公開して保存」を経ていないかどうか）を
+    //     カード枚数に関係なく最優先で判定し、以下の3段階に整理する。
+    //     ・「保存」ボタンを押しただけ（公開フローを一度も経ていない）　　　　→ 常に「作成中」
+    //     ・「公開して保存」で「未完成として公開する」を選んだことがある　　　→ 「未完成」
+    //     ・「公開して保存」で「完成として公開する」を選んだ（その後の状態） → 「公開済み」
     const pubBadge = !d.filename
       ? (d.planPublish !== false
           ? `<span class="pub-badge inprogress">🟠 作成中</span>`
           : `<span class="pub-badge local">🔴 非公開</span>`)
-      : (d.incomplete && questionCount === 0)
+      : (d.notYetPublished !== false)
         ? `<span class="pub-badge inprogress">🟠 作成中${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
         : d.incomplete
           ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
@@ -471,7 +473,10 @@ function renderDeckListUI() {
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
-    const playDisabled = questionCount === 0 || isLoadingThis;
+    // ★ 追加：「作成中」（＝まだ一度も公開して保存していない）状態のデッキはプレイできないようにする。
+    //   編集（openEditDeck / openDeckMenu）はこのフラグを見ないので、作成中でも引き続き編集は可能。
+    const isInProgress = !d.filename ? (d.planPublish !== false) : (d.notYetPublished !== false);
+    const playDisabled = questionCount === 0 || isLoadingThis || isInProgress;
     // ★ 科目名をタイトルの上に小さく表示する。表示名側に重複しないよう、
     //   デッキ名の先頭に「科目名 」が含まれる場合はそれを取り除いて表示する。
     const subjectLabel = d.subject
@@ -671,6 +676,9 @@ async function resumeFromHome(isFolder, id) {
     //   キャッシュ済み（cardsLoaded=true）のまま開くと、他の人が直した最新の
     //   修正内容がプレイ画面に反映されない＝「もう直っていたのに気づかず
     //   重複して編集してしまう」事故につながるため。
+    // ★ 修正：保留中のサーバー同期を待たずに強制リロードすると、同期前の
+    //   古い内容（最悪カード0枚）で上書きされてしまうため、先に待ち合わせる。
+    await Promise.all(targetDecks.map(d => waitForPendingSync(d.id)));
     const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id, true)));
     loadingFolderIds.delete(id);
     renderDeckListUI();
@@ -690,6 +698,9 @@ async function resumeFromHome(isFolder, id) {
     loadingDeckIds.add(id);
     renderDeckListUI();
     // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。理由は上と同じ。
+    // ★ 修正：保留中のサーバー同期を待たずに強制リロードすると、同期前の
+    //   古い内容（最悪カード0枚）で上書きされてしまうため、先に待ち合わせる。
+    await waitForPendingSync(id);
     const result = await ensureDeckCardsLoaded(id, true);
     loadingDeckIds.delete(id);
     renderDeckListUI();
@@ -961,6 +972,14 @@ async function fetchAndMergeDecks() {
       // ★ 未完成フラグはサーバー側の索引（list_cards）にも保存されるようになったため、
       //   他人の端末でも同じ表示になるようサーバー値を信頼する。
       incomplete: !!s.incomplete,
+      // ★ 追加：「作成中」（＝一度も公開して保存を経ていない）かどうかは、サーバー側には
+      //   保存されていないローカル限定の状態なので、この端末に記録が残っていればそれを
+      //   引き継ぐ。記録が無い（＝他人の端末で初めて見るデッキ）場合は、サーバー登録直後の
+      //   カード0枚のまま（旧来の判定基準）だけを「作成中」とみなし、それ以外は
+      //   既に公開済みとして扱う（誤って永久に「未完成」表示から動けなくなるのを防ぐため）。
+      notYetPublished: existing && typeof existing.notYetPublished === 'boolean'
+        ? existing.notYetPublished
+        : (s.count === 0 && !!s.incomplete),
       // ★ フォルダ所属はサーバー側が正（みんなで共有）。
       //   has_folder_id が true の場合は、folder_id が null（＝ルート）であっても
       //   それをそのまま信頼する（＝ルートへ移動されたことを正しく反映する）。
@@ -1146,6 +1165,7 @@ async function menuUnpublish() {
     if (!data.ok) throw new Error(data.error || '削除失敗');
     deck.filename = null; deck.count = undefined; deck.published_by = null; deck.incomplete = false;
     deck.planPublish = false; // ★ 追加：明示的に非公開へ戻した場合は「作成中」ではなく「非公開」表示にする
+    deck.notYetPublished = true; // ★ 追加：再度公開する場合は改めて「公開して保存」を経る必要がある状態に戻す
     saveDecks(decks); renderDeckListUI();
     showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
   } catch(e) {
@@ -1213,7 +1233,9 @@ async function startEdit() {
   const name = subject ? `${subject} ${input}` : input;
   // ★ 追加：このデッキを公開予定として作成するかどうか（デフォルトtrue＝公開予定）
   const planPublish = document.getElementById('new-plan-publish').checked;
-  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish };
+  // ★ notYetPublished: まだ一度も「公開して保存」（完成／未完成の選択）を経ていないことを表す。
+  //   これが true の間は、カードが何枚あっても常に「作成中」バッジとして扱う（プレイ不可・編集は可）。
+  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true };
   decks.push(deck); saveDecks(decks);
   // ★ 追加：公開予定なら、この時点（作成ボタンを押した直後）でサーバーにも
   //   「まだ中身は空・作成中」として登録し、他の人の一覧にもすぐ表示されるようにする。
@@ -1278,6 +1300,7 @@ async function announceNewDeckToServer(deckId) {
       target.cardsLoaded = true;
       target.published_by = session ? session.nickname : '匿名';
       target.incomplete = true;
+      target.notYetPublished = true; // ★ まだ「公開して保存」を経ていないので「作成中」のまま
       saveDecks(decks);
     }
   } catch (e) {
@@ -1458,6 +1481,7 @@ async function publishDeck(deckId, isComplete = true) {
       target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
       target.published_by = session ? session.nickname : '匿名';
       target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持（サーバーにも保存済み）
+      target.notYetPublished = false; // ★ 追加：「公開して保存」を実際に経たので、以降は未完成／公開済みで判定する
       saveDecks(decks);
     }
     renderDeckListUI();
@@ -1754,6 +1778,14 @@ function renderCreatedList() {
   let manualScrollLastY = 0;
   let manualScrollPointerId = null; // ★ cancelPress()でpressPointerIdがnullになった後も
                                      //   同じ指の動きを追跡し続けるための専用ID
+  // ★ 追加：長押し判定中（またはtouch-action:noneの間）にスワイプへ切り替わった際の
+  //   「手動スクロール」が、touchmoveのたびにscrollTopを直接書き換えていたため、
+  //   ネイティブスクロールの滑らかさ・慣性に比べて「がくがく」して見えていた。
+  //   ─────────────────────────────────────────
+  //   毎フレーム（requestAnimationFrame）でまとめて1回だけscrollTopを反映するように
+  //   バッチ化し、体感の滑らかさをネイティブスクロールに近づける。
+  let manualScrollPendingDelta = 0;
+  let manualScrollRAF = null;
 
   function getItems() {
     return Array.from(grid.querySelectorAll(':scope > .deck-card'));
@@ -1889,7 +1921,8 @@ function renderCreatedList() {
 
     if (e.pointerType === 'touch') {
       // ★ 長押し成立を待たず、タッチ開始と同時にnoneにするのがポイント
-      //   （後から変更しても効かないため）
+      //   （iOS Safariなどは、これを長押し成立後まで遅らせると手遅れになり、
+      //   「後から書き換えても無視される」ため。詳細は下のコメント参照）
       touchActionItem = item;
       touchActionItem.style.touchAction = 'none';
       manualScrollParent = findScrollParent(item);
@@ -1905,6 +1938,17 @@ function renderCreatedList() {
     }, LONG_PRESS_MS);
   }
 
+  // ★ 追加：手動スクロールの差分（manualScrollPendingDelta）を、画面の描画タイミング
+  //   （requestAnimationFrame）に合わせて1フレームに1回だけ scrollTop へ反映する。
+  function manualScrollTick() {
+    manualScrollRAF = null;
+    if (!manualScrollActive) { manualScrollPendingDelta = 0; return; }
+    if (manualScrollPendingDelta !== 0 && manualScrollParent) {
+      manualScrollParent.scrollTop += manualScrollPendingDelta;
+      manualScrollPendingDelta = 0;
+    }
+  }
+
   function onPointerMove(e) {
     if (dragEl && e.pointerId === pressPointerId) {
       e.preventDefault();
@@ -1915,9 +1959,16 @@ function renderCreatedList() {
     //   なってしまうため、同じ指の手動スクロールは別IDで追跡を続ける。
     if (manualScrollActive && e.pointerId === manualScrollPointerId) {
       e.preventDefault();
+      // ★ 修正：以前はここで毎回 scrollTop を直接書き換えていたため、
+      //   touchmoveイベントの発火間隔のブレがそのまま描画のガタつき
+      //   （がくがく）として見えてしまっていた。
+      //   ここでは差分を貯めておくだけにし、実際の反映は下のrAFループで
+      //   画面の描画タイミングに合わせて1回ずつまとめて行うことで、
+      //   ネイティブスクロールに近い滑らかさにする。
       const delta = manualScrollLastY - e.clientY; // 指を上に動かした→下にスクロール
-      if (manualScrollParent) manualScrollParent.scrollTop += delta;
+      manualScrollPendingDelta += delta;
       manualScrollLastY = e.clientY;
+      if (manualScrollRAF === null) manualScrollRAF = requestAnimationFrame(manualScrollTick);
       return;
     }
 
@@ -1940,6 +1991,8 @@ function renderCreatedList() {
   }
 
   function resetTouchAction() {
+    if (manualScrollRAF !== null) { cancelAnimationFrame(manualScrollRAF); manualScrollRAF = null; }
+    manualScrollPendingDelta = 0;
     if (touchActionItem) { touchActionItem.style.touchAction = ''; touchActionItem = null; }
     manualScrollActive = false;
     manualScrollParent = null;
@@ -2408,6 +2461,10 @@ async function openFolderPlayMode(folderId) {
 
   // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。
   //   キャッシュ済みでも取り直すことで、他の人が直した修正がすぐプレイ画面に反映される。
+  // ★ 修正：直前の編集でのサーバー同期がまだ終わっていない状態で強制リロードすると、
+  //   同期前の古い内容（最悪カード0枚）で上書きされてしまうため、各デッキの保留中の
+  //   同期を先に待ってから読み込み直す。
+  await Promise.all(targetDecks.map(d => waitForPendingSync(d.id)));
   const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id, true)));
 
   loadingFolderIds.delete(folderId);
@@ -2468,6 +2525,11 @@ async function openPlayMode(deckId) {
   studyIsFolder = false;
   studyDeckId = deckId;
 
+  // ★ 修正：直前にカードを追加/削除した際のサーバー同期（queueSyncDeckToServer）が
+  //   まだ完了していない状態で強制リロードすると、その同期前の古い（最悪カード0枚の）
+  //   内容をサーバーから取得して上書きしてしまい、「中身があるのに0問で完了」に
+  //   なってしまう不具合があった。force reloadの前に必ず保留中の同期を待つ。
+  await waitForPendingSync(deckId);
   const result = await ensureDeckCardsLoaded(deckId, true);
   if (!result.ok) {
     await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
@@ -2752,9 +2814,25 @@ function toggleUnsure() {
   updateUnsureBtn();
 }
 
+// ★ 追加：カード編集モーダル（modal-card-edit）など、学習画面の上にモーダルが
+//   開いている最中かどうかを判定する。モーダルは学習画面自体（.screen.active）を
+//   切り替えずに上に重ねて表示されるため、モーダルが開いている間でも
+//   document.querySelector('.screen.active')?.id は 'screen-study' のままになる。
+//   ─────────────────────────────────────────────
+//   （Android不具合の修正）問題ごとの編集画面（カード編集モーダル）を開いた状態で
+//   左右のボタンを押すと、モーダルの裏にある学習画面のカードが進む／戻ってしまう
+//   不具合があった。原因は、上記の理由でモーダルが開いていることを検知できておらず、
+//   下の学習画面のカード送り（studyMove）がそのまま実行されてしまっていたため。
+//   ここでカードを送る前に必ずモーダルが開いていないか確認するようにする。
+function isStudyOverlayModalOpen() {
+  return !!document.querySelector('[id^="modal-"].open');
+}
 // ★ 修正：editCurrentStudyCard は重複定義されていたため削除。
 //   実体は上（reloadCardBeforeEdit の近く）で定義したものを使う。
-function studyMove(dir) { studyIdx += dir; renderStudyCard(); }
+function studyMove(dir) {
+  if (isStudyOverlayModalOpen()) return; // ★ モーダルが開いている間は学習カードを進めない
+  studyIdx += dir; renderStudyCard();
+}
 
 function shuffleStudy() {
   for (let i=studyCards.length-1;i>0;i--) {
@@ -2774,6 +2852,9 @@ function shuffleStudy() {
 
 document.addEventListener('keydown', e => {
   if (document.querySelector('.screen.active')?.id !== 'screen-study') return;
+  // ★ 追加：カード編集モーダルなど、学習画面の上にモーダルが開いている間はショートカットを無効化する
+  //   （モーダルは画面遷移扱いにならないため、上のチェックだけでは検知できない）
+  if (isStudyOverlayModalOpen()) return;
   // ★ 追加：自動採点の解答入力欄にフォーカス中は、スペースキー等が入力できるようショートカットを無効化する
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
