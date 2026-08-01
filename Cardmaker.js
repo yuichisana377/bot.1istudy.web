@@ -243,6 +243,7 @@ let menuTargetId   = null;
 let imgBuf = { q:[], a:[], e:[] };
 let studyCards = [], studyIdx = 0;
 let studyReverse = false; // ★ 追加：問題と解答を逆にするモードかどうか
+let studyAutoGrade = false; // ★ 追加：解答入力欄で自動採点するモードかどうか（反転モード時は常にfalse）
 let studyMode = 'all'; // ★ 追加：'all' | 'unsure'（続きから再開時に同じ絞り込みを再現するため）
 
 // ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
@@ -2262,6 +2263,7 @@ function saveStudyProgress() {
     idx: studyIdx,
     mode: studyMode,
     reverse: studyReverse,
+    autoGrade: studyAutoGrade, // ★ 追加：自動採点モードだったかどうかを保存し、再開時に復元する
     shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
     updatedAt: Date.now(),
   };
@@ -2332,6 +2334,8 @@ async function openFolderPlayMode(folderId) {
   studyDeckId = null;
 
   document.getElementById('reverse-mode-checkbox').checked = false;
+  document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：モーダルを開くたびに未チェックへリセット
+  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
   document.getElementById('play-mode-deck-name').textContent = folder ? `📁 ${folder.name}` : 'フォルダ';
 
   const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
@@ -2381,6 +2385,8 @@ async function openPlayMode(deckId) {
   }
 
   document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
+  document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：自動採点トグルも未チェックへリセット
+  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
   const unsure = getUnsureSet(deckId);
@@ -2407,8 +2413,20 @@ async function openPlayMode(deckId) {
   openModal('modal-play-mode');
 }
 
+// ★ 追加：反転モードのON/OFFに応じて自動採点トグルの表示を切り替える。
+//   反転モード（問題と解答を逆にする）中は自動採点の対象がずれてしまうため、
+//   反転ONの間はトグル自体を隠し、内部的にもOFFへ強制的に戻しておく。
+function onReverseModeToggleChange() {
+  const reversed = document.getElementById('reverse-mode-checkbox').checked;
+  const row = document.getElementById('auto-grade-toggle-row');
+  row.style.display = reversed ? 'none' : '';
+  if (reversed) document.getElementById('auto-grade-checkbox').checked = false;
+}
+
 function startStudyMode(mode) {
   studyReverse = document.getElementById('reverse-mode-checkbox').checked;
+  // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
+  studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
   closeModal('modal-play-mode');
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
 
@@ -2421,6 +2439,7 @@ function startStudyMode(mode) {
     const saved = loadStudyProgress(studyIsFolder, progressId);
     if (!saved) return; // 万が一データが消えていた場合は何もしない
     studyReverse = saved.reverse;
+    studyAutoGrade = !saved.reverse && !!saved.autoGrade; // ★ 追加：保存されていた自動採点設定を復元
     studyMode = saved.mode || 'all';
     studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
 
@@ -2545,6 +2564,22 @@ function renderStudyCard() {
   document.getElementById('study-answer-panel').classList.remove('show');
   document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
+
+  // ★ 変更：解答入力欄は「反転モードでなければ」常に表示する（自問自答の確認用）。
+  //   自動採点がONの時だけ、この入力内容を使って○×判定・自動マークを行う。
+  const answerInputWrap = document.getElementById('study-answer-input-wrap');
+  const answerInput = document.getElementById('study-answer-input');
+  if (!studyReverse) {
+    answerInputWrap.style.display = '';
+    answerInput.value = '';
+  } else {
+    answerInputWrap.style.display = 'none';
+  }
+  const gradeResult = document.getElementById('study-grade-result');
+  gradeResult.style.display = 'none';
+  gradeResult.className = 'study-grade-result';
+  document.getElementById('reveal-answer-btn').textContent = studyAutoGrade ? '採点する' : '答えを見る';
+
   setMathText(document.getElementById('study-a-text'), aText);
   document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
   const explWrap = document.getElementById('study-expl-wrap');
@@ -2566,7 +2601,45 @@ function revealAnswer() {
   document.getElementById('study-answer-panel').classList.add('show');
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
+  if (studyAutoGrade) gradeCurrentAnswer(); // ★ 追加：自動採点モードなら○×判定を行う
   updateUnsureBtn();
+}
+
+// ★ 追加：自動採点まわりの処理
+//   ─────────────────────────────────────────
+//   入力欄の解答と正解テキストを正規化（前後の空白・全角スペースを除去し小文字化）して比較し、
+//   一致していれば○正解、そうでなければ×不正解と判定する。
+//   ×だった場合は自動で「わからない」にマークする（既にマーク済みなら何もしない）。
+//   ○だった場合は既存の「わからない」マークを勝手に外したりはしない。
+function normalizeAnswerText(s) {
+  return (s || '').toLowerCase().replace(/[\s\u3000]/g, '');
+}
+function gradeCurrentAnswer() {
+  const card = studyCards[studyIdx];
+  if (!card) return;
+  const inputEl = document.getElementById('study-answer-input');
+  const input = inputEl ? inputEl.value : '';
+  const correctText = studyReverse ? card.question : card.answer; // 自動採点は反転モードでは使わない想定だが念のため
+  const normInput = normalizeAnswerText(input);
+  const isCorrect = normInput !== '' && normInput === normalizeAnswerText(correctText);
+
+  const result = document.getElementById('study-grade-result');
+  const mark = document.getElementById('grade-mark');
+  const userAnswerEl = document.getElementById('grade-user-answer');
+  result.style.display = 'flex';
+  result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
+  mark.textContent = isCorrect ? '○ 正解' : '✕ 不正解';
+  userAnswerEl.textContent = 'あなたの解答：' + (input.trim() ? input : '（未入力）');
+
+  if (!isCorrect) {
+    const key = cardKey(card);
+    const deckId = card.__deckId || studyDeckId;
+    const unsure = getUnsureSet(deckId);
+    if (!unsure.has(key)) {
+      unsure.add(key);
+      saveUnsureSet(deckId, unsure);
+    }
+  }
 }
 
 function updateUnsureBtn() {
@@ -2611,6 +2684,9 @@ function shuffleStudy() {
 
 document.addEventListener('keydown', e => {
   if (document.querySelector('.screen.active')?.id !== 'screen-study') return;
+  // ★ 追加：自動採点の解答入力欄にフォーカス中は、スペースキー等が入力できるようショートカットを無効化する
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   if (e.key==='ArrowRight') studyMove(1);
   if (e.key==='ArrowLeft' && studyIdx>0) studyMove(-1);
   if (e.key===' ') { e.preventDefault(); revealAnswer(); }
