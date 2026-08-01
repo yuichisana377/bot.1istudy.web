@@ -1306,8 +1306,15 @@ async function openEditDeck(deckId) {
   if (!ok) return; // ユーザーが「やめる」を選んだ場合は編集画面を開かない
 
   document.getElementById('edit-deck-title').textContent = deck.name;
-  // ★ 公開済みデッキは「保存」（ローカルのみ）ボタンを隠し、「保存して公開」だけにする
-  document.getElementById('btn-save-local').style.display = deck.filename ? 'none' : '';
+  // ★ 修正：以前は「サーバー登録済み（公開予定／作成中を含む）」なら
+  //   「保存」（ローカルのみ保存して戻る）ボタンを隠し、常に完全な
+  //   「公開して保存」（ログイン確認・完成/未完成の選択・Discord通知）を
+  //   通らないと編集を中断できなかった。
+  //   単に作業を保存していったん戻りたいだけのときにも毎回この確認を
+  //   挟まれるのは不便なため、「保存」ボタンは常に表示するようにする。
+  //   （saveCard() 側で、filenameがあるデッキの「保存」は通知なしで
+  //     静かにサーバーへも反映するよう修正済み）
+  document.getElementById('btn-save-local').style.display = '';
   document.getElementById('btn-done').textContent = deck.filename ? '公開して保存' : '保存して公開';
   clearEditor(); renderCreatedList(); showScreen('edit');
   setTimeout(() => document.getElementById('ta-q').focus(), 200);
@@ -1376,7 +1383,18 @@ async function saveCard(mode) {
     //   （画面遷移で decks 配列が入れ替わっても更新が失われないようにするため）
     publishDeck(deck.id, choice === 'complete');
   } else if (mode === 'local') {
-    saveDecks(decks); showScreen('list');
+    saveDecks(decks);
+    // ★ 修正：サーバー登録済み（公開予定／作成中を含む）のデッキは、
+    //   「保存」ボタンでも公開確認は挟まずに、通知なし（silent）で
+    //   静かにサーバーへ反映してから一覧に戻る。
+    //   ここで反映しておかないと、いったん一覧に戻って次に編集画面を
+    //   開き直したときの強制リロードで、まだサーバーに届いていない
+    //   直前の変更が消えてしまう（以前あった不具合と同じ原因）。
+    if (deck.filename) {
+      const ok = await queueSyncDeckToServer(deck);
+      if (!ok) showBanner('⚠ サーバーへの保存に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+    showScreen('list');
   } else {
     clearEditor(); renderCreatedList();
     document.getElementById('edit-scroll').scrollTo(0,0);
@@ -1938,6 +1956,26 @@ function renderCreatedList() {
   grid.addEventListener('pointermove', onPointerMove, { passive: false });
   grid.addEventListener('pointerup', onPointerUp);
   grid.addEventListener('pointercancel', onPointerUp);
+
+  // ★ 修正：並び替え中にスマホの画面が勝手にスクロールしてしまう不具合の対策。
+  //   ─────────────────────────────────────────
+  //   このコードは「触れた瞬間に対象カードの touch-action を 'none' にすれば、
+  //   その後のブラウザのネイティブスクロールを抑えられる」という前提で
+  //   組まれているが、実機（特にAndroid Chromeなど）では pointerdown 内で
+  //   touch-action を書き換えても、タイミングによってはブラウザ側の
+  //   ジェスチャー判定に間に合わず、ネイティブの縦スクロールが始まってしまう
+  //   ことがある。その場合、長押しでドラッグが「始まったように見える」のに
+  //   指を動かすと画面ごとスクロールしてしまう、という症状になる。
+  //   touch-action の設定タイミングに依存しない、より確実な方法として、
+  //   素の touchmove イベントを passive:false で監視し、このカード上で
+  //   長押し判定中・ドラッグ中・手動スクロール中のいずれかであれば
+  //   毎回 e.preventDefault() してネイティブスクロールの発生自体を止める。
+  function onNativeTouchMove(e) {
+    if (dragEl || manualScrollActive || pressPointerId !== null) {
+      e.preventDefault();
+    }
+  }
+  grid.addEventListener('touchmove', onNativeTouchMove, { passive: false });
 })();
 
 async function deleteCardFromDeck(idx) {
