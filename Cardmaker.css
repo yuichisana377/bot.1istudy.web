@@ -667,3 +667,60 @@ html, body {
   padding: .75rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
 }
+
+/* ══════════ 一覧表示（問題と答えをまとめて見る） ══════════ */
+.list-view-tabs {
+  display: flex; gap: .5rem; margin-bottom: 1rem;
+  position: sticky; top: 0; background: var(--bg); padding: .25rem 0 .5rem; z-index: 2;
+}
+.list-view-tab {
+  flex: 1; padding: .6rem .5rem; border-radius: var(--r-md);
+  border: 1.5px solid var(--border); background: var(--surface);
+  font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--text-secondary);
+  cursor: pointer; transition: all .15s;
+}
+.list-view-tab.active { border-color: #2563EB; color: #2563EB; background: #EFF4FF; }
+.list-view-tab:active { opacity: .8; }
+
+.list-view-item {
+  background: var(--surface); border-radius: var(--r-lg);
+  border: 1px solid var(--border); padding: 1rem 1.1rem;
+  margin-bottom: .85rem;
+}
+.list-view-item-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .65rem; }
+.list-view-item-num {
+  font-size: 11px; font-weight: 700; color: #2563EB;
+  background: #EFF4FF; width: 22px; height: 22px; flex-shrink: 0;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+}
+.list-view-deck-tag {
+  font-size: 11px; font-weight: 700; color: #2563EB;
+  background: #EFF4FF; border: 1px solid #bfdbfe;
+  padding: 1px 9px; border-radius: 20px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
+}
+.list-view-unsure-badge { font-size: 13px; }
+.list-view-edit-btn {
+  margin-left: auto; flex-shrink: 0; border: none; background: transparent;
+  font-size: 15px; padding: 4px 6px; border-radius: 6px; cursor: pointer; line-height: 1;
+}
+.list-view-edit-btn:active { background: var(--bg); }
+.list-view-q-tag, .list-view-a-tag, .list-view-e-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: #2563EB; margin-bottom: .35rem;
+}
+.list-view-e-tag { color: var(--text-secondary); margin-top: .65rem; }
+.list-view-q-text {
+  font-size: 15.5px; font-weight: 600; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word; margin-bottom: .5rem;
+}
+.list-view-a-text {
+  font-size: 14.5px; font-weight: 600; line-height: 1.6; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+}
+.list-view-e-text {
+  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+}
+.list-view-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 .5rem; }
+.list-view-imgs img { height: 68px; border-radius: 6px; object-fit: cover; cursor: pointer; }
