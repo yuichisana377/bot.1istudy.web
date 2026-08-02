@@ -2781,12 +2781,29 @@ function onReverseModeToggleChange() {
   if (reversed) document.getElementById('auto-grade-checkbox').checked = false;
 }
 
-function startStudyMode(mode) {
+async function startStudyMode(mode) {
   studyReverse = document.getElementById('reverse-mode-checkbox').checked;
   // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
   studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
-  closeModal('modal-play-mode');
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
+
+  // ★ 追加：「すべてのカード」「わからないカードだけ」を選んだ場合、
+  //   既に「続きから」の再開データが残っていると、この後の処理で
+  //   問答無用でそのデータが破棄されてしまう（clearStudyProgress）。
+  //   気づかないうちに再開位置が消えてしまわないよう、事前に確認する。
+  if (mode !== 'resume') {
+    const existing = loadStudyProgress(studyIsFolder, progressId);
+    if (existing) {
+      const proceed = await showCmConfirm({
+        title: '「続きから」のデータが消えます',
+        desc: '保存されている再開位置は破棄され、最初からのプレイになります。\nこのまま始めますか？',
+        okLabel: 'このまま始める', cancelLabel: 'キャンセル', okStyle: 'danger',
+      });
+      if (!proceed) return;
+    }
+  }
+
+  closeModal('modal-play-mode');
 
   let title;
 
@@ -3107,16 +3124,14 @@ function renderStudyCard() {
   document.getElementById('study-reveal-bar').style.display = 'flex';
   document.getElementById('study-nav').style.display = 'none';
 
-  // ★ 変更：解答入力欄は「反転モードでなければ」常に表示する（自問自答の確認用）。
-  //   自動採点がONの時だけ、この入力内容を使って○×判定・自動マークを行う。
+  // ★ 修正：解答入力欄は反転モードかどうかに関わらず常に表示する（自問自答の確認用）。
+  //   反転モード中は studyAutoGrade が常に false になる（onReverseModeToggleChange /
+  //   startStudyMode 側で強制）ため、ここで欄を表示していても自動採点（○×判定）は
+  //   行われない。あくまで「入力欄を使って自分で書いてみる」ことだけができる。
   const answerInputWrap = document.getElementById('study-answer-input-wrap');
   const answerInput = document.getElementById('study-answer-input');
-  if (!studyReverse) {
-    answerInputWrap.style.display = '';
-    answerInput.value = '';
-  } else {
-    answerInputWrap.style.display = 'none';
-  }
+  answerInputWrap.style.display = '';
+  answerInput.value = '';
   const gradeResult = document.getElementById('study-grade-result');
   gradeResult.style.display = 'none';
   gradeResult.className = 'study-grade-result';
