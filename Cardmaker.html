@@ -252,6 +252,24 @@
   </div>
 </div>
 
+<!-- ══════════ 一覧表示（問題と答えをまとめて見る） ══════════ -->
+<div class="screen" id="screen-list-view">
+  <div class="topbar">
+    <button class="topbar-back" onclick="showScreen('list')">←</button>
+    <div class="topbar-title" id="list-view-title">一覧</div>
+    <button class="btn btn-ghost btn-sm" onclick="toggleListViewReverse()" title="問題と解答を逆にする">🔄</button>
+  </div>
+  <div class="cm-scroll-body">
+    <div class="inner">
+      <div class="list-view-tabs">
+        <button class="list-view-tab active" id="list-view-tab-all" onclick="setListViewFilter('all')">すべて</button>
+        <button class="list-view-tab" id="list-view-tab-unsure" onclick="setListViewFilter('unsure')">わからないだけ</button>
+      </div>
+      <div id="list-view-items"></div>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: 追加の選択（デッキ / フォルダ） -->
 <div class="modal-overlay" id="modal-add-choice" onclick="onOverlayClick(event,'modal-add-choice')">
   <div class="modal-sheet">
@@ -348,6 +366,15 @@
       <div>
         <div>わからないカードだけ</div>
         <div class="play-mode-sub" id="play-mode-unsure-sub"></div>
+      </div>
+    </div>
+
+    <!-- ★ 追加：問題と答えを一覧（リスト）で見るモード -->
+    <div class="play-mode-item" onclick="openListView()">
+      <span class="play-mode-icon">📋</span>
+      <div>
+        <div>一覧で見る</div>
+        <div class="play-mode-sub">問題と答えをまとめて表示</div>
       </div>
     </div>
   </div>
