@@ -770,7 +770,7 @@ async function saveFolderName() {
   };
   if (folderNameMode === 'rename') body.id = folderNameTargetId;
 
-  if (btn) btn.disabled = true;
+  setBtnLoading(btn, true, '保存中…'); // ★ 修正：単なるdisabledだけでなくスピナーで「処理中」を明示する
   try {
     const res = await fetch(`${API_BASE}save_folder`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -784,7 +784,7 @@ async function saveFolderName() {
   } catch(e) {
     await showCmAlert({ title: 'フォルダの保存に失敗しました', desc: e.message });
   } finally {
-    if (btn) btn.disabled = false;
+    setBtnLoading(btn, false);
   }
 }
 
@@ -1230,6 +1230,10 @@ async function startEdit() {
   const input   = document.getElementById('new-set-name').value.trim();
   if (!input) { shake('new-set-name'); return; }
   if (await warnIfBugChars(input, 'new-set-name')) return;
+  // ★ 追加：サーバーへの登録待ち（announceNewDeckToServer）の間、
+  //   ボタンが押せた／今処理中だと分かるようスピナー表示に切り替える。
+  const btn = document.getElementById('btn-create-deck');
+  setBtnLoading(btn, true, '作成中…');
   const name = subject ? `${subject} ${input}` : input;
   // ★ 追加：このデッキを公開予定として作成するかどうか（デフォルトtrue＝公開予定）
   const planPublish = document.getElementById('new-plan-publish').checked;
@@ -1244,6 +1248,7 @@ async function startEdit() {
   if (planPublish) {
     await announceNewDeckToServer(deck.id);
   }
+  setBtnLoading(btn, false); // ★ 追加：この後すぐ画面遷移するが、念のため元に戻しておく
   openEditDeck(deck.id);
 }
 
@@ -1414,7 +1419,11 @@ async function saveCard(mode) {
     //   開き直したときの強制リロードで、まだサーバーに届いていない
     //   直前の変更が消えてしまう（以前あった不具合と同じ原因）。
     if (deck.filename) {
+      // ★ 追加：サーバー反映を待つ間、押した感が分かるようスピナー表示にする
+      const saveBtn = document.getElementById('btn-save-local');
+      setBtnLoading(saveBtn, true, '保存中…');
       const ok = await queueSyncDeckToServer(deck);
+      setBtnLoading(saveBtn, false);
       if (!ok) showBanner('⚠ サーバーへの保存に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
     }
     showScreen('list');
@@ -1547,6 +1556,13 @@ function renderCreatedList() {
   const scrollContainer = document.getElementById('edit-scroll');
   let lastClientY = 0;
   let autoScrollRAF = null;
+  // ★ バグ修正：カードを掴んだ位置がたまたま画面の上端／下端付近だった場合、
+  //   指を全く動かしていないのに自動スクロールが始まり、そのまま一番上／
+  //   一番下まで一気に並び替わってしまう不具合があった。
+  //   これを防ぐため「掴んだ位置（dragOriginY）からその方向へ実際に
+  //   指を動かした」場合にだけ自動スクロールを有効にする。
+  let dragOriginY = 0;
+  const EDGE_ARM_PX = 24; // これだけ掴んだ位置から動かして初めて自動スクロールが有効になる
 
   function getItems() {
     return Array.from(list.querySelectorAll('.created-item'));
@@ -1564,10 +1580,12 @@ function renderCreatedList() {
     const maxSpeed = 14;  // 1フレームあたりの最大スクロール量(px)
     let speed = 0;
 
-    if (lastClientY < rect.top + edge) {
+    // ★ 修正：端に近いだけでなく、掴んだ位置からその方向へ実際に
+    //   EDGE_ARM_PX 以上動かしていることも条件に加える。
+    if (lastClientY < rect.top + edge && lastClientY < dragOriginY - EDGE_ARM_PX) {
       const ratio = Math.min(1, (rect.top + edge - lastClientY) / edge);
       speed = -maxSpeed * ratio;
-    } else if (lastClientY > rect.bottom - edge) {
+    } else if (lastClientY > rect.bottom - edge && lastClientY > dragOriginY + EDGE_ARM_PX) {
       const ratio = Math.min(1, (lastClientY - (rect.bottom - edge)) / edge);
       speed = maxSpeed * ratio;
     }
@@ -1588,6 +1606,7 @@ function renderCreatedList() {
     dragEl = item;
     startY = clientY;
     lastClientY = clientY;
+    dragOriginY = clientY; // ★ 追加：自動スクロール発動判定の基準点
     dragEl.classList.add('dragging');
     dragEl.style.position = 'relative';
     dragEl.style.zIndex = '10';
@@ -1768,6 +1787,14 @@ function renderCreatedList() {
   let lastClientY = 0;
   let autoScrollRAF = null;
   let scrollParent = null;
+  // ★ バグ修正：デッキ／フォルダを掴んだ位置がたまたま画面の上端／下端付近
+  //   （例：スクロールしてすぐ見えている一番上の項目を掴んだ場合など）だと、
+  //   指を全く動かしていないのに自動スクロールが始まり、そのまま一番上／
+  //   一番下まで一瞬で並び替わってしまう不具合があった。
+  //   これを防ぐため「掴んだ位置（dragOriginY）からその方向へ実際に
+  //   指を動かした」場合にだけ自動スクロールを有効にする。
+  let dragOriginY = 0;
+  const EDGE_ARM_PX = 24; // これだけ掴んだ位置から動かして初めて自動スクロールが有効になる
 
   // ★ touch-action:noneは「指がほとんど動かないまま少し待った後」にだけ適用する
   //   （＝TOUCH_ACTION_DELAY_MS。詳細はonPointerDown内のコメント参照）。
@@ -1815,9 +1842,11 @@ function renderCreatedList() {
     const rect = scrollParent.getBoundingClientRect();
     const edge = 60, maxSpeed = 14;
     let speed = 0;
-    if (lastClientY < rect.top + edge) {
+    // ★ 修正：端に近いだけでなく、掴んだ位置からその方向へ実際に
+    //   EDGE_ARM_PX 以上動かしていることも条件に加える。
+    if (lastClientY < rect.top + edge && lastClientY < dragOriginY - EDGE_ARM_PX) {
       speed = -maxSpeed * Math.min(1, (rect.top + edge - lastClientY) / edge);
-    } else if (lastClientY > rect.bottom - edge) {
+    } else if (lastClientY > rect.bottom - edge && lastClientY > dragOriginY + EDGE_ARM_PX) {
       speed = maxSpeed * Math.min(1, (lastClientY - (rect.bottom - edge)) / edge);
     }
     if (speed !== 0) {
@@ -1834,6 +1863,7 @@ function renderCreatedList() {
     cmListDragActive = true; // ★ ドラッグ中は renderDeckListUI() 側で再描画をスキップさせる
     startY = clientY;
     lastClientY = clientY;
+    dragOriginY = clientY; // ★ 追加：自動スクロール発動判定の基準点
     scrollParent = findScrollParent(grid);
     dragEl.classList.add('dragging');
     dragEl.style.position = 'relative';
@@ -3265,6 +3295,29 @@ function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeigh
 function shake(id) {
   const el=document.getElementById(id); el.style.borderColor='#EF4444'; el.focus();
   setTimeout(()=>el.style.borderColor='',700);
+}
+
+// ★ 追加：ボタンにローディング状態（スピナー表示＋押せなくする）をトグルするユーティリティ。
+//   ─────────────────────────────────────────
+//   「作成」ボタンなどを押した際、サーバー通信が終わるまで見た目が何も
+//   変わらず「本当に押せたのか」分かりにくいという問題を解消するために使う。
+//   loading=true の間、ボタンの元の中身は data-orig-html に退避しておき、
+//   loading=false に戻すときに復元する。
+function setBtnLoading(btn, loading, loadingText) {
+  if (!btn) return;
+  if (loading) {
+    if (btn.dataset.origHtml === undefined) btn.dataset.origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('btn-loading');
+    btn.innerHTML = `<span class="btn-spinner"></span>${loadingText ? esc(loadingText) : ''}`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+    if (btn.dataset.origHtml !== undefined) {
+      btn.innerHTML = btn.dataset.origHtml;
+      delete btn.dataset.origHtml;
+    }
+  }
 }
 
 // ============================================================
