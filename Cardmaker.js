@@ -261,6 +261,74 @@ function cardKey(c) {
 }
 
 // ============================================================
+//  ★ 追加：カード保存時の重複／自己矛盾チェック
+//  ─────────────────────────────────────────────
+//  ・同じデッキ内に「問題文・解答」が両方とも完全一致するカードが
+//    既にある場合に警告する（コピペミスなどによる二重登録の防止）。
+//  ・「解答」が「問題文」や「解説」と一字一句同じ場合も、入力ミスの
+//    可能性が高いので警告する。
+//  ・いずれも「間違った入力を強制的にブロックする」のではなく、
+//    自前の確認ダイアログ（showCmConfirm）でユーザーに知らせた上で、
+//    意図的なものであればそのまま保存を続行できるようにする。
+// ============================================================
+
+// 比較用に前後の空白だけを取り除いた文字列を返す（大小文字・全半角などは変えない＝「完全一致」の判定を厳密にするため）
+function normalizeForDupCheck(s) {
+  return (s || '').trim();
+}
+
+// deck.cards の中に「問題文・解答」が両方とも完全一致するカードが無いか調べる。
+// excludeIdx を指定すると、そのインデックスのカード自身は比較対象から除外する（編集時用）。
+function findDuplicateCardIndex(deck, q, a, excludeIdx = -1) {
+  if (!deck || !Array.isArray(deck.cards)) return -1;
+  const nq = normalizeForDupCheck(q), na = normalizeForDupCheck(a);
+  return deck.cards.findIndex((c, i) =>
+    i !== excludeIdx &&
+    normalizeForDupCheck(c.question) === nq &&
+    normalizeForDupCheck(c.answer)   === na
+  );
+}
+
+// 保存前に呼び出す：問題があれば確認ダイアログを出し、
+// ユーザーが「やめる」を選んだ場合は true（＝保存を中断すべき）を返す。
+async function warnIfDuplicateOrSameCard(deck, q, a, e, excludeIdx = -1) {
+  const nq = normalizeForDupCheck(q), na = normalizeForDupCheck(a), ne = normalizeForDupCheck(e);
+
+  // ① 同じ問題・答えの組み合わせが既にある
+  const dupIdx = findDuplicateCardIndex(deck, q, a, excludeIdx);
+  if (dupIdx !== -1) {
+    const proceed = await showCmConfirm({
+      title: '同じ問題と答えのカードが既にあります',
+      desc: `このデッキの${dupIdx + 1}枚目と、問題文・解答が完全に一致しています。\n重複登録の可能性があります。このまま保存しますか？`,
+      okLabel: 'このまま保存する', cancelLabel: '内容を確認する', okStyle: 'danger',
+    });
+    if (!proceed) return true;
+  }
+
+  // ② 解答が問題文と完全一致
+  if (na && nq && na === nq) {
+    const proceed = await showCmConfirm({
+      title: '解答が問題文と完全に同じです',
+      desc: '解答欄の内容が問題文と一字一句同じになっています。\n入力ミスの可能性があります。このまま保存しますか？',
+      okLabel: 'このまま保存する', cancelLabel: '内容を確認する', okStyle: 'danger',
+    });
+    if (!proceed) return true;
+  }
+
+  // ③ 解答が解説と完全一致
+  if (na && ne && na === ne) {
+    const proceed = await showCmConfirm({
+      title: '解答が解説と完全に同じです',
+      desc: '解答欄の内容が解説欄と一字一句同じになっています。\n入力ミスの可能性があります。このまま保存しますか？',
+      okLabel: 'このまま保存する', cancelLabel: '内容を確認する', okStyle: 'danger',
+    });
+    if (!proceed) return true;
+  }
+
+  return false;
+}
+
+// ============================================================
 //  自前のダイアログUI（デバイスのOS/ブラウザ標準の confirm() を使わない）
 //  ─────────────────────────────────────────────
 //  Cardmaker.css の既存クラス（.modal-overlay / .modal-sheet / .modal-handle /
@@ -508,7 +576,16 @@ function renderDeckListUI() {
 
   // ★ フォルダ・デッキを合わせ、保存済みの並び順（ユーザーがドラッグして決めた順）があれば適用する
   const combinedItems = applySavedListOrder([...folderItems, ...deckItems], currentFolderId);
-  grid.innerHTML = combinedItems.map(it => it.html).join('');
+  // ★ 追加：最終防御として、万一同じキー（＝同じデッキ／フォルダ）が
+  //   何らかの理由で2件並んでしまっていても、ここで必ず1件だけに絞ってから描画する。
+  //   （並び順マージ処理などに未知の不具合があっても、画面上の「見た目の複製」だけは常に防げるようにする）
+  const seenKeys = new Set();
+  const dedupedItems = combinedItems.filter(it => {
+    if (seenKeys.has(it.key)) return false;
+    seenKeys.add(it.key);
+    return true;
+  });
+  grid.innerHTML = dedupedItems.map(it => it.html).join('');
 }
 
 // ── パンくずリスト ────────────────────
@@ -1008,6 +1085,29 @@ let loadingDeckIds = new Set();
 // ★ 戻り値を { ok: true } | { ok: false, reason: 'network' | 'mismatch' | 'not_found', ... } に変更。
 //   単純な true/false ではなく「なぜ失敗したか」を区別できるようにし、
 //   呼び出し側で「再試行」「強制的に空のまま開く」などの回復手段を提示できるようにする。
+// ★ 修正：デッキを開く際のタイムアウトを防ぐための調整。
+//   ・画像を多く含む大きなデッキや、通信環境が悪い状況では、以前の8秒という
+//     タイムアウト時間だと正常に取得できているのに間に合わず「読み込みに
+//     失敗しました」と表示されてしまうことがあった。
+//   ・タイムアウト時間を余裕を持たせつつ、さらに一度だけ自動で（ユーザーに
+//     気づかれないよう静かに）再試行してから失敗として扱うようにすることで、
+//     一時的な通信の遅延・瞬断だけでは失敗扱いにならないようにする。
+const DECK_LOAD_TIMEOUT_MS = 20000; // 8秒 → 20秒に延長
+async function fetchCardSetOnce(filename) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DECK_LOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(filename)}`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    return data;
+  } catch (e) {
+    clearTimeout(timer);
+    throw e;
+  }
+}
+
 async function ensureDeckCardsLoaded(deckId, force = false) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return { ok: false, reason: 'not_found' };
@@ -1031,14 +1131,16 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    // ★ cache: 'no-store' を追加：公開直後のカード内容が古いキャッシュのまま
-    //   返ってこないようにするため。
-    const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(deck.filename)}`, { signal: controller.signal, cache: 'no-store' });
-    clearTimeout(timer);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    // ★ 修正：まず1回試し、タイムアウトも含むネットワークエラーの場合だけ、
+    //   間を置いて（500ms）もう一度だけ静かに自動再試行する。
+    //   これにより、一時的な遅延・瞬断だけでユーザーに失敗を見せてしまうことを防ぐ。
+    let data;
+    try {
+      data = await fetchCardSetOnce(deck.filename);
+    } catch (firstErr) {
+      await new Promise(r => setTimeout(r, 500));
+      data = await fetchCardSetOnce(deck.filename);
+    }
     const fetchedCards = data.cards || [];
 
     // ★ 安全策：サーバーが ok:true を返していても、直前まで分かっていた問題数
@@ -1368,6 +1470,7 @@ async function saveCard(mode) {
     if (await warnIfBugChars(q, 'ta-q')) return;
     if (await warnIfBugChars(a, 'ta-a')) return;
     if (await warnIfBugChars(e, 'ta-e')) return;
+    if (await warnIfDuplicateOrSameCard(deck, q, a, e)) return;
     deck.cards.push({ id:genId(), question:q, answer:a,
       explanation: e,
       imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
@@ -1939,6 +2042,10 @@ function renderCreatedList() {
     if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
     if (touchActionTimer) { clearTimeout(touchActionTimer); touchActionTimer = null; } // ★ 追加
     pressItem = null; pressPointerId = null;
+    // ★ 追加：実際のドラッグに移行しなかった（＝dragElがまだ無い）場合だけ、
+    //   ここで再描画ブロックを解除する。既にドラッグ中（dragElあり）の場合は
+    //   endDrag() 側の解除に任せる（そちらの方が後）。
+    if (!dragEl) cmListDragActive = false;
   }
 
   function onPointerDown(e) {
@@ -1953,6 +2060,16 @@ function renderCreatedList() {
     pressPointerId = e.pointerId;
     pressStartX = e.clientX;
     pressStartY = e.clientY;
+    // ★ バグ修正：長押し判定が成立する前（pressTimer発火前）の待機中に
+    //   バックグラウンドポーリングなどから renderDeckListUI() が呼ばれて
+    //   #deck-grid が丸ごと作り直されると、pressItem が新しいDOMから浮いた
+    //   「孤立した古い要素」になってしまう。その状態で長押しが成立して
+    //   beginDrag(pressItem, ...) が呼ばれると、既に画面上に新しく描画された
+    //   本物の項目とは別に、この孤立した古い要素も見た目上表示されてしまい、
+    //   「デッキ／フォルダが一時的に2つ表示される」不具合の原因になっていた。
+    //   これを防ぐため、長押し判定中（＝指を置いてから離す/確定するまでの間）も
+    //   ドラッグ中と同様に再描画をスキップさせる。
+    cmListDragActive = true;
 
     if (e.pointerType === 'touch') {
       // ★ 修正：以前はタッチ開始と同時にtouch-action:noneにしていたが、
@@ -1985,6 +2102,10 @@ function renderCreatedList() {
     pressTimer = setTimeout(() => {
       pressTimer = null;
       if (!pressItem) return;
+      // ★ 追加の安全策：万一ここまでの間に何らかの理由で pressItem が
+      //   #deck-grid から外れてしまっていたら（＝孤立した古い要素なら）、
+      //   ドラッグを開始せずに静かに諦める（見た目上の複製を防ぐ）。
+      if (!pressItem.isConnected || pressItem.parentElement !== grid) { cancelPress(); return; }
       try { pressItem.setPointerCapture(pressPointerId); } catch (_) {}
       beginDrag(pressItem, pressStartY);
     }, LONG_PRESS_MS);
@@ -2230,6 +2351,8 @@ async function saveCardEdit() {
   if (!deck) { closeModal('modal-card-edit'); return; }
   const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
   if (idx === -1) { closeModal('modal-card-edit'); return; }
+
+  if (await warnIfDuplicateOrSameCard(deck, q, a, e, idx)) return;
 
   // 既存オブジェクトを直接書き換える
   const card = deck.cards[idx];
@@ -2531,15 +2654,24 @@ async function openFolderPlayMode(folderId) {
   //   同期前の古い内容（最悪カード0枚）で上書きされてしまうため、各デッキの保留中の
   //   同期を先に待ってから読み込み直す。
   await Promise.all(targetDecks.map(d => waitForPendingSync(d.id)));
-  const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id, true)));
+  // ★ 修正：1回失敗しただけで行き止まりのアラートを出して終わらせず、
+  //   失敗したデッキだけを対象に「もう一度試す」を選べるようにする
+  //   （タイムアウトを含む一時的な通信エラーでフォルダのプレイを諦めなくて済むように）。
+  let pending = targetDecks;
+  while (pending.length) {
+    const results = await Promise.all(pending.map(d => ensureDeckCardsLoaded(d.id, true)));
+    pending = pending.filter((d, i) => !results[i].ok);
+    if (!pending.length) break;
+    const retry = await showCmConfirm({
+      title: '読み込みに失敗しました',
+      desc: `${pending.length}件のデッキが読み込めませんでした。通信環境を確認してもう一度お試しください。`,
+      okLabel: 'もう一度試す', cancelLabel: 'やめる',
+    });
+    if (!retry) { loadingFolderIds.delete(folderId); renderDeckListUI(); return; }
+  }
 
   loadingFolderIds.delete(folderId);
   renderDeckListUI();
-
-  if (results.some(r => !r.ok)) {
-    await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
-    return;
-  }
 
   folderPlayDecks = targetDecks;
   studyIsFolder = true;
@@ -2596,10 +2728,18 @@ async function openPlayMode(deckId) {
   //   内容をサーバーから取得して上書きしてしまい、「中身があるのに0問で完了」に
   //   なってしまう不具合があった。force reloadの前に必ず保留中の同期を待つ。
   await waitForPendingSync(deckId);
-  const result = await ensureDeckCardsLoaded(deckId, true);
-  if (!result.ok) {
-    await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
-    return;
+  // ★ 修正：1回失敗しただけで行き止まりのアラートを出して終わらせず、
+  //   loadDeckCardsWithRecovery と同様に「もう一度試す」を選べるようにする
+  //   （タイムアウトを含む一時的な通信エラーでプレイを諦めなくて済むように）。
+  let result = await ensureDeckCardsLoaded(deckId, true);
+  while (!result.ok) {
+    const retry = await showCmConfirm({
+      title: '読み込みに失敗しました',
+      desc: '通信環境を確認してもう一度お試しください。',
+      okLabel: 'もう一度試す', cancelLabel: 'やめる',
+    });
+    if (!retry) return;
+    result = await ensureDeckCardsLoaded(deckId, true);
   }
 
   document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
