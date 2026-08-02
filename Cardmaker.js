@@ -1739,6 +1739,10 @@ function renderCreatedList() {
 
   const LONG_PRESS_MS  = 380; // これだけ指を止めたままにすると並び替えモードに入る
   const MOVE_CANCEL_PX = 10;  // 判定前にこれ以上動いたら「スクロール」とみなし長押しをキャンセル
+  // ★ 修正：タッチ開始と同時に touch-action:none にしていたのをやめ、
+  //   この時間（ms）だけ「様子見」してからtouch-action:noneを適用するようにする。
+  //   詳細は onPointerDown 内のコメント参照。
+  const TOUCH_ACTION_DELAY_MS = 60;
 
   // ★ 修正：grid の touch-action は 'pan-y'（縦スクロールはブラウザのネイティブ処理に任せる）にする。
   //   以前は常に 'none' にして、その代わりJSで手動スクロール（慣性込み）を
@@ -1765,14 +1769,14 @@ function renderCreatedList() {
   let autoScrollRAF = null;
   let scrollParent = null;
 
-  // ★ 修正：iOS Safariなどは touch-action の値を「タッチ開始(touchstart)時点」で
-  //   確定してしまい、その後にJSから書き換えても無視される（＝長押し成立後の
-  //   beginDrag()内でtouchActionを'none'にしても手遅れで、指を動かすと
-  //   ネイティブスクロールが優先されてドラッグに追従できなくなる）。
-  //   そのため、タッチ開始と同時に対象カードだけ touch-action:none にしておき、
-  //   長押しが成立する前に指が動いた場合（＝本来スクロールしたかった場合）は
-  //   ネイティブスクロールの代わりにJSで手動的にスクロールさせる。
+  // ★ touch-action:noneは「指がほとんど動かないまま少し待った後」にだけ適用する
+  //   （＝TOUCH_ACTION_DELAY_MS。詳細はonPointerDown内のコメント参照）。
+  //   これにより、普通のスワイプ操作はtouch-actionに一切触れられることなく
+  //   ネイティブスクロールがそのまま働く。万一、猶予時間内に既にtouch-action:none
+  //   が適用された直後に指が動いてしまった場合（レアなタイミングのケース）だけ、
+  //   ネイティブスクロールはもう使えないのでJSの手動スクロールで代わりに動かす。
   let touchActionItem = null;   // touch-actionをnoneにした対象（後で元に戻すため）
+  let touchActionTimer = null;  // ★ 追加：touch-action:noneを適用するまでの「様子見」タイマー
   let manualScrollActive = false;
   let manualScrollParent = null;
   let manualScrollLastY = 0;
@@ -1903,6 +1907,7 @@ function renderCreatedList() {
 
   function cancelPress() {
     if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    if (touchActionTimer) { clearTimeout(touchActionTimer); touchActionTimer = null; } // ★ 追加
     pressItem = null; pressPointerId = null;
   }
 
@@ -1920,14 +1925,31 @@ function renderCreatedList() {
     pressStartY = e.clientY;
 
     if (e.pointerType === 'touch') {
-      // ★ 長押し成立を待たず、タッチ開始と同時にnoneにするのがポイント
-      //   （iOS Safariなどは、これを長押し成立後まで遅らせると手遅れになり、
-      //   「後から書き換えても無視される」ため。詳細は下のコメント参照）
-      touchActionItem = item;
-      touchActionItem.style.touchAction = 'none';
+      // ★ 修正：以前はタッチ開始と同時にtouch-action:noneにしていたが、
+      //   これだと普通にスワイプでスクロールしたいだけの操作でも、その瞬間だけ
+      //   ネイティブスクロールが止められてしまい「スワイプしづらい／引っかかる」
+      //   原因になっていた（この後JS側の手動スクロールに切り替わるが、
+      //   慣性が無いぶんネイティブスクロールより明らかに動きが重くなる）。
+      //   ─────────────────────────────────────────
+      //   そこで、指を置いてからTOUCH_ACTION_DELAY_MSの間だけ「様子見」し、
+      //   その間に指がある程度動けば「スクロールしたいのだ」と判断して
+      //   このタイマーをキャンセルする（＝touch-actionには一切触れず、
+      //   ネイティブスクロールに完全に任せる。onPointerMove側もこの場合は
+      //   手動スクロールへ切り替えない）。
+      //   逆に、その間ほとんど動かなければ「長押し（並び替え）したいのだ」と
+      //   判断してtouch-action:noneを適用する。このタイミングであれば、
+      //   まだ最初のtouchmoveが発生していないため、iOS Safariでも問題なく
+      //   反映される（「長押し成立後（380ms後）まで遅らせると手遅れになる」
+      //   というのは、その間に指がある程度動いてしまっているケースの話）。
       manualScrollParent = findScrollParent(item);
       manualScrollLastY = e.clientY;
       manualScrollActive = false;
+      touchActionTimer = setTimeout(() => {
+        touchActionTimer = null;
+        if (pressItem !== item) return; // 既に指を離した／スクロールに切り替わっていたら何もしない
+        touchActionItem = item;
+        touchActionItem.style.touchAction = 'none';
+      }, TOUCH_ACTION_DELAY_MS);
     }
 
     pressTimer = setTimeout(() => {
@@ -1981,7 +2003,12 @@ function renderCreatedList() {
     if (pressTimer) {
       const dx = e.clientX - pressStartX, dy = e.clientY - pressStartY;
       if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
-        if (e.pointerType === 'touch') {
+        // ★ 修正：touch-actionがまだ'none'になっていない（＝touchActionTimerがまだ
+        //   発火していない）場合は、ネイティブスクロールがまだ生きているということなので
+        //   JSの手動スクロールへ切り替える必要はない（切り替えると二重にスクロールして
+        //   カクつく）。touchActionItemが既にセットされている場合だけ、ネイティブ
+        //   スクロールがもう使えない状態なので手動スクロールで代わりに動かす。
+        if (e.pointerType === 'touch' && touchActionItem) {
           manualScrollPointerId = e.pointerId;
           manualScrollActive = true;
         }
@@ -2024,7 +2051,13 @@ function renderCreatedList() {
   //   長押し判定中・ドラッグ中・手動スクロール中のいずれかであれば
   //   毎回 e.preventDefault() してネイティブスクロールの発生自体を止める。
   function onNativeTouchMove(e) {
-    if (dragEl || manualScrollActive || pressPointerId !== null) {
+    // ★ 修正：以前は「長押し判定中（pressPointerId !== null）」というだけで
+    //   毎回 preventDefault していたため、ただのスワイプでも最初の一瞬だけ
+    //   ネイティブスクロールが止められ「スワイプしづらい」原因になっていた。
+    //   touchActionItem（＝実際にtouch-action:noneを適用した対象）がある時だけ
+    //   preventDefaultすれば十分で、それ以外（様子見中）はネイティブスクロールに
+    //   触れないようにする。
+    if (dragEl || manualScrollActive || touchActionItem) {
       e.preventDefault();
     }
   }
