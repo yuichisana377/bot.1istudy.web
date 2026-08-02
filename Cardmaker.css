@@ -724,3 +724,25 @@ html, body {
 }
 .list-view-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 .5rem; }
 .list-view-imgs img { height: 68px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+
+/* ══════════ ボタンの「押せた感」＆ローディングスピナー ══════════ */
+/* ★ 追加：サーバー通信を伴うボタン（デッキ作成・フォルダ作成など）を押した際、
+   通信が終わるまで見た目に変化がなく「押せたのか分からない」という
+   問題を解消するための共通スタイル。 */
+.btn-spinner {
+  display: inline-block; width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+  border-radius: 50%; animation: btnSpinCM .7s linear infinite;
+  vertical-align: -3px; margin-right: 7px;
+  flex-shrink: 0;
+}
+.btn-outline .btn-spinner,
+.btn-ghost   .btn-spinner {
+  border-color: rgba(37,99,235,.25); border-top-color: #2563EB;
+}
+.btn.btn-loading { cursor: default; opacity: .8; pointer-events: none; }
+@keyframes btnSpinCM { to { transform: rotate(360deg); } }
+
+/* ★ 追加：デッキカード／フォルダカードにも押した瞬間の反応を付ける（タップ時に少し縮む） */
+.deck-card:active { transform: scale(.97); }
+.deck-card:not(.folder-card):active { background: var(--bg); }
