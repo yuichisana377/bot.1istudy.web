@@ -18,9 +18,12 @@ const POINT_OPTIONS = [3, 5, 10, 15];
 const NOTE_SEP = '\n📝備考：';
 
 // ============================================================
-//  時間割固定データ
+//  時間割固定データ（★学期の時間割が未設定の期間に使うフォールバック用）
+//  前期・後期など、学期ごとに違う時間割は下の「学期の時間割」機能
+//  （terms / getTimetableForDate）で管理する。ここは何も学期が
+//  設定されていない期間のためのデフォルト値として残す。
 // ============================================================
-const TIMETABLE = {
+const DEFAULT_TIMETABLE = {
   mon: [
     { subject: "コンピュータリテラシ", items: ["教科書"] },
     { subject: "情報技術概論",         items: ["教科書", "プリント"] },
@@ -59,9 +62,16 @@ const DAY_CLASS = ["d-mon","d-tue","d-wed","d-thu","d-fri"];
 const TT_API = {
   UPDATE:         '/update_timetable',
   HOLIDAY:        '/set_holiday',
-  PERIOD_HOLIDAY: '/set_period_holiday', // ★新規: 1コマだけの休み（未実装バックエンドでもローカル保存で動作）
+  PERIOD_HOLIDAY: '/set_period_holiday', // 1コマだけの休み（サーバー側に保存。ローカルにもフォールバック保存）
   DELETE:         '/delete_timetable',
   LIST:           '/list_timetable',
+};
+
+// 学期（前期・後期など）の基本時間割 API エンドポイント
+const TERM_API = {
+  LIST:   '/list_terms',
+  SAVE:   '/save_term',
+  DELETE: '/delete_term',
 };
 
 // ============================================================
@@ -72,6 +82,10 @@ let ttActiveDay = 0;
 let ttHomeworks = [];
 let ttOverrides = {};
 let ttEditMode  = 'change'; // 'change' | 'period-holiday' | 'day-change' | 'holiday'
+
+// ★ 学期（前期・後期など）ごとの基本時間割
+let terms = []; // [{ id, name, start_date, end_date, timetable: {mon:[...],...} }, ...]
+let termEditState = null; // 学期編集モーダルの入力中データ
 
 // 予定管理モーダル用（時間割ページでも追加・編集・削除できる）
 let plans      = [];
@@ -105,6 +119,7 @@ window.addEventListener('load', () => {
 
   loadTTHomeworks();
   loadTTOverrides();
+  loadTerms();
   loadChannels();
   loadPlans();
   renderTimetable();
@@ -133,6 +148,29 @@ async function loadTTHomeworks() {
     ttHomeworks = [];
   }
   renderTimetable();
+}
+
+// ============================================================
+//  学期（前期・後期など）の基本時間割
+// ============================================================
+async function loadTerms() {
+  try {
+    const res  = await api(`${TERM_API.LIST}?guild_id=${GUILD_ID}`);
+    terms = (res.ok && Array.isArray(res.terms)) ? res.terms : [];
+  } catch(e) {
+    terms = [];
+  }
+  renderTimetable();
+}
+
+// ★ 指定した日付に適用すべき基本時間割を返す。
+//   その日付が start_date〜end_date に収まる学期があればそれを使い、
+//   無ければ DEFAULT_TIMETABLE（学期未設定時のフォールバック）を使う。
+//   ※ 複数の学期が同じ日付に重なることは保存時にサーバー側で防いでいるため、
+//     最初に一致したものを使えばよい。
+function getTimetableForDate(dateStr) {
+  const term = terms.find(t => t.start_date <= dateStr && dateStr <= t.end_date);
+  return (term && term.timetable) ? term.timetable : DEFAULT_TIMETABLE;
 }
 
 // ============================================================
@@ -226,7 +264,7 @@ function renderTimetable() {
 
   const holidayKey = `holiday:${dateStr}`;
   const holidayOv  = ttOverrides[holidayKey];
-  const basePeriods = TIMETABLE[dayKey] || [];
+  const basePeriods = getTimetableForDate(dateStr)[dayKey] || [];
 
   let periodsHtml = '';
   if (holidayOv) {
@@ -367,7 +405,7 @@ let ttDetailTarget = null; // { date, period } ← 詳細モーダルで表示�
 
 function showTTDetail(dateStr, period) {
   const dayKey      = dateToDayKey(dateStr);
-  const basePeriods = TIMETABLE[dayKey] || [];
+  const basePeriods = getTimetableForDate(dateStr)[dayKey] || [];
   const base        = basePeriods[period - 1];
 
   const holidayOv = ttOverrides[`period_holiday:${dateStr}:${period}`];
@@ -449,7 +487,7 @@ function editFromTTDetail() {
     // 授業変更タブを開いて、現在の内容（変更済みならその内容、なければ通常の時間割）を初期値にする
     switchTTMode('change');
     const dayKey = dateToDayKey(date);
-    const base   = (TIMETABLE[dayKey] || [])[period - 1];
+    const base   = (getTimetableForDate(date)[dayKey] || [])[period - 1];
 
     const subject = changeOv ? (changeOv.subject || (base && base.subject)) : (base && base.subject);
     const items   = changeOv ? (changeOv.items || [])                      : ((base && base.items) || []);
@@ -587,8 +625,8 @@ function renderDayChangePreview(dateStr) {
     return;
   }
 
-  const targetPeriods = TIMETABLE[targetDayKey] || [];
-  const sourcePeriods = TIMETABLE[sourceDayKey] || [];
+  const targetPeriods = getTimetableForDate(dateStr)[targetDayKey] || [];
+  const sourcePeriods = getTimetableForDate(dateStr)[sourceDayKey] || [];
 
   const rows = targetPeriods.map((_, i) => {
     const periodNum = i + 1;
@@ -631,10 +669,8 @@ async function applyDayChangeForDate(date, sourceDayKey, note) {
   const targetDayKey = dateToDayKey(date);
   if (!targetDayKey) return; // 土日は自動的にスキップ
 
-  const targetPeriods = TIMETABLE[targetDayKey] || [];
-  const sourcePeriods = TIMETABLE[sourceDayKey] || [];
-
-  // まずこの日の既存の change / period_holiday オーバーライドをクリアしてから入れ替える
+  const targetPeriods = getTimetableForDate(date)[targetDayKey] || [];
+  const sourcePeriods = getTimetableForDate(date)[sourceDayKey] || [];
   for (let i = 0; i < targetPeriods.length; i++) {
     const periodNum = i + 1;
     delete ttOverrides[`change:${date}:${periodNum}`];
@@ -652,6 +688,259 @@ async function applyDayChangeForDate(date, sourceDayKey, note) {
       // コピー元の曜日にこのコマが無い → 空きコマ（1コマ休み）扱い
       await applyPeriodHolidayForDate(date, periodNum, 'コマなし', note);
     }
+  }
+}
+
+// ============================================================
+//  ★ 学期（前期・後期など）の時間割設定
+//    ・前期／後期のように、期間ごとにまるごと違う基本時間割
+//      （曜日×時限の科目・持ち物）を、それぞれ独立したデータとして
+//      サーバーに保存する。
+//    ・学期は id ごとに完全に別データなので、後期の内容を編集・保存しても
+//      前期のデータは一切変更されない。
+//    ・表示側は getTimetableForDate(dateStr) が、その日付が含まれる
+//      学期のデータを自動で選んで使う（該当する学期が無ければ
+//      DEFAULT_TIMETABLE を使う）。
+// ============================================================
+const TERM_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
+
+function emptyTermTimetable() {
+  return { mon: [], tue: [], wed: [], thu: [], fri: [] };
+}
+function cloneDayPeriods(periods) {
+  return (periods || []).map(p => ({ subject: p.subject || '', items: [...(p.items || [])] }));
+}
+// ★ 新規学期を作るときは、今日時点で使われている時間割（学期未設定なら
+//   DEFAULT_TIMETABLE）をコピーして初期値にする。ゼロから全コマ入力し
+//   なくて済むようにするため。
+function cloneTimetableForNewTerm() {
+  const base = getTimetableForDate(getDateStr(new Date()));
+  const copy = emptyTermTimetable();
+  TERM_DAY_KEYS.forEach(k => { copy[k] = cloneDayPeriods(base[k]); });
+  return copy;
+}
+function escapeAttr(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function openTermModal() {
+  closeTTFab();
+  resetTermForm();
+  loadTerms().then(renderTermList);
+  document.getElementById('modal-tt-term').classList.add('open');
+}
+
+function resetTermForm() {
+  termEditState = { id: null, activeDay: 'mon', timetable: cloneTimetableForNewTerm() };
+
+  const nameSel = document.getElementById('tt-term-name-sel');
+  const nameInp = document.getElementById('tt-term-name-inp');
+  if (nameSel) nameSel.value = '前期';
+  if (nameInp) { nameInp.style.display = 'none'; nameInp.value = ''; }
+
+  initCal('tt-term-start', true);
+  initCal('tt-term-end', true);
+  resetCal('tt-term-start', '開始日を選択');
+  resetCal('tt-term-end', '終了日を選択');
+
+  document.querySelectorAll('#tt-term-day-tabs .tt-mode-btn').forEach((b, i) => {
+    b.classList.toggle('active', i === 0);
+  });
+  renderTermDayEditor();
+
+  const err = document.getElementById('tt-term-err');
+  if (err) err.style.display = 'none';
+  resetLoading(document.getElementById('tt-term-submit-btn'), '保存する');
+}
+
+function onTermNameSel() {
+  const sel = document.getElementById('tt-term-name-sel');
+  const inp = document.getElementById('tt-term-name-inp');
+  if (!sel || !inp) return;
+  if (sel.value === '__custom__') { inp.style.display = 'block'; inp.focus(); }
+  else { inp.style.display = 'none'; }
+}
+function getTermNameValue() {
+  const sel = document.getElementById('tt-term-name-sel');
+  if (!sel) return '';
+  if (sel.value === '__custom__') return (document.getElementById('tt-term-name-inp')?.value || '').trim();
+  return sel.value;
+}
+
+function switchTermDay(day) {
+  if (!termEditState) return;
+  termEditState.activeDay = day;
+  const idx = TERM_DAY_KEYS.indexOf(day);
+  document.querySelectorAll('#tt-term-day-tabs .tt-mode-btn').forEach((b, i) => {
+    b.classList.toggle('active', i === idx);
+  });
+  renderTermDayEditor();
+}
+
+function renderTermDayEditor() {
+  const container = document.getElementById('tt-term-day-editor');
+  if (!container || !termEditState) return;
+  const day = termEditState.activeDay;
+  const periods = termEditState.timetable[day] || [];
+
+  const rows = periods.map((p, i) => `
+    <div class="tt-term-period-row">
+      <div class="tt-term-period-num">${i + 1}限</div>
+      <div class="tt-term-period-fields">
+        <input type="text" value="${escapeAttr(p.subject)}" placeholder="科目名"
+          oninput="updateTermPeriod('${day}',${i},'subject',this.value)">
+        <input type="text" value="${escapeAttr((p.items || []).join(','))}" placeholder="持ち物（カンマ区切り）"
+          oninput="updateTermPeriod('${day}',${i},'items',this.value)">
+      </div>
+      <button type="button" class="tt-term-period-del" onclick="removeTermPeriod('${day}',${i})" title="このコマを削除">✕</button>
+    </div>`).join('');
+
+  container.innerHTML =
+    (rows || `<div style="font-size:13px;color:var(--text-tertiary);padding:6px 0">まだコマがありません</div>`) +
+    `<button type="button" class="tt-btn-secondary" onclick="addTermPeriod('${day}')">＋ コマを追加</button>`;
+}
+
+function updateTermPeriod(day, idx, field, value) {
+  if (!termEditState) return;
+  const p = termEditState.timetable[day][idx];
+  if (!p) return;
+  if (field === 'items') p.items = value.split(',').map(s => s.trim()).filter(Boolean);
+  else p.subject = value;
+}
+function addTermPeriod(day) {
+  if (!termEditState) return;
+  termEditState.timetable[day] = termEditState.timetable[day] || [];
+  termEditState.timetable[day].push({ subject: '', items: [] });
+  renderTermDayEditor();
+}
+function removeTermPeriod(day, idx) {
+  if (!termEditState) return;
+  termEditState.timetable[day].splice(idx, 1);
+  renderTermDayEditor();
+}
+
+function renderTermList() {
+  const el = document.getElementById('tt-term-list');
+  if (!el) return;
+  if (!terms.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary)">まだ学期が登録されていません（未登録の期間はデフォルトの時間割が使われます）</div>';
+    return;
+  }
+  const sorted = [...terms].sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  el.innerHTML = sorted.map(t => `
+    <div class="tt-term-list-row">
+      <div class="tt-term-list-info">
+        <div class="tt-term-list-name">${t.name}</div>
+        <div class="tt-term-list-range">${t.start_date} 〜 ${t.end_date}</div>
+      </div>
+      <button type="button" class="tt-btn-secondary" onclick="editTermFromList('${t.id}')">編集</button>
+      <button type="button" class="tt-term-period-del" onclick="deleteTermFromList('${t.id}')" title="削除">✕</button>
+    </div>`).join('');
+}
+
+function editTermFromList(id) {
+  const t = terms.find(x => x.id === id);
+  if (!t) return;
+
+  termEditState = {
+    id: t.id,
+    activeDay: 'mon',
+    timetable: (() => {
+      const copy = emptyTermTimetable();
+      TERM_DAY_KEYS.forEach(k => { copy[k] = cloneDayPeriods(t.timetable[k]); });
+      return copy;
+    })(),
+  };
+
+  const nameSel = document.getElementById('tt-term-name-sel');
+  const nameInp = document.getElementById('tt-term-name-inp');
+  if (nameSel && nameInp) {
+    if (t.name === '前期' || t.name === '後期') {
+      nameSel.value = t.name;
+      nameInp.style.display = 'none';
+    } else {
+      nameSel.value = '__custom__';
+      nameInp.style.display = 'block';
+      nameInp.value = t.name;
+    }
+  }
+
+  initCal('tt-term-start', true);
+  initCal('tt-term-end', true);
+  calState['tt-term-start'].selected = t.start_date;
+  calState['tt-term-end'].selected   = t.end_date;
+  const [sy, sm, sd] = t.start_date.split('-');
+  const [ey, em, ed] = t.end_date.split('-');
+  const startText = document.getElementById('tt-term-start-date-text');
+  const endText   = document.getElementById('tt-term-end-date-text');
+  if (startText) { startText.textContent = `${sy}年${parseInt(sm)}月${parseInt(sd)}日`; startText.style.color = 'var(--text)'; }
+  if (endText)   { endText.textContent   = `${ey}年${parseInt(em)}月${parseInt(ed)}日`; endText.style.color   = 'var(--text)'; }
+  renderCal('tt-term-start');
+  renderCal('tt-term-end');
+
+  switchTermDay('mon');
+
+  const err = document.getElementById('tt-term-err');
+  if (err) err.style.display = 'none';
+}
+
+async function deleteTermFromList(id) {
+  const t = terms.find(x => x.id === id);
+  if (!t) return;
+  if (!confirm(`「${t.name}」（${t.start_date}〜${t.end_date}）を削除しますか？`)) return;
+  try {
+    const res = await api(TERM_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, id }) });
+    if (res.ok) {
+      await loadTerms();
+      renderTermList();
+      renderTimetable();
+      if (termEditState && termEditState.id === id) resetTermForm();
+    } else {
+      showErr('tt-term-err', res.error || '削除に失敗しました');
+    }
+  } catch (e) {
+    showErr('tt-term-err', 'サーバーに接続できませんでした');
+  }
+}
+
+async function submitTermSave() {
+  if (!termEditState) return;
+  const name      = getTermNameValue();
+  const startDate = calState['tt-term-start']?.selected;
+  const endDate   = calState['tt-term-end']?.selected;
+
+  if (!name)                { showErr('tt-term-err', '学期名を入力してください'); return; }
+  if (!startDate)            { showErr('tt-term-err', '開始日を選択してください'); return; }
+  if (!endDate)              { showErr('tt-term-err', '終了日を選択してください'); return; }
+  if (endDate < startDate)   { showErr('tt-term-err', '終了日は開始日以降にしてください'); return; }
+
+  const btn = document.getElementById('tt-term-submit-btn');
+  setLoading(btn, '保存中…');
+  try {
+    const res = await api(TERM_API.SAVE, {
+      method: 'POST',
+      body: JSON.stringify({
+        guild_id:   GUILD_ID,
+        id:         termEditState.id || undefined,
+        name,
+        start_date: startDate,
+        end_date:   endDate,
+        timetable:  termEditState.timetable,
+      })
+    });
+    resetLoading(btn, '保存する');
+    if (res.ok) {
+      showOk('tt-term-ok');
+      await loadTerms();
+      renderTermList();
+      renderTimetable();
+      resetTermForm();
+    } else {
+      showErr('tt-term-err', res.error || '保存に失敗しました');
+    }
+  } catch (e) {
+    resetLoading(btn, '保存する');
+    showErr('tt-term-err', 'サーバーに接続できませんでした');
   }
 }
 
@@ -1160,11 +1449,12 @@ async function hashOfUrl(url) {
   return digestMessage(txt);
 }
 
-// 監視対象3種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
+// 監視対象4種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
 let watchHashes = {
   schedule:  null, // 予定・課題（list_schedule）
   homeworks: null, // 課題JSON（JSON_URL）
   overrides: null, // 時間割変更・休校（list_timetable）
+  terms:     null, // 学期ごとの基本時間割（list_terms）
 };
 
 // 監視対象データをまとめて再取得＆再描画
@@ -1172,6 +1462,7 @@ async function refreshWatchedData() {
   await Promise.all([
     loadTTHomeworks(),
     loadTTOverrides(),
+    loadTerms(),
     loadPlans(),
   ]);
   renderTimetable();
@@ -1180,10 +1471,11 @@ async function refreshWatchedData() {
 // 変更チェック本体
 async function checkForUpdates() {
   try {
-    const [scheduleHash, homeworksHash, overridesHash] = await Promise.all([
+    const [scheduleHash, homeworksHash, overridesHash, termsHash] = await Promise.all([
       hashOfUrl(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`),
       hashOfUrl(JSON_URL),
       hashOfUrl(`${API_BASE}${TT_API.LIST}?guild_id=${GUILD_ID}`),
+      hashOfUrl(`${API_BASE}${TERM_API.LIST}?guild_id=${GUILD_ID}`),
     ]);
 
     const isFirstCheck = watchHashes.schedule === null;
@@ -1191,13 +1483,15 @@ async function checkForUpdates() {
     const changed = !isFirstCheck && (
       scheduleHash  !== watchHashes.schedule  ||
       homeworksHash !== watchHashes.homeworks ||
-      overridesHash !== watchHashes.overrides
+      overridesHash !== watchHashes.overrides ||
+      termsHash     !== watchHashes.terms
     );
 
     watchHashes = {
       schedule:  scheduleHash,
       homeworks: homeworksHash,
       overrides: overridesHash,
+      terms:     termsHash,
     };
 
     if (changed) {
