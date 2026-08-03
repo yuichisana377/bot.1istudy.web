@@ -78,6 +78,79 @@
   .period-row:active {
     background: var(--bg);
   }
+
+  /* ★ 学期（前期・後期など）の時間割設定モーダル */
+  .tt-btn-secondary {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--primary, #2563eb);
+    color: var(--primary, #2563eb);
+    background: #fff;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tt-btn-secondary:active {
+    background: var(--bg);
+  }
+  .tt-term-period-del {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: #fee2e2;
+    color: #b91c1c;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .tt-term-period-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .tt-term-period-num {
+    flex: 0 0 40px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+  }
+  .tt-term-period-fields {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .tt-term-period-fields input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .tt-term-list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .tt-term-list-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .tt-term-list-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .tt-term-list-range {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
 </style>
 </head>
 <body>
@@ -146,6 +219,9 @@
     </div>
     <div class="fab-action" onclick="openTTEditModal()">
       <span class="fab-label">時間割編集</span><div class="fab-btn">📒</div>
+    </div>
+    <div class="fab-action" onclick="openTermModal()">
+      <span class="fab-label">学期設定</span><div class="fab-btn">🗓️</div>
     </div>
   </div>
   <button class="fab-main" id="tt-fab-main" onclick="toggleTTFab()">✎</button>
@@ -451,6 +527,77 @@
       <div class="modal-section-label">保存済みの変更一覧</div>
       <div id="tt-overrides-list" style="max-height:180px;overflow-y:auto"></div>
     </div>
+  </div>
+</div>
+
+<!-- ★ 学期（前期・後期など）の時間割設定モーダル -->
+<div class="modal-bg" id="modal-tt-term" onclick="onBgClick(event,'tt-term')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3>学期の時間割設定</h3>
+      <button class="modal-close" onclick="closeModal('tt-term')">✕</button>
+    </div>
+    <div class="success-bar" id="tt-term-ok">✓ 保存しました！</div>
+    <div class="error-bar"   id="tt-term-err"></div>
+
+    <div class="modal-section-label">登録済みの学期</div>
+    <div id="tt-term-list"></div>
+
+    <div class="modal-section-label">学期を追加・編集</div>
+    <p style="font-size:12px;color:var(--text-tertiary);margin:-4px 0 10px">
+      前期・後期はそれぞれ別のデータとして保存されるので、後期を編集・保存しても前期の内容は変わりません。
+    </p>
+
+    <div class="row2">
+      <div class="field">
+        <label>学期名</label>
+        <div class="cat-wrap">
+          <select id="tt-term-name-sel" onchange="onTermNameSel()">
+            <option value="前期">前期</option>
+            <option value="後期">後期</option>
+            <option value="__custom__">自由入力…</option>
+          </select>
+          <input type="text" id="tt-term-name-inp" placeholder="学期名を入力" style="display:none">
+        </div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>開始日</label>
+        <div class="date-wrap">
+          <div class="date-display" onclick="toggleCal(event,'tt-term-start')">
+            <span id="tt-term-start-date-text" style="color:var(--text-tertiary);font-size:14px">開始日を選択</span>
+            <span>📅</span>
+          </div>
+          <div class="cal-pop" id="cal-tt-term-start"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>終了日</label>
+        <div class="date-wrap">
+          <div class="date-display" onclick="toggleCal(event,'tt-term-end')">
+            <span id="tt-term-end-date-text" style="color:var(--text-tertiary);font-size:14px">終了日を選択</span>
+            <span>📅</span>
+          </div>
+          <div class="cal-pop" id="cal-tt-term-end"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section-label">授業内容（曜日ごとに設定）</div>
+    <div class="tt-edit-mode-tabs" id="tt-term-day-tabs">
+      <button type="button" class="tt-mode-btn active" onclick="switchTermDay('mon')">月</button>
+      <button type="button" class="tt-mode-btn"        onclick="switchTermDay('tue')">火</button>
+      <button type="button" class="tt-mode-btn"        onclick="switchTermDay('wed')">水</button>
+      <button type="button" class="tt-mode-btn"        onclick="switchTermDay('thu')">木</button>
+      <button type="button" class="tt-mode-btn"        onclick="switchTermDay('fri')">金</button>
+    </div>
+    <div id="tt-term-day-editor" style="margin-top:8px"></div>
+
+    <button class="btn-primary" id="tt-term-submit-btn" onclick="submitTermSave()" style="margin-top:14px">保存する</button>
+    <button type="button" class="tt-btn-secondary" onclick="resetTermForm()" style="width:100%;margin-top:8px;text-align:center">新しい学期として入力し直す</button>
   </div>
 </div>
 
