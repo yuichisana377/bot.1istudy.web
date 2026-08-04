@@ -77,7 +77,9 @@ async function loadTasks() {
 
     TASKS_JSON = (data.plans || [])
       .filter(p => {
-        const isTarget = p.content.includes("【提出】") || p.content.includes("【宿題】");
+        // ★「提出」「宿題」に加えて、その他カテゴリでも任意でポイントが
+        //   付いている予定は達成一覧の対象に含める
+        const isTarget = p.content.includes("【提出】") || p.content.includes("【宿題】") || (p.points != null);
         const due = new Date(p.date); due.setHours(0, 0, 0, 0);
         return isTarget && due >= today;
       })
