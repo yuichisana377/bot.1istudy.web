@@ -9,6 +9,37 @@
 <link rel="stylesheet" href="/Style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
+<style>
+  /* 編集／プレビュー タブ（.view-toggle / .view-btn と統一デザイン） */
+  .notice-editor-tabs{
+    display:flex; background:var(--bg); border-radius:var(--r-md);
+    padding:3px; gap:2px; border:1px solid var(--border); margin-bottom:8px; width:fit-content;
+  }
+  .notice-tab{
+    padding:5px 13px; font-size:12px; font-weight:500; color:var(--text-secondary);
+    border:none; background:none; border-radius:var(--r-sm); cursor:pointer; transition:all .15s;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .notice-tab.active{
+    background:var(--surface); color:var(--text); font-weight:600; box-shadow:var(--shadow);
+  }
+
+  /* 下書き復元バナー（バッジ／今日ボタンと同じ青系のお知らせカラー） */
+  .notice-draft-banner{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; border-radius:var(--r-sm);
+    padding:10px 13px; margin-bottom:12px; font-size:13px;
+  }
+  .notice-draft-banner button{
+    font-size:12px; font-weight:600; padding:4px 11px; border-radius:20px;
+    border:1px solid #bfdbfe; background:var(--surface); color:#1e40af; cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .notice-draft-banner button:active{ background:#bfdbfe; }
+
+  .notice-draft-status{ font-size:11px; color:var(--text-tertiary); margin-top:5px; min-height:14px; }
+  .notice-filename-hint{ font-size:11px; color:var(--text-tertiary); margin-top:5px; }
+</style>
 </head>
 <body>
 
@@ -88,9 +119,16 @@
     <div class="success-bar" id="upload-ok">✓ アップロードしました！</div>
     <div class="error-bar"   id="upload-err"></div>
 
+    <div class="notice-draft-banner" id="draft-banner" style="display:none;">
+      <span>📝 保存されている下書きがあります</span>
+      <button type="button" onclick="restoreDraft()">復元する</button>
+      <button type="button" onclick="discardDraft()">破棄する</button>
+    </div>
+
     <div class="field">
       <label>ファイル名（.md または .txt）</label>
-      <input type="text" id="upload-filename" placeholder="例: 2026-07-25_お知らせ.md">
+      <input type="text" id="upload-filename" placeholder="例: 2026-07-25_お知らせ.md" oninput="onFilenameInput()">
+      <div class="notice-filename-hint" id="filename-hint"></div>
     </div>
     <div class="field">
       <label>投稿者</label>
@@ -98,10 +136,16 @@
     </div>
     <div class="field">
       <label>内容</label>
-      <textarea id="upload-content" rows="10" placeholder="お知らせの本文を入力…"
+      <div class="notice-editor-tabs">
+        <button type="button" class="notice-tab active" id="tab-edit-btn" onclick="switchNoticeTab('edit')">編集</button>
+        <button type="button" class="notice-tab" id="tab-preview-btn" onclick="switchNoticeTab('preview')">プレビュー</button>
+      </div>
+      <textarea id="upload-content" rows="10" placeholder="お知らせの本文を入力…" oninput="onContentInput()"
         style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-md);
         font-size:14px;background:var(--bg);color:var(--text);outline:none;resize:vertical;
         font-family:inherit;line-height:1.6;"></textarea>
+      <div class="notice-body" id="upload-preview" style="display:none;"></div>
+      <div class="notice-draft-status" id="draft-status"></div>
     </div>
 
     <!-- ファイルから読み込む場合 -->
