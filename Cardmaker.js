@@ -2191,6 +2191,14 @@ function renderCreatedList() {
       if (newEl) {
         beginDrag(newEl, resumeClientY);
         lastClientX = resumeClientX;
+        // ★ 重要：ここで新しい要素にポインターキャプチャを張り直す。
+        //   フォルダを開き直す際に元の要素をDOMごと作り直しているため、
+        //   長押し開始時に張ったキャプチャ（pressItem側）が外れてしまう。
+        //   張り直さないと、この後 指がパンくず付近（#deck-grid の外）に
+        //   出た瞬間から pointermove/pointerup が grid に届かなくなり、
+        //   endDrag() が一切呼ばれずに touch-action:none 等が要素に残り続けて
+        //   「スクロールも何もできなくなる」不具合の原因になる。
+        try { newEl.setPointerCapture(pressPointerId); } catch (_) {}
       } else {
         // 万一見つからなければドラッグ状態を安全に終了させる
         dragEl = null;
@@ -2382,6 +2390,14 @@ function renderCreatedList() {
   grid.addEventListener('pointermove', onPointerMove, { passive: false });
   grid.addEventListener('pointerup', onPointerUp);
   grid.addEventListener('pointercancel', onPointerUp);
+
+  // ★ 追加の保険：フォルダの自動オープン／自動で戻る操作の直後は、指が一時的に
+  //   #deck-grid の外（パンくず付近など）にあることがあり、万一ポインターキャプチャの
+  //   張り直しがうまく効かない端末があっても、指を離した／キャンセルされたイベント自体は
+  //   documentまでは必ずバブリングしてくる。ここで拾って必ず後片付け（endDrag等）が
+  //   走るようにし、touch-action:none等が要素に残り続ける事故を防ぐ。
+  document.addEventListener('pointerup', onPointerUp);
+  document.addEventListener('pointercancel', onPointerUp);
 
   // ★ 修正：並び替え中にスマホの画面が勝手にスクロールしてしまう不具合の対策。
   //   ─────────────────────────────────────────
