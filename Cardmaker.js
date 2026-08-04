@@ -1985,10 +1985,12 @@ function renderCreatedList() {
     autoScrollRAF = requestAnimationFrame(autoScrollTick);
   }
 
-  function beginDrag(item, clientY) {
+  function beginDrag(item, clientY, initialDy) {
+    initialDy = initialDy || 0; // ★ 追加：フォルダ切り替え直後の再開時、指の位置とカードの見た目を
+                                 //   一致させるための初期オフセット（通常の掴み始めは0でよい）
     dragEl = item;
     cmListDragActive = true; // ★ ドラッグ中は renderDeckListUI() 側で再描画をスキップさせる
-    startY = clientY;
+    startY = clientY - initialDy;
     lastClientY = clientY;
     dragOriginY = clientY; // ★ 追加：自動スクロール発動判定の基準点
     scrollParent = findScrollParent(grid);
@@ -1998,7 +2000,7 @@ function renderCreatedList() {
     dragEl.style.boxShadow = '0 6px 18px rgba(0,0,0,.20)';
     dragEl.style.opacity = '0.92';
     dragEl.style.touchAction = 'none';
-    dragEl.style.transform = 'scale(1.02)';
+    dragEl.style.transform = `translateY(${initialDy}px) scale(1.02)`;
     if (navigator.vibrate) navigator.vibrate(12); // ★ つかんだ瞬間に軽い振動でフィードバック（対応端末のみ）
     if (autoScrollRAF === null) autoScrollRAF = requestAnimationFrame(autoScrollTick);
   }
@@ -2133,8 +2135,6 @@ function renderCreatedList() {
     clearHoverFolder();
 
     const key = dragEl.dataset.key;
-    const resumeClientX = lastClientX;
-    const resumeClientY = lastClientY;
 
     try {
       if (key.startsWith('folder:')) {
@@ -2171,6 +2171,13 @@ function renderCreatedList() {
 
       if (!dragEl) return; // 上のawait中に指が離された場合はここで終了
 
+      // ★ 追加：フォルダを切り替える直前の「見た目の位置」と、その時点の最新の指の位置を
+      //   ここで（＝各種await完了後の最新の状態で）確定させる。デッキ読み込み待ちなどの
+      //   非同期処理中に指が動いていた場合でも、ここで最新値を使うことでズレを防ぐ。
+      const oldVisualTop = dragEl.getBoundingClientRect().top;
+      const resumeClientX = lastClientX;
+      const resumeClientY = lastClientY;
+
       // フォルダを開く
       currentFolderId = targetFolderId;
 
@@ -2189,7 +2196,13 @@ function renderCreatedList() {
       //   （ファイル名に特殊文字を含む可能性があるためCSSセレクタは使わずJSで探す）
       const newEl = getItems().find(it => it.dataset.key === key) || null;
       if (newEl) {
-        beginDrag(newEl, resumeClientY);
+        // ★ 新しく描画された要素は、開いたフォルダの一覧の中の「自然な位置」に
+        //   配置されている（＝指の位置とは無関係）。切り替え直前の見た目の位置
+        //   （oldVisualTop）との差分を初期オフセットとして与えることで、
+        //   カードが指の位置からずれずにそのまま連続して見えるようにする。
+        const newNaturalTop = newEl.getBoundingClientRect().top;
+        const initialDy = oldVisualTop - newNaturalTop;
+        beginDrag(newEl, resumeClientY, initialDy);
         lastClientX = resumeClientX;
         // ★ 重要：ここで新しい要素にポインターキャプチャを張り直す。
         //   フォルダを開き直す際に元の要素をDOMごと作り直しているため、
