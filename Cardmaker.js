@@ -1559,6 +1559,15 @@ async function publishDeck(deckId, isComplete = true) {
     question: c.question, answer: c.answer, explanation: c.explanation || '',
     imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [], // ★ 画像も公開する
   }));
+  // ★ 追加：サーバー側の is_update（＝filenameが既に存在するか）だけでは、
+  //   「作成中（作成時にannounceNewDeckToServerで登録済み）」のデッキが
+  //   初めて『公開して保存』されたときも filename が既に存在するため
+  //   「更新」と判定されてしまい、通知が「新規公開」ではなく「更新されました」
+  //   という誤った文言になってしまっていた。
+  //   ここでは「一度でも実際に『公開して保存』を経たことがあるか」
+  //   （＝deck.notYetPublished）を見て、まだなら「これが初めての公開」として
+  //   サーバーへ明示的に伝える。
+  const isFirstPublish = deck.notYetPublished !== false;
   const body = {
     name: deck.name,
     cards,
@@ -1569,6 +1578,7 @@ async function publishDeck(deckId, isComplete = true) {
     publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
     silent: !isComplete, // ★ 未完成として公開する場合は通知しない
     incomplete: !isComplete, // ★ 未完成フラグをサーバーに保存し、他の人の端末にも表示させる
+    first_publish: isFirstPublish, // ★ 追加：通知文言を「公開」/「更新」どちらにするか判定するためのヒント
   };
   if (deck.filename) body.filename = deck.filename;
   try {
