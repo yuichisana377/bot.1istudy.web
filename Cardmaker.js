@@ -3840,7 +3840,45 @@ document.addEventListener('click', function(e) {
 initMathPads();
 
 // ── 起動 ──────────────────────────────
-renderDeckList();
+renderDeckList().then(jumpToDeckFromUrl);
+
+// ===== Discord通知からのディープリンク対応 =====
+// ★ 追加：通知メッセージのリンク（例: Cardmaker.html?deck=set_xxxx.json）から
+//   開かれた場合、そのデッキがあるフォルダまで自動で移動し、該当デッキを
+//   ハイライト表示して分かりやすくする。
+//   ・renderDeckList() で最新のdecks/foldersを取得し終えた後に実行する
+//     （まだ取得前だと該当デッキが見つからず何もできないため）。
+//   ・一度処理したら history.replaceState で ?deck= をURLから消しておき、
+//     その後リロードしたり通知を再度開いたりしても毎回飛ばないようにする。
+async function jumpToDeckFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const targetFilename = params.get('deck');
+  if (!targetFilename) return;
+
+  // URLをきれいな状態に戻しておく（ブックマーク・再読み込み時に毎回飛ばされないように）
+  history.replaceState(null, '', location.pathname + location.hash);
+
+  const deck = decks.find(d => d.filename === targetFilename);
+  if (!deck) return; // 見つからなければ何もしない（削除された・未同期などのケース）
+
+  // デッキが入っているフォルダ（ルートなら null）まで画面を移動する
+  openFolder(deck.folderId || null);
+
+  // renderDeckListUI() によるDOM再構築を待ってから、該当デッキまでスクロール＆ハイライトする
+  requestAnimationFrame(() => {
+    const grid = document.getElementById('deck-grid');
+    const el = grid && grid.querySelector(`[data-key="deck:${CSS.escape(targetFilename)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.transition = 'box-shadow 0.3s ease, transform 0.3s ease';
+    el.style.boxShadow = '0 0 0 3px #3b82f6, 0 4px 14px rgba(59,130,246,0.35)';
+    el.style.transform = 'scale(1.02)';
+    setTimeout(() => {
+      el.style.boxShadow = '';
+      el.style.transform = '';
+    }, 2200);
+  });
+}
 
 // ===== JSON変更監視（公開デッキ list_cards のみ） =====
 let lastCardsHash = null;
