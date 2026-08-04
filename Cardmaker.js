@@ -2196,10 +2196,14 @@ function renderCreatedList() {
       //   （ファイル名に特殊文字を含む可能性があるためCSSセレクタは使わずJSで探す）
       const newEl = getItems().find(it => it.dataset.key === key) || null;
       if (newEl) {
-        // ★ 新しく描画された要素は、開いたフォルダの一覧の中の「自然な位置」に
-        //   配置されている（＝指の位置とは無関係）。切り替え直前の見た目の位置
-        //   （oldVisualTop）との差分を初期オフセットとして与えることで、
-        //   カードが指の位置からずれずにそのまま連続して見えるようにする。
+        // ★ 重要：新しく開いたフォルダの中で、移動した項目は「並び順の末尾」に
+        //   挿入されている（＝中身が多いフォルダだと画面外はるか下）。そのまま
+        //   指の位置までCSSのtransformだけで無理やり合わせると、見た目の位置と
+        //   実際のDOM上の位置が大きく離れてしまい、指を少し動かすたびに並び替え
+        //   判定が一段ずつしか追いつけずガクガクとズレて見える不具合の原因になっていた。
+        //   そこで、指の位置に一番近い「一覧の先頭」へ実際に差し込み直してから
+        //   ドラッグを再開する（＝フォルダへ移動したカードは常に先頭に来る）。
+        grid.insertBefore(newEl, grid.firstChild);
         const newNaturalTop = newEl.getBoundingClientRect().top;
         const initialDy = oldVisualTop - newNaturalTop;
         beginDrag(newEl, resumeClientY, initialDy);
