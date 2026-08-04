@@ -11,6 +11,10 @@ let notices = [];
 let currentViewFilename = null;
 let currentViewContent = null;
 let isEditingNotice = false;
+let editingOriginalFilename = null; // 編集開始時点のファイル名（リネーム検知用）
+let pendingDraft = null;            // 復元候補の下書き（バナー表示中に保持）
+let draftSaveTimer = null;
+const DRAFT_KEY_NEW = 'notice_draft_new';
 
 // ── ログインセッション（Login.js / Cardmaker.js と共通） ──────
 const SESSION_KEY = 'sl_session';
@@ -124,6 +128,94 @@ function renderNoticeBody(bodyEl, filename, content) {
   }
 }
 
+// ============================================================
+//  プレビュー（アップロード／編集モーダル内）
+// ============================================================
+function switchNoticeTab(tab) {
+  const editBtn = document.getElementById('tab-edit-btn');
+  const previewBtn = document.getElementById('tab-preview-btn');
+  const textarea = document.getElementById('upload-content');
+  const previewEl = document.getElementById('upload-preview');
+
+  if (tab === 'preview') {
+    const filename = document.getElementById('upload-filename').value.trim();
+    const content = textarea.value;
+    // renderNoticeBody は .md 拡張子のときのみ Markdown レンダリング、それ以外はプレーン表示
+    previewEl.innerHTML = '';
+    previewEl.className = 'notice-body';
+    renderNoticeBody(previewEl, filename, content || '（内容がありません）');
+    previewEl.style.display = 'block';
+    textarea.style.display = 'none';
+    previewBtn.classList.add('active');
+    editBtn.classList.remove('active');
+  } else {
+    previewEl.style.display = 'none';
+    textarea.style.display = 'block';
+    editBtn.classList.add('active');
+    previewBtn.classList.remove('active');
+  }
+}
+
+// ============================================================
+//  下書き（ローカル一時保存）
+// ============================================================
+function draftKeyForEdit(originalFilename) {
+  return 'notice_draft_edit_' + originalFilename;
+}
+
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraftNow, 600);
+}
+
+function saveDraftNow() {
+  const filename = document.getElementById('upload-filename').value;
+  const content = document.getElementById('upload-content').value;
+  const statusEl = document.getElementById('draft-status');
+
+  if (!filename.trim() && !content.trim()) return; // 空なら保存しない
+
+  const key = isEditingNotice ? draftKeyForEdit(editingOriginalFilename) : DRAFT_KEY_NEW;
+  try {
+    localStorage.setItem(key, JSON.stringify({ filename, content, ts: Date.now() }));
+    statusEl.textContent = '💾 下書きを自動保存しました（' + new Date().toLocaleTimeString('ja-JP') + '）';
+  } catch (e) {
+    // localStorage が使えない環境では何もしない
+  }
+}
+
+function checkForDraft(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) { document.getElementById('draft-banner').style.display = 'none'; return; }
+    pendingDraft = JSON.parse(raw);
+    document.getElementById('draft-banner').style.display = 'flex';
+  } catch (e) {
+    document.getElementById('draft-banner').style.display = 'none';
+  }
+}
+
+function restoreDraft() {
+  if (!pendingDraft) return;
+  document.getElementById('upload-filename').value = pendingDraft.filename || '';
+  document.getElementById('upload-content').value = pendingDraft.content || '';
+  onFilenameInput();
+  document.getElementById('draft-banner').style.display = 'none';
+}
+
+function discardDraft() {
+  const key = isEditingNotice ? draftKeyForEdit(editingOriginalFilename) : DRAFT_KEY_NEW;
+  try { localStorage.removeItem(key); } catch (e) {}
+  pendingDraft = null;
+  document.getElementById('draft-banner').style.display = 'none';
+}
+
+function clearDraftAfterSubmit() {
+  const key = isEditingNotice ? draftKeyForEdit(editingOriginalFilename) : DRAFT_KEY_NEW;
+  try { localStorage.removeItem(key); } catch (e) {}
+  document.getElementById('draft-status').textContent = '';
+}
+
 async function deleteCurrentNotice() {
   if (!currentViewFilename) return;
   if (!confirm(`「${currentViewFilename}」を削除しますか？`)) return;
@@ -156,6 +248,7 @@ async function deleteCurrentNotice() {
 // ============================================================
 function openUploadModal() {
   isEditingNotice = false;
+  editingOriginalFilename = null;
 
   document.getElementById('upload-filename').value = '';
   document.getElementById('upload-filename').disabled = false;
@@ -164,6 +257,8 @@ function openUploadModal() {
   document.getElementById('upload-file-input').closest('.field').style.display = '';
   document.getElementById('upload-ok').style.display = 'none';
   document.getElementById('upload-err').style.display = 'none';
+  document.getElementById('filename-hint').textContent = '';
+  document.getElementById('draft-status').textContent = '';
 
   document.querySelector('#modal-upload .modal-header h3').textContent = 'お知らせをアップロード';
   document.querySelector('#modal-upload .btn-primary').textContent = 'アップロードする';
@@ -171,6 +266,9 @@ function openUploadModal() {
   const session = getLoginSession();
   const display = document.getElementById('upload-uploader-display');
   display.textContent = session ? `${session.nickname} さん` : '未ログイン（匿名として投稿されます）';
+
+  switchNoticeTab('edit');
+  checkForDraft(DRAFT_KEY_NEW);
 
   document.getElementById('modal-upload').classList.add('open');
 }
@@ -180,15 +278,18 @@ function openEditModal() {
   if (!currentViewFilename) return;
 
   isEditingNotice = true;
+  editingOriginalFilename = currentViewFilename;
   closeNoticeModal('view');
 
   document.getElementById('upload-filename').value = currentViewFilename;
-  document.getElementById('upload-filename').disabled = true; // ファイル名（種別）は変更不可
+  document.getElementById('upload-filename').disabled = false; // ★ 編集時もファイル名（タイトル）を変更可能に
   document.getElementById('upload-content').value = currentViewContent || '';
   document.getElementById('upload-file-input').value = '';
   document.getElementById('upload-file-input').closest('.field').style.display = 'none';
   document.getElementById('upload-ok').style.display = 'none';
   document.getElementById('upload-err').style.display = 'none';
+  document.getElementById('filename-hint').textContent = '';
+  document.getElementById('draft-status').textContent = '';
 
   document.querySelector('#modal-upload .modal-header h3').textContent = 'お知らせを編集';
   document.querySelector('#modal-upload .btn-primary').textContent = '更新する';
@@ -197,7 +298,25 @@ function openEditModal() {
   const display = document.getElementById('upload-uploader-display');
   display.textContent = session ? `${session.nickname} さん` : '未ログイン（匿名として更新されます）';
 
+  switchNoticeTab('edit');
+  checkForDraft(draftKeyForEdit(editingOriginalFilename));
+
   document.getElementById('modal-upload').classList.add('open');
+}
+
+function onFilenameInput() {
+  const hintEl = document.getElementById('filename-hint');
+  const filename = document.getElementById('upload-filename').value.trim();
+  if (isEditingNotice && editingOriginalFilename && filename && filename !== editingOriginalFilename) {
+    hintEl.textContent = `「${editingOriginalFilename}」から名前が変更されます（保存時に移動されます）`;
+  } else {
+    hintEl.textContent = '';
+  }
+  scheduleDraftSave();
+}
+
+function onContentInput() {
+  scheduleDraftSave();
 }
 
 function onLocalFileSelected(e) {
@@ -220,6 +339,19 @@ async function submitUpload() {
   if (!filename) { showNoticeErr('upload-err', 'ファイル名を入力してください'); return; }
   if (!/\.(md|txt)$/i.test(filename)) { showNoticeErr('upload-err', 'ファイル名は .md か .txt にしてください'); return; }
   if (!content.trim()) { showNoticeErr('upload-err', '内容が空です'); return; }
+
+  // ★ 同じ名前（既存の別お知らせと同名）で保存しようとした場合は上書き確認する
+  //   ・新規投稿で既存と同名 → 上書きするか確認
+  //   ・編集でタイトルを既存の別名に変更 → 上書きするか確認
+  //   ・編集で元の名前のまま（変更なし） → 確認不要（通常の更新）
+  const excludeName = isEditingNotice ? editingOriginalFilename : null;
+  const isDuplicate = notices.some(n => n.filename === filename && n.filename !== excludeName);
+  if (isDuplicate) {
+    const overwriteOk = confirm(
+      `「${filename}」という名前のお知らせは既に存在します。\n上書きしてもよろしいですか？`
+    );
+    if (!overwriteOk) return;
+  }
 
   // ★ Cardmaker.js と同じ考え方：未ログインなら「匿名のまま投稿」か「ログイン画面へ」を確認する
   const session = getLoginSession();
@@ -253,8 +385,24 @@ async function submitUpload() {
     btn.disabled = false;
     btn.textContent = btnLabel;
     if (res.ok) {
+      // ★ 編集でファイル名（タイトル）が変更された場合は、新しい名前で保存した後に古いファイルを削除して「移動」を完成させる
+      if (editing && editingOriginalFilename && editingOriginalFilename !== filename) {
+        try {
+          await api('/delete_notice', {
+            method: 'POST',
+            body: JSON.stringify({ filename: editingOriginalFilename })
+          });
+        } catch (e) {
+          // 古いファイルの削除に失敗しても、新しい内容の保存自体は成功しているため処理は続行する
+        }
+      }
+      clearDraftAfterSubmit();
       showNoticeOk('upload-ok');
-      if (editing) currentViewContent = content;
+      if (editing) {
+        currentViewContent = content;
+        currentViewFilename = filename;
+        editingOriginalFilename = filename;
+      }
       await loadNotices();
       setTimeout(() => closeNoticeModal('upload'), 700);
     } else {
