@@ -470,19 +470,17 @@ function selectPlan(el, mode) {
       document.getElementById('edit-content').value = text;
       document.getElementById('edit-note').value = note;
 
-      if (POINT_CATEGORIES.includes(cat)) {
-        ptsWrap.style.display = 'block';
-        // 既存のポイントが選択肢内にあればプリセット、なければ未選択のまま
-        selectedPoints['edit'] = POINT_OPTIONS.includes(plan.points) ? plan.points : null;
-        renderPointsChips('edit');
-        const label = ptsWrap.querySelector('.pts-label');
-        if (label) {
-          label.textContent = (plan.points != null)
-            ? `ポイント（現在: ${plan.points}pt・変更しない場合は未選択のまま）`
-            : 'ポイント（変更しない場合は未選択のまま）';
-        }
-      } else {
-        ptsWrap.style.display = 'none';
+      // ★ その他カテゴリでも任意でポイントを付けられるように、カテゴリを問わず表示する
+      ptsWrap.style.display = 'block';
+      // 既存のポイントが選択肢内にあればプリセット、なければ未選択のまま
+      selectedPoints['edit'] = POINT_OPTIONS.includes(plan.points) ? plan.points : null;
+      renderPointsChips('edit');
+      const label = ptsWrap.querySelector('.pts-label');
+      if (label) {
+        const base = POINT_CATEGORIES.includes(cat) ? 'ポイント' : 'ポイント（任意）';
+        label.textContent = (plan.points != null)
+          ? `${base}（現在: ${plan.points}pt・変更しない場合は未選択のまま）`
+          : `${base}（変更しない場合は未選択のまま）`;
       }
     }
   } else {
@@ -512,7 +510,7 @@ function openModal(name) {
   document.getElementById('modal-' + name).classList.add('open');
   if (name === 'add')    {
     initCal('add', false);
-    selectedPoints['add'] = 5;
+    selectedPoints['add'] = null;
     updatePointsVisibility('add');
   }
   if (name === 'edit')   {
@@ -541,37 +539,45 @@ function updatePointsVisibility(prefix) {
   const cat  = getCatValue(prefix);
   const wrap = document.getElementById(prefix + '-points-wrap');
   if (!wrap) return;
-  const show = POINT_CATEGORIES.includes(cat);
-  wrap.style.display = show ? 'block' : 'none';
-  if (show) renderPointsChips(prefix);
+  // ★ カテゴリが「提出」「宿題」以外でも、カテゴリさえ決まっていれば
+  //   任意でポイントを付けられるように表示する
+  wrap.style.display = cat ? 'block' : 'none';
+  if (cat) renderPointsChips(prefix);
 }
 
 /** ポイント選択チップ（3 / 5 / 10 / 15）を描画する */
 function renderPointsChips(prefix) {
   const wrap = document.getElementById(prefix + '-points-wrap');
   if (!wrap) return;
-  // ★ 追加時は未選択なら5ptをデフォルトで選択状態にする
-  if (prefix === 'add' && selectedPoints[prefix] == null) {
+  const cat      = getCatValue(prefix);
+  const required = POINT_CATEGORIES.includes(cat);
+  // ★ 必須カテゴリ（提出・宿題）で追加時は未選択なら5ptをデフォルトで選択状態にする
+  //   それ以外のカテゴリは任意なので、明示的に選ぶまで未選択のまま
+  if (prefix === 'add' && required && selectedPoints[prefix] == null) {
     selectedPoints[prefix] = 5;
   }
   const current = selectedPoints[prefix];
   const chips = POINT_OPTIONS.map(v =>
     `<button type="button" class="chip pts-chip${current === v ? ' chip-active' : ''}" data-pts="${v}" onclick="pickPoints('${prefix}', ${v})">${v}pt</button>`
   ).join('');
+  const labelText = required ? 'ポイント' : 'ポイント（任意）';
   wrap.innerHTML = `
-    <div class="pts-label">ポイント</div>
+    <div class="pts-label">${labelText}</div>
     <div class="filter-chips pts-chips">${chips}</div>
   `;
 }
 
 /** ポイントチップがクリックされたとき */
 function pickPoints(prefix, val) {
-  selectedPoints[prefix] = val;
-  const wrap = document.getElementById(prefix + '-points-wrap');
-  if (!wrap) return;
-  wrap.querySelectorAll('.pts-chip').forEach(b => {
-    b.classList.toggle('chip-active', parseInt(b.dataset.pts, 10) === val);
-  });
+  const cat      = getCatValue(prefix);
+  const required = POINT_CATEGORIES.includes(cat);
+  // ★ 任意カテゴリは、選択中のチップをもう一度押すと選択解除できる（＝ポイントなし）
+  if (!required && selectedPoints[prefix] === val) {
+    selectedPoints[prefix] = null;
+  } else {
+    selectedPoints[prefix] = val;
+  }
+  renderPointsChips(prefix);
 }
 
 // ============================================================
@@ -593,6 +599,9 @@ async function submitAdd() {
     const points = selectedPoints['add'];
     if (!points) { showErr('add-err', 'ポイントを選択してください'); return; }
     body.points = points;
+  } else if (selectedPoints['add']) {
+    // ★ その他カテゴリは任意。選択されていれば送る
+    body.points = selectedPoints['add'];
   }
 
   const btn = document.querySelector('#modal-add .btn-primary');
@@ -607,7 +616,7 @@ async function submitAdd() {
       showOk('add-ok');
       document.getElementById('add-content').value = '';
       document.getElementById('add-note').value = '';
-      selectedPoints['add'] = 5;
+      selectedPoints['add'] = null;
       document.getElementById('add-points-wrap').style.display = 'none';
       resetCal('add', '日付を選択');
       await loadPlans();
