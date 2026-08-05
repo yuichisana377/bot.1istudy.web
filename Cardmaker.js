@@ -1,2737 +1,4247 @@
-import discord
-from discord import app_commands
-from discord.ext import commands
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from datetime import datetime, timedelta
-from datetime import date as _date
-from flask import Flask, request, jsonify, make_response
-from flask_cors import CORS
-from threading import Thread
-from pytz import timezone
-import json
-import os
-import requests
-import base64
-import asyncio
-import time
+// ============================================================
+//  Cardmaker.js — CardMaker専用スクリプト
+//  Cardmaker.html から読み込む
+// ============================================================
 
-# ================================
-#  設定
-# ================================
-GITHUB_REPO         = os.getenv("GITHUB_REPO")
-GITHUB_TOKEN        = os.getenv("GITHUB_TOKEN")
-TOKEN               = os.getenv("TOKEN")
-SUBJECT_CATEGORY_ID = os.getenv("SUBJECT_CATEGORY_ID")  # カテゴリID（優先）
-SUBJECT_CATEGORY    = os.getenv("SUBJECT_CATEGORY")     # カテゴリ名（フォールバック）
-JST = timezone("Asia/Tokyo")
+const API_BASE = "https://python-bot-1istudy.onrender.com/";
+const GUILD_ID = "1509880344806162544";
+const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 
-# --- 通生/寮生 振り分け用の絵文字 ---
-EMOJI_COMMUTER = "🚃"  # 通生
-EMOJI_DORM     = "🏠"  # 寮生
+const STORE_KEY = 'cardmaker_decks_v1';
+function loadDecks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
+function saveDecks(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
-scheduler = AsyncIOScheduler(timezone=JST)
+// ── フォルダ（最大3階層・みんなで共有） ──
+// フォルダの本体はサーバー（GitHub上の folders.json）に保存され、全員で共有される。
+// ローカルのキャッシュは「サーバーから取得できるまでの間、即座に表示するため」だけに使う。
+const FOLDER_CACHE_KEY = 'cardmaker_folders_cache_v1';
+function loadFoldersCache() { try { return JSON.parse(localStorage.getItem(FOLDER_CACHE_KEY)) || []; } catch { return []; } }
+function saveFoldersCache(f) { localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(f)); }
+const MAX_FOLDER_DEPTH = 3;
 
-# ================================
-#  Flask アプリ
-# ================================
-app = Flask("")
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
+let folders = loadFoldersCache(); // { id, name, parentId }
+let currentFolderId = null; // null = ルート
 
-# ★ 追加：ブラウザ（特にChrome）がこれらのGET APIレスポンスを
-#   ディスクキャッシュに保存してしまい、新しく作成・公開したデッキや
-#   フォルダ、科目一覧がクライアント側の一覧にすぐ反映されない不具合の
-#   根本対策。フロント側（Cardmaker.js）でも fetch に cache: 'no-store' を
-#   付けているが、サーバー側でも明示的に Cache-Control: no-store を返す
-#   ことで、ブラウザ・CDN・中間プロキシのどこでキャッシュされても
-#   確実に最新のデータが返るようにする。
-NO_CACHE_PATHS = {
-    "/list_cards",
-    "/get_card_set",
-    "/list_folders",
-    "/list_order",
-    "/channels",
-    "/list_in_progress",
+// ── 一覧（ホーム画面）の並び順 ──────────────
+//   フォルダ・公開済みデッキの並び順は、サーバー（GitHub上の list_order.json）に
+//   保存され全員で共有される。folders.json と同じく「サーバーが正で、ローカルの
+//   キャッシュは届くまでの間だけ即座に表示するために使う」という考え方。
+//   ─ 一方、未公開（自分だけの下書き）デッキは他人からは見えないデータなので、
+//     その並び順はサーバーへは送らず、この端末だけのローカル保存にとどめる。
+const LIST_ORDER_KEY = 'cardmaker_list_order_v1';                 // この端末で最終的に表示する並び順（共有分＋自分の下書き分）
+const SHARED_ORDER_CACHE_KEY = 'cardmaker_shared_order_cache_v1'; // サーバーから取得した「みんなの並び順」のキャッシュ
+function loadListOrderMap() { try { return JSON.parse(localStorage.getItem(LIST_ORDER_KEY)) || {}; } catch { return {}; } }
+function saveListOrderMap(m) { localStorage.setItem(LIST_ORDER_KEY, JSON.stringify(m)); }
+function loadSharedOrderCache() { try { return JSON.parse(localStorage.getItem(SHARED_ORDER_CACHE_KEY)) || {}; } catch { return {}; } }
+function saveSharedOrderCache(m) { localStorage.setItem(SHARED_ORDER_CACHE_KEY, JSON.stringify(m)); }
+function orderScopeKey(folderId) { return folderId || '__root__'; }
+
+let sharedOrderCache = loadSharedOrderCache(); // { [scope]: [key, ...] } ← サーバーから取得したもの
+
+// そのキーが「みんなで共有される項目（フォルダ／公開済みデッキ）」かどうか。
+// 未公開デッキは data-key に "localdeck:" というプレフィックスを付けているので判別できる。
+function isSharedOrderKey(key) {
+  return key.startsWith('folder:') || key.startsWith('deck:');
 }
 
-@app.after_request
-def add_no_cache_headers(response):
-    if request.method == "GET" and request.path in NO_CACHE_PATHS:
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-    return response
-
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        res = make_response()
-        res.headers["Access-Control-Allow-Origin"]  = "*"
-        res.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        return res, 200
-
-@app.route("/")
-def home():
-    return "I'm alive"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, use_reloader=False, threaded=True)
-
-def keep_alive():
-    t = Thread(target=run_flask, daemon=True)
-    t.start()
-    print("[INFO] Flask thread started")
-
-# ================================
-#  Discord Bot
-# ================================
-intents = discord.Intents.default()
-intents.message_content = True
-intents.presences = True
-intents.members = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# ================================
-#  GitHub ユーティリティ
-# ================================
-class GitHubWriteError(Exception):
-    pass
-
-def github_get(filename):
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filename}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    r = requests.get(url, headers=headers, timeout=15)
-    if r.status_code == 404:
-        return None, None
-    r.raise_for_status()
-    data = r.json()
-    content = base64.b64decode(data["content"]).decode()
-    return json.loads(content), data["sha"]
-
-def _github_put_once(filename, content_obj, sha=None):
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filename}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    encoded = base64.b64encode(
-        json.dumps(content_obj, ensure_ascii=False, indent=2).encode()
-    ).decode()
-    payload = {"message": f"update {filename}", "content": encoded}
-    if sha:
-        payload["sha"] = sha
-    return requests.put(url, headers=headers, json=payload, timeout=15)
-
-def github_put(filename, content_obj, sha=None):
-    """
-    GitHubへの書き込み。失敗した場合は例外を送出する（以前は無視していた）。
-    ・409（sha衝突 = 他の誰かが先に保存した）の場合は、最新のshaを取り直して
-      1回だけ自動再試行する。
-    ・それでも失敗する場合は GitHubWriteError を送出するので、呼び出し側で
-      「保存に失敗しました」とユーザーに伝えられるようにする。
-    """
-    r = _github_put_once(filename, content_obj, sha)
-    if r.status_code in (200, 201):
-        return r.json()
-
-    if r.status_code == 409:
-        # 誰かが先に更新した → 最新のshaを取得して1回だけ再試行
-        _, latest_sha = github_get(filename)
-        r2 = _github_put_once(filename, content_obj, latest_sha)
-        if r2.status_code in (200, 201):
-            return r2.json()
-        raise GitHubWriteError(
-            f"GitHub保存に失敗しました（409再試行後も失敗）: {r2.status_code} {r2.text[:300]}"
-        )
-
-    raise GitHubWriteError(f"GitHub保存に失敗しました: {r.status_code} {r.text[:300]}")
-
-async def async_github_get(filename):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, github_get, filename)
-
-async def async_github_put(filename, content_obj, sha=None):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, github_put, filename, content_obj, sha)
-
-# ================================
-#  設定ファイル
-# ================================
-def load_config(guild_id: int):
-    data, _ = github_get(f"config_{guild_id}.json")
-    return data or {}
-
-def save_config(guild_id: int, data: dict):
-    _, sha = github_get(f"config_{guild_id}.json")
-    github_put(f"config_{guild_id}.json", data, sha)
-
-async def async_load_config(guild_id: int):
-    data, _ = await async_github_get(f"config_{guild_id}.json")
-    return data or {}
-
-async def async_save_config(guild_id: int, data: dict):
-    _, sha = await async_github_get(f"config_{guild_id}.json")
-    await async_github_put(f"config_{guild_id}.json", data, sha)
-
-def list_all_configs():
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    r = requests.get(url, headers=headers, timeout=15)
-    r.raise_for_status()
-    files = r.json()
-    return [
-        f["name"] for f in files
-        if isinstance(f, dict)
-        and f["name"].startswith("config_")
-        and f["name"].endswith(".json")
-    ]
-
-# ================================
-#  ★ 入力チェック：制御文字・不可視文字・壊れた符号位置を弾く
-#  ─────────────────────────────────────────────
-#  Cardmaker.js の findBugChars() / warnIfBugChars()（フロント側チェック）と
-#  完全に同じ判定基準をサーバー側にも移植したもの。
-#  フロント側のチェックは devtools 等で直接APIを叩けば素通りしてしまうため、
-#  「制御文字などを弾く」という判断自体はサーバー側でも独立して行う必要がある。
-#  ・①②③ ㈱㈲㈹ ㍾㍽㎜㎡ などの「機種依存文字」は許可（見た目が出るため）。
-#  ・弾くのは主に次の3種類：
-#    1) 制御文字（RLO/LROなどの双方向制御・Unicodeタグ文字など）
-#    2) 見た目に何も表示されないが実害の大きい文字
-#       （ゼロ幅スペース／Word Joiner／BOMなど）
-#    3) 壊れた符号位置（孤立サロゲート・非文字コードポイント）
-#       → GitHub等でエラーになったり読み込めなくなったりする原因
-# ================================
-BUG_CHAR_RANGES = [
-    (0xE000, 0xF8FF),    # 私用領域（外字・gaiji）
-    (0xFDD0, 0xFDEF),    # 非文字コードポイント
-]
-BUG_CHAR_CODES = {0xFFFE, 0xFFFF}  # 非文字コードポイント（BMP末尾）
-
-INVISIBLE_CHAR_RANGES = [
-    (0x200B, 0x200C),    # ゼロ幅スペース、ZWNJ（※200Dは含まない＝ZWJは許可）
-    (0x2060, 0x2064),    # Word Joiner、不可視の演算子記号など
-    (0x2066, 0x2069),    # 双方向テキストの分離文字（LRI/RLI/FSI/PDI）
-    (0x202A, 0x202E),    # 双方向テキストの埋め込み・上書き（LRE/RLE/PDF/LRO/RLO）
-    (0xE0000, 0xE007F),  # Unicodeタグ文字（見えないままテキストを埋め込める）
-]
-INVISIBLE_CHAR_CODES = {0x00AD, 0x180E, 0xFEFF}  # ソフトハイフン／モンゴル母音分離符／BOM
-
-
-def _is_allowed_invisible(cp: int) -> bool:
-    if cp == 0x200D:
-        return True  # ZWJ（絵文字結合）
-    if 0xFE00 <= cp <= 0xFE0F:
-        return True  # VS1-16（異体字・絵文字表示指定）
-    if 0xE0100 <= cp <= 0xE01EF:
-        return True  # VS17-256（IVS用）
-    return False
-
-
-def find_bug_chars(s):
-    """文字列中の「バグ文字」だけを重複なく抽出して返す（無ければ空リスト）"""
-    if not s:
-        return []
-    found = []
-    for ch in str(s):
-        cp = ord(ch)
-        if _is_allowed_invisible(cp):
-            continue
-        is_ctrl = cp < 0x20 and ch not in ("\t", "\n", "\r")
-        is_del  = cp == 0x7F
-        # Python の str は既にUnicodeなので「孤立サロゲート」はサロゲートペア分解後には
-        # 通常出現しないが、外部（JSON等）から紛れ込むケースに備えて同じ範囲を弾いておく。
-        is_lone_sg = 0xD800 <= cp <= 0xDFFF
-        is_range = any(s0 <= cp <= e0 for s0, e0 in BUG_CHAR_RANGES) or cp in BUG_CHAR_CODES
-        is_invis = any(s0 <= cp <= e0 for s0, e0 in INVISIBLE_CHAR_RANGES) or cp in INVISIBLE_CHAR_CODES
-        if (is_ctrl or is_del or is_lone_sg or is_range or is_invis) and ch not in found:
-            found.append(ch)
-    return found
-
-
-def reject_if_bug_chars(fields: dict):
-    """
-    fields: { "表示用フィールド名": 値 } の辞書。
-    いずれかの値に禁止文字が含まれていれば、Flaskのjsonレスポンス（エラー）を返す。
-    問題なければ None を返す。
-    呼び出し側は `err = reject_if_bug_chars(...); if err: return err` の形で使う。
-    """
-    for field_name, value in fields.items():
-        if value is None:
-            continue
-        bad = find_bug_chars(value)
-        if bad:
-            return jsonify({
-                "ok": False,
-                "error": f"{field_name} に使用できない文字が含まれています（制御文字・不可視文字など）: "
-                         + " ".join(bad)
-            })
-    return None
-
-
-# ================================
-#  予定データ
-# ================================
-def load_plans(guild_id: int):
-    data, _ = github_get(f"plans_{guild_id}.json")
-    return data or []
-
-def save_plans(guild_id: int, plans: list):
-    _, sha = github_get(f"plans_{guild_id}.json")
-    github_put(f"plans_{guild_id}.json", plans, sha)
-
-async def async_load_plans(guild_id: int):
-    data, _ = await async_github_get(f"plans_{guild_id}.json")
-    return data or []
-
-async def async_save_plans(guild_id: int, plans: list):
-    _, sha = await async_github_get(f"plans_{guild_id}.json")
-    await async_github_put(f"plans_{guild_id}.json", plans, sha)
-
-# ================================
-#  ログ
-# ================================
-def write_log(guild_id: int, log_type: str, detail: str):
-    """
-    ★ ログ保存の失敗は本質的な機能ではないので、例外を握りつぶして良い。
-       ただし今後の調査用に標準出力へは残す。
-    """
-    try:
-        filename = f"logs_{guild_id}.json"
-        logs, sha = github_get(filename)
-        logs = logs or []
-        now_jst = datetime.now(JST)
-        now_str = now_jst.strftime("%Y-%m-%d %H:%M:%S")
-        logs = [
-            log for log in logs
-            if (now_jst - datetime.strptime(log["time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=JST)).days <= 30
-        ]
-        logs.append({"time": now_str, "type": log_type, "detail": detail})
-        github_put(filename, logs, sha)
-    except Exception as e:
-        print(f"[WARN] write_log failed (ignored): {e}")
-
-async def async_write_log(guild_id: int, log_type: str, detail: str):
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, write_log, guild_id, log_type, detail)
-
-# ================================
-#  勉強ログ データ
-# ================================
-def load_study_logs(guild_id: int):
-    data, _ = github_get(f"study_logs_{guild_id}.json")
-    return data or []
-
-def save_study_logs(guild_id: int, logs: list):
-    _, sha = github_get(f"study_logs_{guild_id}.json")
-    github_put(f"study_logs_{guild_id}.json", logs, sha)
-
-async def async_load_study_logs(guild_id: int):
-    data, _ = await async_github_get(f"study_logs_{guild_id}.json")
-    return data or []
-
-async def async_save_study_logs(guild_id: int, logs: list):
-    _, sha = await async_github_get(f"study_logs_{guild_id}.json")
-    await async_github_put(f"study_logs_{guild_id}.json", logs, sha)
-
-# ================================
-#  ポイント データ
-# ================================
-def load_points(guild_id: int) -> dict:
-    data, _ = github_get(f"points_{guild_id}.json")
-    return data or {}
-
-def save_points(guild_id: int, pts: dict, sha=None):
-    if sha is None:
-        _, sha = github_get(f"points_{guild_id}.json")
-    github_put(f"points_{guild_id}.json", pts, sha)
-
-# ============================================================
-#  課題達成データ
-# ============================================================
-def load_completed_tasks(guild_id: int) -> dict:
-    data, _ = github_get(f"completed_tasks_{guild_id}.json")
-    return data or {}
-
-def save_completed_tasks(guild_id: int, tasks: dict, sha=None):
-    if sha is None:
-        _, sha = github_get(f"completed_tasks_{guild_id}.json")
-    github_put(f"completed_tasks_{guild_id}.json", tasks, sha)
-
-
-def _task_id_of_plan(plan: dict) -> str:
-    """フロント（StudyLog.js）の `${p.date}_${p.subject}_${p.content}` と全く同じ規則でIDを作る"""
-    return f"{plan.get('date')}_{plan.get('subject')}_{plan.get('content')}"
-
-def find_task_points(guild_id: int, task_id: str):
-    """
-    task_id に対応する予定（課題）をサーバー側の plans から探し、
-    本来のポイント数を返す。クライアントが自己申告する points は一切信用しない。
-    見つからない場合は None を返す（＝そもそも存在しない課題IDとして扱う）。
-    """
-    plans = load_plans(guild_id)
-    for p in plans:
-        if _task_id_of_plan(p) == task_id:
-            pts = p.get("points")
-            return pts if pts is not None else DEFAULT_TASK_POINTS
-    return None
-
-
-def _normalize_task_entry(entry):
-    """旧形式（文字列）・旧dict形式（points/nicknameなし）・新形式を統一する"""
-    if isinstance(entry, str):
-        return {"id": entry, "date": None, "points": None, "nickname": None}
-    entry = dict(entry)
-    if "points" not in entry:
-        entry["points"] = None
-    if "nickname" not in entry:
-        entry["nickname"] = None
-    return entry
-
-
-# ================================
-#  ユーザーデータ
-# ================================
-def load_users(guild_id: int):
-    data, _ = github_get(f"users_{guild_id}.json")
-    return data or []
-
-def save_users(guild_id: int, users: list):
-    _, sha = github_get(f"users_{guild_id}.json")
-    github_put(f"users_{guild_id}.json", users, sha)
-
-# ================================
-#  Discordアカウント連携（生徒ID ⇔ Discordユーザー）
-#  ★ 個別DM通知のために、StudyLogの生徒IDとDiscordアカウントを
-#     紐付けて保存しておく。{ "1I001": 123456789012345678, ... }
-# ================================
-def load_discord_links(guild_id: int) -> dict:
-    data, _ = github_get(f"discord_links_{guild_id}.json")
-    return data or {}
-
-def save_discord_links(guild_id: int, links: dict, sha=None):
-    if sha is None:
-        _, sha = github_get(f"discord_links_{guild_id}.json")
-    github_put(f"discord_links_{guild_id}.json", links, sha)
-
-# ================================
-#  科目チャンネルユーティリティ
-# ================================
-def get_subject_channels(guild: discord.Guild) -> list:
-    if SUBJECT_CATEGORY_ID:
-        for cat in guild.categories:
-            if cat.id == int(SUBJECT_CATEGORY_ID):
-                return list(cat.text_channels)
-    if SUBJECT_CATEGORY:
-        for cat in guild.categories:
-            if cat.name == SUBJECT_CATEGORY:
-                return list(cat.text_channels)
-    return list(guild.text_channels)
-
-def get_subject_channel_by_name(guild: discord.Guild, name: str):
-    for ch in get_subject_channels(guild):
-        if ch.name == name:
-            return ch
-    return None
-
-# ================================
-#  日付パース
-# ================================
-def parse_date(date: str):
-    try:
-        if "-" in date and len(date.split("-")[0]) == 4:
-            parsed = datetime.strptime(date, "%Y-%m-%d")
-        else:
-            date = date.replace("/", "-")
-            m, d = date.split("-")
-            y = datetime.now().year
-            parsed = datetime.strptime(f"{y}-{int(m):02d}-{int(d):02d}", "%Y-%m-%d")
-        return parsed.strftime("%Y-%m-%d")
-    except Exception:
-        return None
-
-# ================================
-#  ポイントを付与すべきカテゴリかどうか
-# ================================
-POINT_CATEGORIES = ("提出", "宿題")
-DEFAULT_TASK_POINTS = 5
-
-# ================================
-#  add 内部関数
-# ================================
-async def add_plan_internal(guild_id: int, subject: str, date: str, category: str, content: str, points=None):
-    date_str = parse_date(date)
-    if not date_str:
-        return False, "日付の形式が正しくありません！"
-    today = datetime.now(JST).date()
-    if datetime.strptime(date_str, "%Y-%m-%d").date() < today:
-        return False, "過去の日付は登録できません！"
-    tagged_content = f"【{category}】{content}"
-
-    plan = {"date": date_str, "subject": subject, "content": tagged_content}
-    if category in POINT_CATEGORIES:
-        plan["points"] = points if points is not None else DEFAULT_TASK_POINTS
-
-    plans = load_plans(guild_id)
-    plans.append(plan)
-    try:
-        save_plans(guild_id, plans)
-    except GitHubWriteError as e:
-        return False, f"保存に失敗しました（GitHubエラー）。もう一度お試しください。\n{e}"
-
-    detail = f"{date_str} / {subject} / {tagged_content}"
-    if "points" in plan:
-        detail += f" ({plan['points']}pt)"
-    write_log(guild_id, "add", detail=detail)
-
-    msg = f"登録しました！\n{date_str} / {subject} / {tagged_content}"
-    if "points" in plan:
-        msg += f"\n⭐ {plan['points']}pt"
-    return True, msg
-
-# ================================
-#  /add
-# ================================
-@bot.tree.command(name="add", description="予定を追加する")
-@app_commands.describe(
-    date="日付（例: 6-20, 2026-06-20）",
-    subject="科目（省略するとこのチャンネル名を使用）",
-    category="分類（宿題・提出・持ち物など）",
-    content="内容",
-    points="ポイント（提出・宿題のみ有効。省略時は5pt）"
-)
-async def add_plan(interaction: discord.Interaction, date: str, category: str, content: str, subject: str = None, points: int = None):
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-    if not subject:
-        subject = interaction.channel.name
-    ok, msg = await add_plan_internal(guild.id, subject, date, category, content, points)
-    if ok:
-        target_channel = get_subject_channel_by_name(guild, subject)
-        await (target_channel or interaction.channel).send(msg)
-    else:
-        await interaction.followup.send(msg, ephemeral=True)
-        return
-    await interaction.followup.send("完了しました！", ephemeral=True)
-
-@add_plan.autocomplete("subject")
-async def add_subject_autocomplete(interaction: discord.Interaction, current: str):
-    channels = get_subject_channels(interaction.guild)
-    return [
-        app_commands.Choice(name=ch.name, value=ch.name)
-        for ch in channels if current.lower() in ch.name.lower()
-    ][:25]
-
-@add_plan.autocomplete("category")
-async def add_category_autocomplete(interaction: discord.Interaction, current: str):
-    candidates = ["宿題", "提出", "持ち物", "テスト", "その他"]
-    return [app_commands.Choice(name=c, value=c) for c in candidates if current in c][:25]
-
-# ================================
-#  /list
-# ================================
-@bot.tree.command(name="list", description="予定一覧を表示する")
-@app_commands.describe(date="all または 日付（例: 6/15, 2026-06-15）")
-async def list_plans(interaction: discord.Interaction, date: str):
-    await interaction.response.defer(ephemeral=True)
-    guild_id = interaction.guild.id
-    plans = await async_load_plans(guild_id)
-    if date.lower() == "all":
-        if not plans:
-            await interaction.followup.send("予定はありません。", ephemeral=True)
-            return
-        sorted_plans = sorted(plans, key=lambda p: p["date"])
-        msg = "📘 **すべての予定一覧**\n"
-        for p in sorted_plans:
-            pts_str = f" ⭐{p['points']}pt" if "points" in p else ""
-            msg += f"- {p['date']}：{p['subject']} {p['content']}{pts_str}\n"
-        await interaction.followup.send(msg, ephemeral=True)
-        return
-    date_str = parse_date(date)
-    if not date_str:
-        await interaction.followup.send("日付の形式が正しくありません！", ephemeral=True)
-        return
-    selected = [p for p in plans if p["date"] == date_str]
-    if not selected:
-        await interaction.followup.send(f"{date} の予定はありません。", ephemeral=True)
-        return
-    msg = f"📘 **{date_str} の予定**\n"
-    for p in selected:
-        pts_str = f" ⭐{p['points']}pt" if "points" in p else ""
-        msg += f"- {p['subject']} {p['content']}{pts_str}\n"
-    await interaction.followup.send(msg, ephemeral=True)
-
-# ================================
-#  /delete
-# ================================
-@bot.tree.command(name="delete", description="予定を削除する")
-@app_commands.describe(target="削除したい予定")
-async def delete_plan(interaction: discord.Interaction, target: str):
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-    plans = await async_load_plans(guild.id)
-    deleted = None
-    new_plans = []
-    for p in plans:
-        label = f"{p['date']}/{p['subject']}{p['content']}"
-        if label == target:
-            deleted = p
-        else:
-            new_plans.append(p)
-    if not deleted:
-        await interaction.followup.send("その予定は見つかりませんでした。", ephemeral=True)
-        return
-    try:
-        save_plans(guild.id, new_plans)
-    except GitHubWriteError as e:
-        await interaction.followup.send(f"保存に失敗しました（GitHubエラー）。もう一度お試しください。\n{e}", ephemeral=True)
-        return
-    write_log(guild.id, "delete", detail=f"{deleted['date']} / {deleted['subject']} / {deleted['content']}")
-    msg = f"削除しました！\n{target}"
-    target_channel = get_subject_channel_by_name(guild, deleted["subject"])
-    await (target_channel or interaction.channel).send(msg)
-    await interaction.followup.send("完了しました！", ephemeral=True)
-
-@delete_plan.autocomplete("target")
-async def delete_autocomplete(interaction: discord.Interaction, current: str):
-    plans = load_plans(interaction.guild.id)
-    choices = []
-    for p in plans:
-        label = f"{p['date']}/{p['subject']}{p['content']}"
-        if current in label:
-            choices.append(app_commands.Choice(name=label, value=label))
-    return choices[:25]
-
-# ================================
-#  /edit
-# ================================
-@bot.tree.command(name="edit", description="予定を編集する")
-@app_commands.describe(
-    target="編集したい予定",
-    date="新しい日付",
-    subject="新しい科目",
-    category="新しい分類",
-    content="新しい内容",
-    points="新しいポイント（提出・宿題のみ有効）"
-)
-async def edit_plan(interaction: discord.Interaction, target: str, date: str = None, subject: str = None, category: str = None, content: str = None, points: int = None):
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-    plans = await async_load_plans(guild.id)
-    found = None
-    for p in plans:
-        label = f"{p['date']}/{p['subject']}{p['content']}"
-        if label == target:
-            found = p
-            break
-    if not found:
-        await interaction.followup.send("その予定が見つかりませんでした。", ephemeral=True)
-        return
-    before_str = f"{found['date']} / {found['subject']} / {found['content']}"
-    if date:
-        date_str = parse_date(date)
-        if not date_str:
-            await interaction.followup.send("日付の形式が正しくありません！", ephemeral=True)
-            return
-        found["date"] = date_str
-    if subject:
-        found["subject"] = subject
-    if category and content:
-        found["content"] = f"【{category}】{content}"
-    elif category:
-        body = found["content"].split("】", 1)[1] if "】" in found["content"] else found["content"]
-        found["content"] = f"【{category}】{body}"
-    elif content:
-        tag = found["content"].split("】", 1)[0] + "】" if "】" in found["content"] else ""
-        found["content"] = f"{tag}{content}"
-
-    # ★ ポイント更新
-    current_category = found["content"].split("】", 1)[0].lstrip("【") if "】" in found["content"] else ""
-    if points is not None:
-        found["points"] = points
-    if current_category not in POINT_CATEGORIES and "points" in found:
-        # 提出・宿題以外に変更された場合はポイントを外す
-        del found["points"]
-    elif current_category in POINT_CATEGORIES and "points" not in found:
-        found["points"] = DEFAULT_TASK_POINTS
-
-    try:
-        await async_save_plans(guild.id, plans)
-    except GitHubWriteError as e:
-        await interaction.followup.send(f"保存に失敗しました（GitHubエラー）。もう一度お試しください。\n{e}", ephemeral=True)
-        return
-    after_str = f"{found['date']} / {found['subject']} / {found['content']}"
-    await async_write_log(guild.id, "edit", detail=f"{before_str} → {after_str}")
-    msg = f"編集しました！\n\n【編集前】\n{before_str}\n\n【編集後】\n{after_str}"
-    if "points" in found:
-        msg += f"\n⭐ {found['points']}pt"
-    target_channel = get_subject_channel_by_name(guild, found["subject"])
-    await (target_channel or interaction.channel).send(msg)
-    await interaction.followup.send("完了しました！", ephemeral=True)
-
-@edit_plan.autocomplete("target")
-async def edit_target_autocomplete(interaction: discord.Interaction, current: str):
-    plans = load_plans(interaction.guild.id)
-    choices = []
-    for p in plans:
-        label = f"{p['date']}/{p['subject']}{p['content']}"
-        if current in label:
-            choices.append(app_commands.Choice(name=label, value=label))
-    return choices[:25]
-
-@edit_plan.autocomplete("subject")
-async def edit_subject_autocomplete(interaction: discord.Interaction, current: str):
-    channels = get_subject_channels(interaction.guild)
-    return [
-        app_commands.Choice(name=ch.name, value=ch.name)
-        for ch in channels if current.lower() in ch.name.lower()
-    ][:25]
-
-@edit_plan.autocomplete("category")
-async def edit_category_autocomplete(interaction: discord.Interaction, current: str):
-    candidates = ["宿題", "提出", "持ち物", "テスト", "その他"]
-    return [app_commands.Choice(name=c, value=c) for c in candidates if current in c][:25]
-
-# ================================
-#  /cleanup
-# ================================
-@bot.tree.command(name="cleanup", description="過去の予定を削除する")
-async def cleanup_command(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    guild_id = interaction.guild.id
-    plans = await async_load_plans(guild_id)
-    today = datetime.now(JST).date()
-    threshold = today - timedelta(days=7)
-    deleted_dates = sorted({
-        p["date"] for p in plans
-        if datetime.strptime(p["date"], "%Y-%m-%d").date() < threshold
-    })
-    new_plans = [
-        p for p in plans
-        if datetime.strptime(p["date"], "%Y-%m-%d").date() >= threshold
-    ]
-    try:
-        await async_save_plans(guild_id, new_plans)
-    except GitHubWriteError as e:
-        await interaction.followup.send(f"保存に失敗しました（GitHubエラー）。もう一度お試しください。\n{e}", ephemeral=True)
-        return
-    if deleted_dates:
-        await async_write_log(guild_id, "cleanup", detail="削除した日付: " + ", ".join(deleted_dates))
-        await interaction.followup.send(
-            f"🧹 {len(deleted_dates)}件削除しました！\n" + "\n".join(deleted_dates),
-            ephemeral=True
-        )
-    else:
-        await interaction.followup.send("削除する予定はありませんでした！", ephemeral=True)
-
-# ================================
-#  /setchannel
-# ================================
-
-@bot.tree.command(name="setchannel", description="通知チャンネルを設定する")
-@app_commands.describe(type="どの通知に使うチャンネルか（省略時は通生）")
-@app_commands.choices(type=[
-    app_commands.Choice(name="通生（朝5:30 / 夜20:00）", value="commute"),
-    app_commands.Choice(name="寮生（朝7:20 / 夜20:00）", value="dorm"),
-    app_commands.Choice(name="お知らせ用", value="main"),
-])
-async def setchannel(interaction: discord.Interaction, type: app_commands.Choice[str] = None):
-    await interaction.response.defer(ephemeral=True)
-    guild_id = interaction.guild.id
-    config = await async_load_config(guild_id)
-
-    kind = type.value if type else "commute"
-    if kind == "dorm":
-        config["remind_channel_id_dorm"] = interaction.channel.id
-        label = "寮生（朝7:20）"
-    elif kind == "main":
-        config["notice_channel_id"] = interaction.channel.id
-        label = "お知らせ用"
-    else:
-        config["remind_channel_id"] = interaction.channel.id
-        label = "通生（朝5:30・夜20:00）"
-
-    try:
-        await async_save_config(guild_id, config)
-    except GitHubWriteError as e:
-        await interaction.followup.send(f"保存に失敗しました（GitHubエラー）。もう一度お試しください。\n{e}", ephemeral=True)
-        return
-    await interaction.followup.send(
-        f"{label} の通知チャンネルを **#{interaction.channel.name}** に設定しました！"
-    )
-# ================================
-#  /setup_roles（通生/寮生 振り分けパネル）
-# ================================
-@bot.tree.command(name="setup_roles", description="通生/寮生 振り分けパネルを投稿します")
-@app_commands.describe(通生ロール="通生に付与するロール", 寮生ロール="寮生に付与するロール")
-@app_commands.checks.has_permissions(manage_roles=True)
-async def setup_roles(
-    interaction: discord.Interaction,
-    通生ロール: discord.Role,
-    寮生ロール: discord.Role,
-):
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-
-    # Botより上位のロールは付与できないため確認
-    if 通生ロール >= guild.me.top_role or 寮生ロール >= guild.me.top_role:
-        await interaction.followup.send(
-            "ロールの順序を確認してください。Botの役職を、通生・寮生ロールより上に配置する必要があります。",
-            ephemeral=True,
-        )
-        return
-
-    embed = discord.Embed(
-        title="通生 / 寮生 登録",
-        description=(
-            f"{EMOJI_COMMUTER} → 通生\n"
-            f"{EMOJI_DORM} → 寮生\n\n"
-            "どちらか当てはまる方にリアクションしてください。"
-        ),
-        color=discord.Color.teal(),
-    )
-    msg = await interaction.channel.send(embed=embed)
-    await msg.add_reaction(EMOJI_COMMUTER)
-    await msg.add_reaction(EMOJI_DORM)
-
-    config = await async_load_config(guild.id)
-    config["role_panel_message_id"] = msg.id
-    config["role_panel_channel_id"] = msg.channel.id
-    config["commuter_role_id"] = 通生ロール.id
-    config["dorm_role_id"] = 寮生ロール.id
-    try:
-        await async_save_config(guild.id, config)
-    except GitHubWriteError as e:
-        await interaction.followup.send(f"保存に失敗しました（GitHubエラー）。パネルは投稿済みですが、設定の保存に失敗しました。\n{e}", ephemeral=True)
-        return
-
-    await interaction.followup.send("パネルを投稿しました。", ephemeral=True)
-
-
-@setup_roles.error
-async def setup_roles_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message(
-            "このコマンドには「ロールの管理」権限が必要です。", ephemeral=True
-        )
-    else:
-        if interaction.response.is_done():
-            await interaction.followup.send(f"エラー: {error}", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"エラー: {error}", ephemeral=True)
-
-
-async def _handle_role_reaction(payload: discord.RawReactionActionEvent, add: bool):
-    if payload.guild_id is None:
-        return
-
-    config = await async_load_config(payload.guild_id)
-    panel_message_id = config.get("role_panel_message_id")
-    if not panel_message_id or payload.message_id != panel_message_id:
-        return
-
-    emoji = str(payload.emoji)
-    if emoji not in (EMOJI_COMMUTER, EMOJI_DORM):
-        return
-
-    guild = bot.get_guild(payload.guild_id)
-    if guild is None:
-        return
-
-    member = guild.get_member(payload.user_id)
-    if member is None or member.bot:
-        return
-
-    commuter_role = guild.get_role(config.get("commuter_role_id"))
-    dorm_role = guild.get_role(config.get("dorm_role_id"))
-    channel_id = config.get("role_panel_channel_id")
-    channel = guild.get_channel(channel_id) if channel_id else None
-
-    try:
-        if add:
-            if emoji == EMOJI_COMMUTER and commuter_role:
-                await member.add_roles(commuter_role, reason="通生登録")
-                if dorm_role and dorm_role in member.roles:
-                    await member.remove_roles(dorm_role, reason="通生に変更のため")
-                    if channel:
-                        msg = await channel.fetch_message(panel_message_id)
-                        await msg.remove_reaction(EMOJI_DORM, member)
-            elif emoji == EMOJI_DORM and dorm_role:
-                await member.add_roles(dorm_role, reason="寮生登録")
-                if commuter_role and commuter_role in member.roles:
-                    await member.remove_roles(commuter_role, reason="寮生に変更のため")
-                    if channel:
-                        msg = await channel.fetch_message(panel_message_id)
-                        await msg.remove_reaction(EMOJI_COMMUTER, member)
-        else:
-            if emoji == EMOJI_COMMUTER and commuter_role:
-                await member.remove_roles(commuter_role, reason="通生リアクション解除")
-            elif emoji == EMOJI_DORM and dorm_role:
-                await member.remove_roles(dorm_role, reason="寮生リアクション解除")
-    except discord.Forbidden:
-        pass
-
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    await _handle_role_reaction(payload, add=True)
-
-
-@bot.event
-async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
-    await _handle_role_reaction(payload, add=False)
-
-
-# ================================
-#  /id連携（StudyLogの生徒ID ⇔ Discordアカウント）
-#  ★ これを一度実行してもらうことで、StudyLog側からのDM通知
-#    （3時間タイマー超過など）を本人のDiscordに直接送れるようになる。
-#    タブを閉じていても、他のサイトを見ていても、Discordアプリ側の
-#    通知として届く（Discord自体の通知がオフの場合は届かない）。
-# ================================
-@bot.tree.command(name="id連携", description="StudyLogの生徒IDと自分のDiscordアカウントを連携し、DM通知を受け取れるようにする")
-@app_commands.describe(student_id="StudyLogにログインしている生徒ID（例: 1I001）")
-async def link_student_id(interaction: discord.Interaction, student_id: str):
-    await interaction.response.defer(ephemeral=True)
-    guild_id = interaction.guild.id
-    sid = student_id.strip().upper()
-
-    users = load_users(guild_id)
-    matched = next((u for u in users if u["id"] == sid), None)
-    if not matched:
-        await interaction.followup.send(
-            f"生徒ID「{sid}」がStudyLogに登録されていません。IDを確認してもう一度お試しください。",
-            ephemeral=True
-        )
-        return
-    nickname = matched.get("nickname", sid)
-
-    try:
-        links = load_discord_links(guild_id)
-        links[sid] = interaction.user.id
-        save_discord_links(guild_id, links)
-    except GitHubWriteError as e:
-        await interaction.followup.send(f"連携の保存に失敗しました（GitHubエラー）: {e}", ephemeral=True)
-        return
-
-    # ★ 連携できたことをその場で本人に確認してもらうため、確認DMを試しに送る
-    try:
-        await interaction.user.send(f"{sid}の{nickname}さんの通知登録が完了しました。")
-        await interaction.followup.send(
-            f"連携が完了しました！ 確認のDMを送信しましたので届いているか確認してください。",
-            ephemeral=True
-        )
-    except discord.Forbidden:
-        await interaction.followup.send(
-            "連携情報は保存しましたが、確認DMを送れませんでした。\n"
-            "サーバーアイコンを右クリック →「プライバシー設定」→「ダイレクトメッセージ」をオンにしてから、もう一度 /id連携 を実行してください。",
-            ephemeral=True
-        )
-    except Exception as e:
-        await interaction.followup.send(
-            f"連携情報は保存しましたが、確認DMの送信中にエラーが発生しました: {e}",
-            ephemeral=True
-        )
-
-
-# ================================
-#  /help
-# ================================
-@bot.tree.command(name="help", description="使えるコマンド一覧")
-async def help_command(interaction: discord.Interaction):
-    msg = (
-        "📘 **使えるコマンド一覧**\n\n"
-        "**/add** — 予定を登録する\n"
-        "**/list** — 予定を表示する\n"
-        "**/delete** — 予定を削除する\n"
-        "**/edit** — 予定を編集する\n"
-        "**/cleanup** — 過去の予定を削除する\n"
-        "**/setchannel** — 通知チャンネルを設定する（通生／寮生／お知らせ用を選択可）\n"
-        "**/setup_roles** — 通生/寮生 振り分けパネルを投稿する\n"
-        "**/id連携** — StudyLogの生徒IDとDiscordアカウントを連携し、DM通知を受け取れるようにする\n"
-        "**webページ** - https://1istudyweb.pages.dev/\n"
-    )
-    await interaction.response.send_message(msg, ephemeral=True)
-
-# ================================
-#  自動通知
-# ================================
-TOMORROW_NOTIFY_CHANNEL_KEYS = ("remind_channel_id", "remind_channel_id_dorm")  # 通生・寮生 両方に送信
-
-# ★ フロント側（plan.js）が備考をcontent文字列に埋め込む際の区切り文字列。
-#   通知メッセージには備考を含めず、予定本文だけを送るためここで取り除く。
-NOTE_SEP = "\n📝備考："
-
-def strip_note(content: str) -> str:
-    if not content:
-        return content
-    return content.split(NOTE_SEP)[0]
-
-
-def is_holiday(guild_id: int, date_str: str) -> bool:
-    """
-    指定した日付が「休校」（時間割の holiday:YYYY-MM-DD オーバーライド）に
-    設定されているかどうかを返す。
-    """
-    tt = load_timetable(guild_id)
-    ov = tt.get(f"holiday:{date_str}")
-    return bool(ov) and ov.get("type") == "holiday"
-
-
-async def send_tomorrow_plans():
-    # 実行日が金曜(4)・土曜(5) の場合は「金曜夜」「土曜夜」の通知にあたるため、
-    # 予定が無ければ通知自体をスキップする
-    now = datetime.now(JST)
-    quiet_if_empty = now.weekday() in (4, 5)  # 4=金, 5=土
-    for filename in list_all_configs():
-        guild_id = int(filename.replace("config_", "").replace(".json", ""))
-        config = load_config(guild_id)
-        tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
-        plans = [p for p in load_plans(guild_id) if p["date"] == tomorrow]
-        if plans:
-            msg = "こんばんは！明日の予定です。\n"
-            for p in plans:
-                msg += f"・{p['subject']} {strip_note(p['content'])}\n"
-        else:
-            # 明日が休校で、かつ予定も入っていない場合は通知自体をスキップする
-            if quiet_if_empty or is_holiday(guild_id, tomorrow):
-                continue
-            msg = "こんばんは！明日の予定はありません。\n"
-
-        # 通生用・寮生用の両チャンネルへ、それぞれ設定されていれば送信
-        for config_key in TOMORROW_NOTIFY_CHANNEL_KEYS:
-            channel_id = config.get(config_key)
-            if not channel_id:
-                continue
-            channel = bot.get_channel(channel_id)
-            if not channel:
-                continue
-            await channel.send(msg + "@everyone")
-
-async def send_today_plans_for(config_key: str):
-    """
-    朝の「今日の予定」通知を config_key で指定したチャンネル宛に送る。
-    config_key: "remind_channel_id"（通生） または "remind_channel_id_dorm"（寮生）
-    """
-    now = datetime.now(JST)
-    # 実行日が土曜(5)・日曜(6) の場合は「土曜朝」「日曜朝」の通知にあたるため、
-    # 予定が無ければ通知自体をスキップする
-    quiet_if_empty = now.weekday() in (5, 6)  # 5=土, 6=日
-    for filename in list_all_configs():
-        guild_id = int(filename.replace("config_", "").replace(".json", ""))
-        config = load_config(guild_id)
-        channel_id = config.get(config_key)
-        if not channel_id:
-            continue
-        channel = bot.get_channel(channel_id)
-        if not channel:
-            continue
-        today = now.strftime("%Y-%m-%d")
-        plans = [p for p in load_plans(guild_id) if p["date"] == today]
-        if plans:
-            msg = "おはようございます！今日の予定です。\n"
-            for p in plans:
-                msg += f"・{p['subject']} {strip_note(p['content'])}\n"
-        else:
-            # 今日が休校で、かつ予定も入っていない場合は通知自体をスキップする
-            if quiet_if_empty or is_holiday(guild_id, today):
-                continue
-            msg = "おはようございます！今日の予定はありません。\n"
-        await channel.send(msg + "@everyone")
-
-async def send_today_plans_commute():
-    """通生向け：朝5:30の通知（既存のremind_channel_idを使用）"""
-    await send_today_plans_for("remind_channel_id")
-
-async def send_today_plans_dorm():
-    """寮生向け：朝7:20の通知（remind_channel_id_dormを使用）"""
-    await send_today_plans_for("remind_channel_id_dorm")
-
-async def cleanup_past_plans():
-    today = datetime.now(JST).date()
-    threshold = today - timedelta(days=7)
-    for filename in list_all_configs():
-        guild_id = int(filename.replace("config_", "").replace(".json", ""))
-        plans = load_plans(guild_id)
-        deleted_dates = sorted({
-            p["date"] for p in plans
-            if datetime.strptime(p["date"], "%Y-%m-%d").date() < threshold
-        })
-        new_plans = [
-            p for p in plans
-            if datetime.strptime(p["date"], "%Y-%m-%d").date() >= threshold
-        ]
-        if deleted_dates:
-            save_plans(guild_id, new_plans)
-            write_log(guild_id, "cleanup", detail="削除した日付: " + ", ".join(deleted_dates))
-            print(f"{guild_id} の過去予定を削除しました。")
-
-WEEKLY_NOTIFY_CHANNEL_KEYS = ("remind_channel_id", "remind_channel_id_dorm")  # 通生・寮生 両方に送信
-WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
-
-async def send_weekly_plans():
-    """
-    毎週日曜14:00に、翌日（月曜）から日曜までの「今週の予定」をまとめて通知する。
-    """
-    now = datetime.now(JST)
-    week_start = (now + timedelta(days=1)).date()   # 翌日の月曜
-    week_end = week_start + timedelta(days=6)        # その週の日曜
-
-    for filename in list_all_configs():
-        guild_id = int(filename.replace("config_", "").replace(".json", ""))
-        config = load_config(guild_id)
-        plans = [
-            p for p in load_plans(guild_id)
-            if week_start <= datetime.strptime(p["date"], "%Y-%m-%d").date() <= week_end
-        ]
-
-        if plans:
-            plans_by_date = {}
-            for p in plans:
-                plans_by_date.setdefault(p["date"], []).append(p)
-
-            msg = f"📅 今週（{week_start.strftime('%m/%d')}〜{week_end.strftime('%m/%d')}）の予定です！\n"
-            for date_str in sorted(plans_by_date.keys()):
-                d = datetime.strptime(date_str, "%Y-%m-%d").date()
-                msg += f"\n**{d.strftime('%m/%d')}（{WEEKDAY_JP[d.weekday()]}）**\n"
-                for p in plans_by_date[date_str]:
-                    msg += f"・{p['subject']} {strip_note(p['content'])}\n"
-        else:
-            msg = f"📅 今週（{week_start.strftime('%m/%d')}〜{week_end.strftime('%m/%d')}）の予定はありません。\n"
-
-        for config_key in WEEKLY_NOTIFY_CHANNEL_KEYS:
-            channel_id = config.get(config_key)
-            if not channel_id:
-                continue
-            channel = bot.get_channel(channel_id)
-            if not channel:
-                continue
-            await channel.send(msg + "\n@everyone")
-
-# ================================
-#  Flask API — 予定管理
-# ================================
-@app.route("/channels", methods=["GET"])
-def get_channels():
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    # ★ Botがまだ準備完了していない（再接続中・起動直後など）場合、
-    #    bot.get_guild() は必ず None を返してしまい、フロント側には
-    #    「guild not found」という誤解を招くメッセージが出ていた。
-    #    準備中であることを明示的に区別して返す。
-    if not bot.is_ready():
-        return jsonify({"ok": False, "error": "bot_not_ready", "message": "Botが起動中です。数秒後にもう一度お試しください。"})
-    guild = bot.get_guild(int(guild_id))
-    if not guild:
-        return jsonify({"ok": False, "error": "guild not found"})
-    channels = [{"id": str(ch.id), "name": ch.name} for ch in get_subject_channels(guild)]
-    return jsonify({"ok": True, "channels": channels})
-
-@app.route("/add_schedule", methods=["POST"])
-def add_schedule():
-    data     = request.json
-    guild_id = data.get("guild_id")
-    date     = data.get("date")
-    subject  = data.get("subject")
-    category = data.get("category")
-    content  = data.get("content")
-    points   = data.get("points")  # ★ 追加（提出・宿題のみ有効。省略時は5pt）
-
-    if not all([guild_id, date, subject, category, content]):
-        return jsonify({"ok": False, "error": "missing fields"})
-
-    err = reject_if_bug_chars({"科目": subject, "カテゴリ": category, "内容": content})
-    if err:
-        return err
-
-    if points is not None:
-        try:
-            points = int(points)
-        except (TypeError, ValueError):
-            return jsonify({"ok": False, "error": "invalid points"})
-
-    guild = bot.get_guild(int(guild_id))
-    future = asyncio.run_coroutine_threadsafe(
-        add_plan_internal(int(guild_id), subject, date, category, content, points),
-        bot.loop
-    )
-    ok, msg = future.result(timeout=30)
-    if ok and guild:
-        target_channel = get_subject_channel_by_name(guild, subject)
-        if target_channel:
-            asyncio.run_coroutine_threadsafe(
-                target_channel.send(msg), bot.loop
-            ).result(timeout=10)
-    return jsonify({"ok": ok, "message": msg})
-
-MAX_LOG_MINUTES = 180  # ★ 1回のログで許容する最大分数（タイマーの3時間上限と合わせる）
-
-@app.route("/add_study_log", methods=["POST"])
-def add_study_log():
-    data = request.json or {}
-    guild_id = int(data.get("guild_id"))
-
-    # --- ★ minutes の検証（不正な値・異常に大きい値を拒否） ---
-    minutes = data.get("minutes")
-    if not isinstance(minutes, int) or isinstance(minutes, bool):
-        return jsonify({"ok": False, "error": "invalid minutes"})
-    if minutes < 1 or minutes > MAX_LOG_MINUTES:
-        return jsonify({"ok": False, "error": f"minutes must be between 1 and {MAX_LOG_MINUTES}"})
-
-    student_id = data.get("student_id")
-    subject    = data.get("subject")
-    memo       = data.get("memo")
-    nickname   = data.get("nickname")
-    if not student_id or not subject:
-        return jsonify({"ok": False, "error": "missing fields"})
-
-    # --- ★ 制御文字・不可視文字・壊れた符号位置を弾く ---
-    err = reject_if_bug_chars({"科目": subject, "メモ": memo, "ニックネーム": nickname})
-    if err:
-        return err
-
-    # --- ★ date はクライアントの値を信用せず、サーバー（JST）の「今日」を使う ---
-    #     → PCの時計を進めても戻しても、記録される日付は実際の日付のまま変わらない
-    entry = {
-        "date": datetime.now(JST).strftime("%Y-%m-%d"),
-        "subject": subject,
-        "minutes": minutes,
-        "memo": memo,
-        "student_id": student_id,
-        "nickname": nickname
+// サーバー側の並び順（sharedOrder）を、この端末のローカル並び順（localOrder）に
+// 「差し込む」形でマージする。
+//   ・共有項目（フォルダ／公開済みデッキ）どうしの並びは、サーバー側を正として反映する
+//     → 誰か他の人が並び替えても、ここでその結果を取り込める
+//   ・自分だけの下書きデッキ（localdeck:）は、これまで通りこの端末での位置を保つ
+//   ・localOrderにまだ無かった新しい共有項目は末尾に追加する
+function mergeSharedOrderIntoLocal(localOrder, sharedOrder) {
+  if (!sharedOrder || !sharedOrder.length) return localOrder || [];
+  const base = localOrder || [];
+  let si = 0;
+  const result = base.map(k => {
+    if (!isSharedOrderKey(k)) return k; // 自分だけの下書きはそのままの位置を保つ
+    if (si < sharedOrder.length) return sharedOrder[si++];
+    return k;
+  });
+  while (si < sharedOrder.length) result.push(sharedOrder[si++]); // 新しく増えた共有項目は末尾に
+  return result;
+}
+
+function getSavedListOrder(folderId) {
+  const scope = orderScopeKey(folderId);
+  const map = loadListOrderMap();
+  const local = map[scope] || null;
+  const shared = sharedOrderCache[scope];
+  if (shared && shared.length) {
+    const merged = mergeSharedOrderIntoLocal(local, shared);
+    map[scope] = merged; // 次回以降もすぐ使えるよう、マージ結果をこの端末にも保存しておく
+    saveListOrderMap(map);
+    return merged.length ? merged : null;
+  }
+  return local;
+}
+// この端末で確定した並び順（共有分＋下書き分）をまるごとローカルに保存する。
+function saveListOrder(folderId, keys) {
+  const map = loadListOrderMap();
+  map[orderScopeKey(folderId)] = keys;
+  saveListOrderMap(map);
+}
+// items: [{key, html}] の配列。保存済みの並び順があればそれを優先して並べ替え、
+// まだ並び順に登場しない新しいフォルダ・デッキ（新規作成分など）は末尾に追加する。
+function applySavedListOrder(items, folderId) {
+  const saved = getSavedListOrder(folderId);
+  if (!saved || !saved.length) return items;
+  const byKey = new Map(items.map(it => [it.key, it]));
+  const result = [];
+  saved.forEach(k => { const it = byKey.get(k); if (it) { result.push(it); byKey.delete(k); } });
+  items.forEach(it => { if (byKey.has(it.key)) result.push(it); });
+  return result;
+}
+// ★ 長押しして並び替えた直後、そのままタップ扱いされてフォルダが開いてしまわないための
+//   ガード。endDrag() 時にタイムスタンプを記録し、直後のクリックはopenFolder側で無視する。
+let cmDragJustEndedAt = 0;
+// ★ 追加：ホーム画面（フォルダ・デッキ一覧）を長押しドラッグで並び替え中かどうか。
+//   ドラッグ中に renderDeckListUI() が呼ばれて #deck-grid の中身が丸ごと
+//   作り直されると、掴んでいた要素が新しいDOMから浮いた状態になり、
+//   その後の指の動きで古い要素が新しいgridに再挿入されて「同じ項目が
+//   一時的に2つ表示される」不具合が起きるため、ドラッグ中は再描画を
+//   スキップするためのガードに使う。
+let cmListDragActive = false;
+
+// ★ サーバーから「みんなの並び順」を取得してキャッシュに反映する
+async function fetchAndMergeOrder() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  const res = await fetch(`${API_BASE}list_order`, { signal: controller.signal, cache: 'no-store' });
+  clearTimeout(timer);
+  const data = await res.json();
+  if (!data.ok) return false;
+  sharedOrderCache = data.order || {};
+  saveSharedOrderCache(sharedOrderCache);
+  return true;
+}
+
+// ★ この端末でドラッグして決めた並び順のうち「みんなで共有される部分」だけを
+//   サーバーへ反映する（自分だけの下書きデッキの並びは送らない）。
+async function pushSharedOrderToServer(folderId, keys) {
+  const sharedKeys = keys.filter(isSharedOrderKey);
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${API_BASE}save_order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: orderScopeKey(folderId), keys: sharedKeys }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (data.ok) {
+      sharedOrderCache[orderScopeKey(folderId)] = sharedKeys;
+      saveSharedOrderCache(sharedOrderCache);
+    }
+    return !!data.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ★ サーバーからフォルダ一覧を取得してキャッシュに反映する
+async function fetchAndMergeFolders() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  // ★ cache: 'no-store' を追加：Chromeなどが list_folders のレスポンスを
+  //   ディスクキャッシュから返してしまい、他端末で作成したフォルダが
+  //   即座に反映されない不具合を防ぐため、常にサーバーへ問い合わせる。
+  const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal, cache: 'no-store' });
+  clearTimeout(timer);
+  const data = await res.json();
+  if (!data.ok) return false;
+  folders = (data.folders || []).map(f => ({ id: f.id, name: f.name, parentId: f.parent_id ?? null }));
+  saveFoldersCache(folders);
+  return true;
+}
+
+function folderLevel(id) {
+  let lvl = 0, cur = folders.find(f => f.id === id);
+  while (cur) { lvl++; cur = folders.find(f => f.id === cur.parentId); }
+  return lvl;
+}
+function folderChildren(parentId) {
+  return folders.filter(f => f.parentId === parentId)
+    .slice().sort((a,b) => a.name.localeCompare(b.name, 'ja'));
+}
+function folderDescendants(id) {
+  const direct = folders.filter(f => f.parentId === id);
+  let all = [...direct];
+  direct.forEach(f => { all = all.concat(folderDescendants(f.id)); });
+  return all;
+}
+function maxLevelInSubtree(id) {
+  const desc = folderDescendants(id);
+  return Math.max(folderLevel(id), ...desc.map(f => folderLevel(f.id)));
+}
+function canMoveFolderTo(folderId, newParentId) {
+  if (folderId === newParentId) return false;
+  const descIds = folderDescendants(folderId).map(f => f.id);
+  if (newParentId && descIds.includes(newParentId)) return false;
+  const oldLevel = folderLevel(folderId);
+  const newLevel = folderLevel(newParentId) + 1;
+  const shift = newLevel - oldLevel;
+  return (maxLevelInSubtree(folderId) + shift) <= MAX_FOLDER_DEPTH;
+}
+function countDecksRecursive(folderId) {
+  const direct = decks.filter(d => (d.folderId || null) === folderId).length;
+  const subCount = folderChildren(folderId).reduce((sum, f) => sum + countDecksRecursive(f.id), 0);
+  return direct + subCount;
+}
+// フォルダ配下（サブフォルダ含む）の合計カード数
+function countCardsRecursive(folderId) {
+  const direct = decks
+    .filter(d => (d.folderId || null) === folderId)
+    .reduce((sum, d) => sum + (d.filename ? (d.count ?? d.cards.length) : d.cards.length), 0);
+  const subCount = folderChildren(folderId).reduce((sum, f) => sum + countCardsRecursive(f.id), 0);
+  return direct + subCount;
+}
+// フォルダ配下（サブフォルダ含む）の「わからない」カード数の合計
+// ※ カード本体が未読み込み（cardsLoaded === false）のデッキは
+//    unsureセットと突き合わせる術がないので、そのデッキ分は数えない
+//    （一覧を開いたときに一部のデッキがまだ未読み込みでも壊れないようにするため）
+function countUnsureRecursive(folderId) {
+  return collectDecksInFolder(folderId).reduce((sum, d) => {
+    if (d.cardsLoaded === false) return sum;
+    const unsure = getUnsureSet(d.id);
+    return sum + d.cards.filter(c => unsure.has(cardKey(c))).length;
+  }, 0);
+}
+
+// フォルダ配下（サブフォルダ含む）の全デッキを集める
+function collectDecksInFolder(folderId) {
+  const direct = decks.filter(d => (d.folderId || null) === folderId);
+  const subDecks = folderChildren(folderId).reduce((arr, f) => arr.concat(collectDecksInFolder(f.id)), []);
+  return [...direct, ...subDecks];
+}
+
+// ★ 追加：あるデッキ／フォルダが、指定フォルダの範囲内（サブフォルダ含む）に含まれるかどうか
+//   ・folderId が null の場合は「ホーム」＝アプリ全体なので、常に範囲内とみなす
+function isDeckInFolderScope(deckId, folderId) {
+  if (folderId === null) return true;
+  return collectDecksInFolder(folderId).some(d => d.id === deckId);
+}
+function isFolderInFolderScope(fid, folderId) {
+  if (folderId === null) return true;
+  if (fid === folderId) return true;
+  return folderDescendants(folderId).some(f => f.id === fid);
+}
+
+// ── ログインセッション（Login.js と共通） ──────
+const SESSION_KEY = 'sl_session';
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
+let decks = loadDecks();
+let currentDeckId  = null;
+let menuTargetId   = null;
+let imgBuf = { q:[], a:[], e:[] };
+let studyCards = [], studyIdx = 0;
+let studyReverse = false; // ★ 追加：問題と解答を逆にするモードかどうか
+let studyAutoGrade = false; // ★ 追加：解答入力欄で自動採点するモードかどうか（反転モード時は常にfalse）
+let studyMode = 'all'; // ★ 追加：'all' | 'unsure'（続きから再開時に同じ絞り込みを再現するため）
+
+// ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
+// id が無いカード（例：公開後にサーバーから取り込まれたカード）でも
+// 配列のインデックスに依存せず、内容から一意なキーを作る。
+function hashStr(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (h * 31 + str.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+function cardKey(c) {
+  return c.id || ('h_' + hashStr((c.question || '') + '||' + (c.answer || '')));
+}
+
+// ============================================================
+//  ★ 追加：カード保存時の重複／自己矛盾チェック
+//  ─────────────────────────────────────────────
+//  ・同じデッキ内に「問題文・解答」が両方とも完全一致するカードが
+//    既にある場合に警告する（コピペミスなどによる二重登録の防止）。
+//  ・「解答」が「問題文」や「解説」と一字一句同じ場合も、入力ミスの
+//    可能性が高いので警告する。
+//  ・いずれも「間違った入力を強制的にブロックする」のではなく、
+//    自前の確認ダイアログ（showCmConfirm）でユーザーに知らせた上で、
+//    意図的なものであればそのまま保存を続行できるようにする。
+// ============================================================
+
+// 比較用に前後の空白だけを取り除いた文字列を返す（大小文字・全半角などは変えない＝「完全一致」の判定を厳密にするため）
+function normalizeForDupCheck(s) {
+  return (s || '').trim();
+}
+
+// deck.cards の中に「問題文・解答」が両方とも完全一致するカードが無いか調べる。
+// excludeIdx を指定すると、そのインデックスのカード自身は比較対象から除外する（編集時用）。
+function findDuplicateCardIndex(deck, q, a, excludeIdx = -1) {
+  if (!deck || !Array.isArray(deck.cards)) return -1;
+  const nq = normalizeForDupCheck(q), na = normalizeForDupCheck(a);
+  return deck.cards.findIndex((c, i) =>
+    i !== excludeIdx &&
+    normalizeForDupCheck(c.question) === nq &&
+    normalizeForDupCheck(c.answer)   === na
+  );
+}
+
+// 保存前に呼び出す：問題があれば確認ダイアログを出し、
+// ユーザーが「やめる」を選んだ場合は true（＝保存を中断すべき）を返す。
+async function warnIfDuplicateOrSameCard(deck, q, a, e, excludeIdx = -1) {
+  const nq = normalizeForDupCheck(q), na = normalizeForDupCheck(a), ne = normalizeForDupCheck(e);
+
+  // ① 同じ問題・答えの組み合わせが既にある
+  const dupIdx = findDuplicateCardIndex(deck, q, a, excludeIdx);
+  if (dupIdx !== -1) {
+    const proceed = await showCmConfirm({
+      title: '同じ問題と答えのカードが既にあります',
+      desc: `このデッキの${dupIdx + 1}枚目と、問題文・解答が完全に一致しています。\n重複登録の可能性があります。このまま保存しますか？`,
+      okLabel: 'このまま保存する', cancelLabel: '内容を確認する', okStyle: 'danger',
+    });
+    if (!proceed) return true;
+  }
+
+  // ② 解答が問題文と完全一致
+  if (na && nq && na === nq) {
+    const proceed = await showCmConfirm({
+      title: '解答が問題文と完全に同じです',
+      desc: '解答欄の内容が問題文と一字一句同じになっています。\n入力ミスの可能性があります。このまま保存しますか？',
+      okLabel: 'このまま保存する', cancelLabel: '内容を確認する', okStyle: 'danger',
+    });
+    if (!proceed) return true;
+  }
+
+  // ③ 解答が解説と完全一致
+  if (na && ne && na === ne) {
+    const proceed = await showCmConfirm({
+      title: '解答が解説と完全に同じです',
+      desc: '解答欄の内容が解説欄と一字一句同じになっています。\n入力ミスの可能性があります。このまま保存しますか？',
+      okLabel: 'このまま保存する', cancelLabel: '内容を確認する', okStyle: 'danger',
+    });
+    if (!proceed) return true;
+  }
+
+  return false;
+}
+
+// ============================================================
+//  自前のダイアログUI（デバイスのOS/ブラウザ標準の confirm() を使わない）
+//  ─────────────────────────────────────────────
+//  Cardmaker.css の既存クラス（.modal-overlay / .modal-sheet / .modal-handle /
+//  .modal-title / .modal-btns / .btn-* / .play-mode-item など）をそのまま
+//  流用して動的にモーダルを生成するので、新規CSSを追加せずに他のモーダルと
+//  完全に同じ見た目・アニメーションになる。端末やブラウザに依存しない。
+// ============================================================
+
+// 選択肢が2つの確認ダイアログ（キャンセル + 実行）。confirm()の代替。
+// okStyle: 'blue' | 'danger' | 'outline'（既存のbtnクラスに対応）
+function showCmConfirm({ title, desc = '', okLabel = 'OK', cancelLabel = 'キャンセル', okStyle = 'blue' }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${esc(title)}</div>
+        ${desc ? `<div style="font-size:13px;color:var(--text-secondary);margin:-.5rem 0 1rem;line-height:1.6;white-space:pre-line">${esc(desc)}</div>` : ''}
+        <div class="modal-btns">
+          <button type="button" class="btn btn-ghost" data-val="0">${esc(cancelLabel)}</button>
+          <button type="button" class="btn btn-${okStyle}" data-val="1">${esc(okLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    function finish(value) {
+      overlay.classList.remove('open');
+      setTimeout(() => overlay.remove(), 180);
+      resolve(value);
+    }
+    overlay.querySelectorAll('[data-val]').forEach(btn => {
+      btn.addEventListener('click', () => finish(btn.dataset.val === '1'));
+    });
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(false); });
+  });
+}
+
+// ボタン1つだけの通知ダイアログ。alert()の代替。
+function showCmAlert({ title, desc = '', okLabel = '閉じる' }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${esc(title)}</div>
+        ${desc ? `<div style="font-size:13px;color:var(--text-secondary);margin:-.5rem 0 1rem;line-height:1.6;white-space:pre-line">${esc(desc)}</div>` : ''}
+        <div class="modal-btns">
+          <button type="button" class="btn btn-blue" data-val="1" style="flex:1">${esc(okLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    function finish() {
+      overlay.classList.remove('open');
+      setTimeout(() => overlay.remove(), 180);
+      resolve(true);
+    }
+    overlay.querySelector('[data-val]').addEventListener('click', finish);
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(); });
+  });
+}
+
+// 3つ以上の選択肢から選ぶダイアログ（modal-play-mode と同じ見た目）。
+// choices: [{ icon, label, sub, value }]。キャンセル時は null を返す。
+function showCmChoiceDialog({ title, desc = '', choices, cancelLabel = 'キャンセル' }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${esc(title)}</div>
+        ${desc ? `<div style="font-size:13px;color:var(--text-secondary);margin:-.5rem 0 1rem;line-height:1.6;white-space:pre-line">${esc(desc)}</div>` : ''}
+        ${choices.map((c, i) => `
+          <div class="play-mode-item" data-idx="${i}">
+            <span class="play-mode-icon">${c.icon || ''}</span>
+            <div>
+              <div>${esc(c.label)}</div>
+              ${c.sub ? `<div class="play-mode-sub">${esc(c.sub)}</div>` : ''}
+            </div>
+          </div>`).join('')}
+        <div class="modal-btns" style="margin-top:.5rem">
+          <button type="button" class="btn btn-ghost" data-cancel style="flex:1">${esc(cancelLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    function finish(value) {
+      overlay.classList.remove('open');
+      setTimeout(() => overlay.remove(), 180);
+      resolve(value);
+    }
+    overlay.querySelectorAll('[data-idx]').forEach(el => {
+      el.addEventListener('click', () => finish(choices[+el.dataset.idx].value));
+    });
+    overlay.querySelector('[data-cancel]').addEventListener('click', () => finish(null));
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(null); });
+  });
+}
+
+// ── ルーター ──────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  window.scrollTo(0, 0);
+  if (id === 'list') {
+    decks = loadDecks();
+    folders = loadFoldersCache();
+    sharedOrderCache = loadSharedOrderCache();
+    renderDeckListUI();
+    setTimeout(() => renderDeckList(), 0);
+  }
+}
+
+// ── デッキ一覧 ────────────────────────
+function renderDeckListUI() {
+  // ★ 追加：フォルダ/デッキを長押しドラッグ中は #deck-grid を再生成しない。
+  //   （バックグラウンドポーリングなどからここが呼ばれてDOMが作り直されると、
+  //   ドラッグ中の要素が新しいDOMから浮いてしまい、その後の指の動きで
+  //   古い要素が再挿入されて項目が2つ表示されてしまうため）
+  //   ドラッグ終了後、次のポーリング（最大10秒後）で最新状態に更新される。
+  if (cmListDragActive) return;
+  // 表示中のフォルダが（他端末での削除などで）無くなっていたらルートに戻す
+  if (currentFolderId && !folders.find(f => f.id === currentFolderId)) currentFolderId = null;
+
+  renderBreadcrumb();
+  renderInProgressUI(); // ★ 追加：ホームにプレイ中（続きから再開できる）デッキ・フォルダを表示
+
+  const grid  = document.getElementById('deck-grid');
+  const empty = document.getElementById('deck-list-empty');
+
+  const childFolders = folderChildren(currentFolderId);
+  const childDecks   = decks.filter(d => (d.folderId || null) === currentFolderId);
+
+  if (!childFolders.length && !childDecks.length) {
+    grid.style.display='none'; empty.style.display='block';
+    document.getElementById('deck-list-empty-text').textContent =
+      currentFolderId ? 'このフォルダにはまだ何もありません' : 'まだデッキがありません';
+    return;
+  }
+  empty.style.display='none'; grid.style.display='flex';
+
+  const folderItems = childFolders.map(f => {
+  const cnt = countDecksRecursive(f.id);
+  const totalCards = countCardsRecursive(f.id);
+  const unsureCount = countUnsureRecursive(f.id);              // ★ 追加
+  const isLoadingThisFolder = loadingFolderIds.has(f.id);
+  const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;
+  const folderUnsureBadge = unsureCount > 0                     // ★ 追加
+    ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
+  return { key: `folder:${f.id}`, html: `
+  <div class="deck-card folder-card" data-key="folder:${f.id}" onclick="openFolder('${f.id}')">
+    <div class="deck-card-info">
+      <div class="deck-card-title">📁 ${esc(f.name)}</div>
+      <div class="deck-card-meta">${cnt} デッキ・${totalCards} 問${folderUnsureBadge}</div>
+    </div>
+    <div class="deck-card-actions">
+      <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
+        ${folderPlayDisabled?'disabled':''}>${isLoadingThisFolder ? '読み込み中…' : '▶ プレイ'}</button>
+      <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">✏️</button>
+    </div>
+  </div>` };
+});
+  // ★ 非公開・公開のグループ位置はそのまま、各グループ内だけ新しい順（下が古い）に反転
+  //   （※ ユーザーが手で並び替えた後は、下の applySavedListOrder() がこの初期順を上書きする）
+  const unpublished = childDecks.filter(d => !d.filename).slice().reverse();
+  const published    = childDecks.filter(d =>  d.filename).slice().reverse();
+  const orderedDecks = [...unpublished, ...published];
+
+  const deckItems = orderedDecks.map(d => {
+    // ★ カード本体を未読み込みのデッキ（公開デッキで cardsLoaded=false）は
+    //   d.cards が空のままなので、「わからない」バッジは読み込み後にしか出せない。
+    //   ここでは読み込み済みの場合だけ計算する。
+    let unsureBadge = '';
+    if (d.cardsLoaded !== false) {
+      const unsureSet   = getUnsureSet(d.id);
+      const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
+      unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
+    }
+    // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
+    //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
+    //   （pubBadge の判定でも使うため、先に計算しておく）
+    const questionCount = d.filename ? (d.count ?? d.cards.length) : d.cards.length;
+    // ★ 公開状態バッジ：作成中／非公開／公開済み／未完成 のいずれか1つだけを表示する。
+    //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
+    //   分かりにくいので同じ場所に1つだけ出すよう統合した）
+    //   ★ 修正：以前は「サーバー登録済み・カード0枚」の場合だけを「作成中」と判定していたため、
+    //     まだ一度も「公開して保存」（＝完成／未完成の選択）を経ていないデッキでも、
+    //     ただの「保存」ボタンでカードを追加しただけで questionCount>0 になった途端に
+    //     「未完成」バッジへ変わってしまっていた（＝「保存しただけなのに未完成と表示される」不具合）。
+    //     ここでは d.notYetPublished（＝一度も明示的な「公開して保存」を経ていないかどうか）を
+    //     カード枚数に関係なく最優先で判定し、以下の3段階に整理する。
+    //     ・「保存」ボタンを押しただけ（公開フローを一度も経ていない）　　　　→ 常に「作成中」
+    //     ・「公開して保存」で「未完成として公開する」を選んだことがある　　　→ 「未完成」
+    //     ・「公開して保存」で「完成として公開する」を選んだ（その後の状態） → 「公開済み」
+    const pubBadge = !d.filename
+      ? (d.planPublish !== false
+          ? `<span class="pub-badge inprogress">🟠 作成中</span>`
+          : `<span class="pub-badge local">🔴 非公開</span>`)
+      : (d.notYetPublished !== false)
+        ? `<span class="pub-badge inprogress">🟠 作成中${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+        : d.incomplete
+          ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+          : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
+    // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
+    //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
+    const isLoadingThis = loadingDeckIds.has(d.id);
+    // ★ 追加：「作成中」（＝まだ一度も公開して保存していない）状態のデッキはプレイできないようにする。
+    //   編集（openEditDeck / openDeckMenu）はこのフラグを見ないので、作成中でも引き続き編集は可能。
+    const isInProgress = !d.filename ? (d.planPublish !== false) : (d.notYetPublished !== false);
+    const playDisabled = questionCount === 0 || isLoadingThis || isInProgress;
+    // ★ 科目名をタイトルの上に小さく表示する。表示名側に重複しないよう、
+    //   デッキ名の先頭に「科目名 」が含まれる場合はそれを取り除いて表示する。
+    const subjectLabel = d.subject
+      ? `<div class="deck-card-subject">${esc(d.subject)}</div>` : '';
+    const displayName = (d.subject && d.name.startsWith(d.subject + ' '))
+      ? d.name.slice(d.subject.length + 1) : d.name;
+    // ★ 並び順のキー：公開済みデッキは全員が同じ filename を持つので、それを共有キーにする。
+    //   未公開（自分だけの下書き）デッキは他人には見えないデータなので、他の端末とは
+    //   絶対に一致しないローカル専用キー（localdeck:）にし、サーバーには送らない。
+    const orderKey = d.filename ? `deck:${d.filename}` : `localdeck:${d.id}`;
+    return { key: orderKey, html: `
+    <div class="deck-card" data-key="${orderKey}">
+      <div class="deck-card-info">
+        ${subjectLabel}
+        <div class="deck-card-title">${esc(displayName)}</div>
+        <div class="deck-card-meta">
+          ${questionCount} 問
+          ${pubBadge}
+          ${unsureBadge}
+        </div>
+      </div>
+      <div class="deck-card-actions">
+        <button class="btn btn-blue btn-sm" onclick="openPlayMode('${d.id}')"
+          ${playDisabled?'disabled':''}>${isLoadingThis ? '読み込み中…' : '▶ プレイ'}</button>
+        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>✏️</button>
+      </div>
+    </div>` };
+  });
+
+  // ★ フォルダ・デッキを合わせ、保存済みの並び順（ユーザーがドラッグして決めた順）があれば適用する
+  const combinedItems = applySavedListOrder([...folderItems, ...deckItems], currentFolderId);
+  // ★ 追加：最終防御として、万一同じキー（＝同じデッキ／フォルダ）が
+  //   何らかの理由で2件並んでしまっていても、ここで必ず1件だけに絞ってから描画する。
+  //   （並び順マージ処理などに未知の不具合があっても、画面上の「見た目の複製」だけは常に防げるようにする）
+  const seenKeys = new Set();
+  const dedupedItems = combinedItems.filter(it => {
+    if (seenKeys.has(it.key)) return false;
+    seenKeys.add(it.key);
+    return true;
+  });
+  grid.innerHTML = dedupedItems.map(it => it.html).join('');
+}
+
+// ── パンくずリスト ────────────────────
+function renderBreadcrumb() {
+  const bar = document.getElementById('folder-breadcrumb');
+  if (!currentFolderId) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const chain = [];
+  let cur = folders.find(f => f.id === currentFolderId);
+  while (cur) { chain.unshift(cur); cur = folders.find(f => f.id === cur.parentId); }
+  bar.style.display = 'flex';
+  bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">🏠 ホーム</span>` +
+    chain.map(f => `<span class="crumb-sep">/</span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
+}
+
+// ── プレイ中（続きから再開できる）デッキ・フォルダ ────────────────────
+//   ★ 追加：localStorage に保存されている学習進捗（cm_progress_deck_ / cm_progress_folder_）を
+//     すべて拾い出し、まだ存在するデッキ・フォルダに紐づくものだけを表示する。
+//   scopeFolderId: 表示範囲。null ならホーム（アプリ全体）、フォルダidならそのフォルダ配下（サブフォルダ含む）のみ。
+function getInProgressItems(scopeFolderId) {
+  const items = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    let isFolder, id;
+    if (key.startsWith('cm_progress_deck_'))        { isFolder = false; id = key.slice('cm_progress_deck_'.length); }
+    else if (key.startsWith('cm_progress_folder_'))  { isFolder = true;  id = key.slice('cm_progress_folder_'.length); }
+    else continue;
+
+    const data = loadStudyProgress(isFolder, id);
+    if (!data) continue; // 壊れている・空のデータは無視
+
+    if (isFolder) {
+      const folder = folders.find(f => f.id === id);
+      if (!folder) continue; // フォルダが削除済みなら無視
+      if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
+      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: '📁',
+        idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
+    } else {
+      const deck = decks.find(d => d.id === id);
+      if (!deck) continue; // デッキが削除済みなら無視
+      if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
+      // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
+      const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
+        ? deck.name.slice(deck.subject.length + 1) : deck.name;
+      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: '📇',
+        idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
+    }
+  }
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const recentItems = items.filter(it => (now - it.updatedAt) <= ONE_WEEK_MS); // ★ 追加：直近1週間以内にプレイしたものだけに絞る
+  recentItems.sort((a, b) => b.updatedAt - a.updatedAt); // 新しく学習していた順
+  return recentItems;
+}
+
+function renderInProgressUI() {
+  const section = document.getElementById('inprogress-section');
+  const scroll  = document.getElementById('inprogress-scroll');
+  if (section && scroll) {
+    // ★ ホームでは全体、フォルダ内ではそのフォルダ配下（サブフォルダ含む）だけに絞って表示する
+    const items = getInProgressItems(currentFolderId);
+    if (!items.length) {
+      section.style.display = 'none'; scroll.innerHTML = '';
+    } else {
+      section.style.display = 'block';
+      scroll.innerHTML = items.map(it => {
+        const pct = Math.max(0, Math.min(100, Math.round(((it.idx) / it.total) * 100)));
+        return `
+        <div class="inprogress-card" onclick="resumeFromHome(${it.isFolder}, '${it.id}')">
+          ${it.subject ? `<div class="inprogress-subject">${esc(it.subject)}</div>` : ''}
+          <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
+          <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
+          <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
+          <div class="inprogress-resume-btn">▶️ 続きから</div>
+        </div>`;
+      }).join('');
+    }
+  }
+  renderCompletedUI(); // ★ 追加：プレイ済み（完了）欄も同時に更新する
+}
+
+// ── プレイ済み（完了した）デッキ・フォルダ ────────────────────
+//   ★ 追加：localStorage に保存されている完了記録（cm_completed_deck_ / cm_completed_folder_）を
+//     すべて拾い出し、まだ存在するデッキ・フォルダに紐づく直近1週間以内のものだけを表示する。
+//   scopeFolderId: 表示範囲。null ならホーム（アプリ全体）、フォルダidならそのフォルダ配下（サブフォルダ含む）のみ。
+function getCompletedItems(scopeFolderId) {
+  const items = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    let isFolder, id;
+    if (key.startsWith('cm_completed_deck_'))        { isFolder = false; id = key.slice('cm_completed_deck_'.length); }
+    else if (key.startsWith('cm_completed_folder_'))  { isFolder = true;  id = key.slice('cm_completed_folder_'.length); }
+    else continue;
+
+    const data = loadCompletionRecord(isFolder, id);
+    if (!data) continue; // 壊れている・空のデータは無視
+
+    if (isFolder) {
+      const folder = folders.find(f => f.id === id);
+      if (!folder) continue; // フォルダが削除済みなら無視
+      if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
+      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: '📁',
+        total: data.total, completedAt: data.completedAt });
+    } else {
+      const deck = decks.find(d => d.id === id);
+      if (!deck) continue; // デッキが削除済みなら無視
+      if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
+      // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
+      const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
+        ? deck.name.slice(deck.subject.length + 1) : deck.name;
+      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: '📇',
+        total: data.total, completedAt: data.completedAt });
+    }
+  }
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const recentItems = items.filter(it => (now - it.completedAt) <= ONE_WEEK_MS); // ★ 直近1週間以内に完了したものだけ
+  recentItems.sort((a, b) => b.completedAt - a.completedAt); // 新しく完了した順
+  return recentItems;
+}
+
+function renderCompletedUI() {
+  const section = document.getElementById('completed-section');
+  const scroll  = document.getElementById('completed-scroll');
+  if (!section || !scroll) return;
+
+  // ★ ホームでは全体、フォルダ内ではそのフォルダ配下（サブフォルダ含む）だけに絞って表示する
+  const items = getCompletedItems(currentFolderId);
+  if (!items.length) { section.style.display = 'none'; scroll.innerHTML = ''; return; }
+
+  section.style.display = 'block';
+  scroll.innerHTML = items.map(it => `
+    <div class="completed-card" onclick="replayFromHome(${it.isFolder}, '${it.id}')">
+      ${it.subject ? `<div class="completed-subject">${esc(it.subject)}</div>` : ''}
+      <div class="completed-title">${it.icon} ${esc(it.name)}</div>
+      <div class="completed-meta">✅ ${it.total} 問 完了</div>
+      <div class="completed-replay-btn">🔁 もう一度プレイ</div>
+    </div>`).join('');
+}
+
+// ★ 追加：ホーム画面の「プレイ済み」カードをタップしたときに、
+//   完了済みなので「続きから」ではなく、通常のプレイモード選択（すべて／わからないだけ等）を開く。
+async function replayFromHome(isFolder, id) {
+  if (isFolder) {
+    await openFolderPlayMode(id);
+  } else {
+    await openPlayMode(id);
+  }
+}
+
+// ★ 追加：ホーム画面の「プレイ中のデッキ」カードをタップしたときに、
+//   プレイモード選択（すべて／わからないだけ／続きから）を経由せず、
+//   直接「続きから」の状態でそのまま学習画面を開く。
+async function resumeFromHome(isFolder, id) {
+  if (isFolder) {
+    const folder = folders.find(f => f.id === id);
+    const targetDecks = collectDecksInFolder(id)
+      .filter(d => (d.filename ? (d.count ?? d.cards.length) : d.cards.length) > 0);
+    if (!targetDecks.length) return;
+
+    loadingFolderIds.add(id);
+    renderDeckListUI();
+    // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。
+    //   キャッシュ済み（cardsLoaded=true）のまま開くと、他の人が直した最新の
+    //   修正内容がプレイ画面に反映されない＝「もう直っていたのに気づかず
+    //   重複して編集してしまう」事故につながるため。
+    // ★ 修正：保留中のサーバー同期を待たずに強制リロードすると、同期前の
+    //   古い内容（最悪カード0枚）で上書きされてしまうため、先に待ち合わせる。
+    await Promise.all(targetDecks.map(d => waitForPendingSync(d.id)));
+    const results = await Promise.all(targetDecks.map(d => ensureDeckCardsLoaded(d.id, true)));
+    loadingFolderIds.delete(id);
+    renderDeckListUI();
+
+    if (results.some(r => !r.ok)) {
+      await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+      return;
+    }
+    folderPlayDecks = targetDecks;
+    studyIsFolder = true;
+    studyFolderId = id;
+    studyDeckId = null;
+  } else {
+    const deck = decks.find(d => d.id === id);
+    if (!deck) return;
+
+    loadingDeckIds.add(id);
+    renderDeckListUI();
+    // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。理由は上と同じ。
+    // ★ 修正：保留中のサーバー同期を待たずに強制リロードすると、同期前の
+    //   古い内容（最悪カード0枚）で上書きされてしまうため、先に待ち合わせる。
+    await waitForPendingSync(id);
+    const result = await ensureDeckCardsLoaded(id, true);
+    loadingDeckIds.delete(id);
+    renderDeckListUI();
+
+    if (!result.ok) {
+      await showCmAlert({ title: '読み込みに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+      return;
+    }
+    studyIsFolder = false;
+    studyDeckId = id;
+  }
+  startStudyMode('resume');
+}
+
+// ── フォルダ間の移動 ──────────────────
+function openFolder(id) {
+  // ★ 一覧の並び替え（長押しドラッグ）を終えた直後のタップは無視する
+  //   （指を離した瞬間に発生するクリックで、意図せずフォルダが開いてしまうのを防ぐ）
+  if (Date.now() - cmDragJustEndedAt < 300) return;
+  currentFolderId = id;
+  renderDeckListUI();
+  const body = document.querySelector('#screen-list .cm-scroll-body');
+  if (body) body.scrollTop = 0;
+}
+
+// ── 追加（デッキ / フォルダ）の選択 ─────
+function openAddChoice() { openModal('modal-add-choice'); }
+function chooseNewDeck() { closeModal('modal-add-choice'); openNewSet(); }
+async function chooseNewFolder() {
+  closeModal('modal-add-choice');
+  if (folderLevel(currentFolderId) >= MAX_FOLDER_DEPTH) {
+    await showCmAlert({
+      title: 'フォルダを作成できません',
+      desc: `フォルダは${MAX_FOLDER_DEPTH}階層までしか作成できません。`,
+    });
+    return;
+  }
+  openFolderNameModal('create', null);
+}
+
+// ── フォルダ名の入力（新規作成 / 名前変更） ─
+let folderNameMode = 'create'; // 'create' | 'rename'
+let folderNameTargetId = null;
+
+function openFolderNameModal(mode, folderId) {
+  folderNameMode = mode;
+  folderNameTargetId = folderId;
+  const input = document.getElementById('folder-name-input');
+  document.getElementById('folder-name-modal-title').textContent =
+    mode === 'rename' ? 'フォルダ名を変更' : '新しいフォルダ';
+  input.value = mode === 'rename' ? (folders.find(f => f.id === folderId)?.name || '') : '';
+  openModal('modal-folder-name');
+  setTimeout(() => input.focus(), 150);
+}
+
+async function saveFolderName() {
+  const input = document.getElementById('folder-name-input');
+  const name = input.value.trim();
+  if (!name) { shake('folder-name-input'); return; }
+  if (await warnIfBugChars(name, 'folder-name-input')) return;
+
+  const btn = document.querySelector('#modal-folder-name .btn-blue');
+  const targetFolder = folderNameMode === 'rename' ? folders.find(f => f.id === folderNameTargetId) : null;
+  const body = {
+    name,
+    parent_id: folderNameMode === 'rename' ? (targetFolder ? targetFolder.parentId : null) : currentFolderId,
+  };
+  if (folderNameMode === 'rename') body.id = folderNameTargetId;
+
+  setBtnLoading(btn, true, '保存中…'); // ★ 修正：単なるdisabledだけでなくスピナーで「処理中」を明示する
+  try {
+    const res = await fetch(`${API_BASE}save_folder`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    await fetchAndMergeFolders();
+    closeModal('modal-folder-name');
+    renderDeckListUI();
+  } catch(e) {
+    await showCmAlert({ title: 'フォルダの保存に失敗しました', desc: e.message });
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
+
+// ── フォルダメニュー ───────────────────
+let folderMenuTargetId = null;
+function openFolderMenu(id) {
+  folderMenuTargetId = id;
+  const f = folders.find(x => x.id === id);
+  document.getElementById('folder-menu-name').textContent = f ? f.name : '';
+  openModal('modal-folder-menu');
+}
+function folderMenuRename() { closeModal('modal-folder-menu'); openFolderNameModal('rename', folderMenuTargetId); }
+function folderMenuMove()   { closeModal('modal-folder-menu'); openMovePicker('folder', folderMenuTargetId); }
+
+async function folderMenuDelete() {
+  closeModal('modal-folder-menu');
+  const folder = folders.find(f => f.id === folderMenuTargetId);
+  if (!folder) return;
+
+  const descIds = folderDescendants(folder.id).map(f => f.id);
+  const allFolderIds = [folder.id, ...descIds];
+  const targetDecks = decks.filter(d => allFolderIds.includes(d.folderId || null));
+
+  const desc = (targetDecks.length || descIds.length)
+    ? `「${folder.name}」を削除すると、中にあるサブフォルダ ${descIds.length} 個とデッキ ${targetDecks.length} 個もすべて削除されます。`
+    : `「${folder.name}」を削除しますか？`;
+  const ok = await showCmConfirm({
+    title: 'フォルダを削除しますか？', desc, okLabel: '削除する', okStyle: 'danger',
+  });
+  if (!ok) return;
+
+  // 公開済みデッキはサーバー側からも削除
+  for (const d of targetDecks) {
+    if (d.filename) {
+      try {
+        await fetch(`${API_BASE}delete_cards`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: d.filename }),
+        });
+      } catch(e) {}
+    }
+  }
+
+  // フォルダ自体もサーバー（みんなで共有）から削除
+  try {
+    const res = await fetch(`${API_BASE}delete_folder`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: folder.id }), signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+  } catch(e) {
+    await showCmAlert({ title: 'サーバーからのフォルダ削除に失敗しました', desc: e.message });
+    return;
+  }
+
+  const removeIds = new Set(targetDecks.map(d => d.id));
+  decks = decks.filter(d => !removeIds.has(d.id));
+  if (allFolderIds.includes(currentFolderId)) currentFolderId = folder.parentId || null;
+  saveDecks(decks);
+  await fetchAndMergeFolders();
+  renderDeckListUI();
+}
+
+// ── 移動先の選択（デッキ / フォルダ 共通） ─
+let movePickerKind = null;   // 'deck' | 'folder'
+let movePickerTargetId = null;
+
+function openMovePicker(kind, id) {
+  movePickerKind = kind;
+  movePickerTargetId = id;
+  document.getElementById('move-picker-title').textContent =
+    kind === 'folder' ? 'フォルダの移動先' : 'デッキの移動先';
+  renderMovePickerList();
+  openModal('modal-move-picker');
+}
+
+function renderMovePickerList() {
+  const list = document.getElementById('move-picker-list');
+  const currentParent = movePickerKind === 'deck'
+    ? (decks.find(d => d.id === movePickerTargetId)?.folderId || null)
+    : (folders.find(f => f.id === movePickerTargetId)?.parentId || null);
+
+  const rows = [];
+  const rootDisabled = movePickerKind === 'folder' && !canMoveFolderTo(movePickerTargetId, null);
+  rows.push({ id: null, label: '🏠 ルート', level: 0, disabled: rootDisabled });
+
+  function walk(parentId, level) {
+    folderChildren(parentId).forEach(f => {
+      const disabled = movePickerKind === 'folder' && !canMoveFolderTo(movePickerTargetId, f.id);
+      rows.push({ id: f.id, label: '📁 ' + f.name, level, disabled });
+      walk(f.id, level + 1);
+    });
+  }
+  walk(null, 1);
+
+  list.innerHTML = rows.map(r => {
+    const isCurrent = r.id === currentParent;
+    const cls = 'move-picker-row'
+      + (r.disabled ? ' disabled' : '')
+      + (isCurrent ? ' current' : '');
+    const idAttr = r.id === null ? 'null' : `'${r.id}'`;
+    const clickAttr = r.disabled ? '' : ` onclick="selectMoveTarget(${idAttr})"`;
+    return `<div class="${cls}" style="padding-left:${8 + r.level * 18}px"${clickAttr}>${esc(r.label)}${isCurrent ? ' <span class="move-picker-current-tag">現在</span>' : ''}</div>`;
+  }).join('');
+}
+
+async function selectMoveTarget(targetId) {
+  closeModal('modal-move-picker');
+
+  if (movePickerKind === 'deck') {
+    const d = decks.find(x => x.id === movePickerTargetId);
+    if (!d) return;
+
+    // ★ 修正：公開済みデッキを移動する前に、必ずサーバーから最新のカード本体を
+    //   取り直す。失敗時は loadDeckCardsWithRecovery が再試行・強制続行の
+    //   選択肢を提示するので、移動できないまま詰むことはない。
+    if (d.filename) {
+      const loaded = await loadDeckCardsWithRecovery(d.id);
+      if (!loaded) return; // ユーザーが「やめる」を選んだ場合は移動しない
     }
 
-    logs = load_study_logs(guild_id)
-
-    # 30日以上前のログを削除
-    now = datetime.now(JST).date()
-    logs = [
-        l for l in logs
-        if (now - datetime.strptime(l["date"], "%Y-%m-%d").date()).days <= 30
-    ]
-
-    logs.append(entry)
-    try:
-        save_study_logs(guild_id, logs)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-
-    # --- ポイント加算（5分ごとに1pt） ---
-    earned = entry["minutes"] // 5
-    pts = load_points(guild_id)
-    pts[entry["student_id"]] = pts.get(entry["student_id"], 0) + earned
-    try:
-        save_points(guild_id, pts)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-
-    return jsonify({"ok": True, "earned": earned, "total": pts[entry["student_id"]]})
-
-
-@app.route("/list_schedule", methods=["GET"])
-def list_schedule():
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    plans = load_plans(int(guild_id))
-    return jsonify({"ok": True, "plans": sorted(plans, key=lambda p: p["date"])})
-
-
-
-@app.route("/edit_schedule", methods=["POST"])
-def edit_schedule():
-    data         = request.json
-    guild_id     = data.get("guild_id")
-    target       = data.get("target")
-    new_date     = data.get("date")
-    new_subject  = data.get("subject")
-    new_category = data.get("category")
-    new_content  = data.get("content")
-    new_points   = data.get("points")  # ★ 追加
-
-    if not all([guild_id, target]):
-        return jsonify({"ok": False, "error": "missing fields"})
-
-    err = reject_if_bug_chars({"科目": new_subject, "カテゴリ": new_category, "内容": new_content})
-    if err:
-        return err
-
-    guild_id = int(guild_id)
-    guild    = bot.get_guild(guild_id)
-    plans    = load_plans(guild_id)
-    found = None
-    for p in plans:
-        label = f"{p['date']}/{p['subject']}{p['content']}"
-        if label == target:
-            found = p
-            break
-    if not found:
-        return jsonify({"ok": False, "error": "plan not found"})
-    before_str = f"{found['date']} / {found['subject']} / {found['content']}"
-    if new_date:
-        date_str = parse_date(new_date)
-        if not date_str:
-            return jsonify({"ok": False, "error": "invalid date"})
-        found["date"] = date_str
-    if new_subject:
-        found["subject"] = new_subject
-    if new_category and new_content:
-        found["content"] = f"【{new_category}】{new_content}"
-    elif new_category:
-        body = found["content"].split("】", 1)[1] if "】" in found["content"] else found["content"]
-        found["content"] = f"【{new_category}】{body}"
-    elif new_content:
-        tag = found["content"].split("】", 1)[0] + "】" if "】" in found["content"] else ""
-        found["content"] = f"{tag}{new_content}"
-
-    # ★ ポイント更新
-    if new_points is not None:
-        try:
-            found["points"] = int(new_points)
-        except (TypeError, ValueError):
-            return jsonify({"ok": False, "error": "invalid points"})
-
-    current_category = found["content"].split("】", 1)[0].lstrip("【") if "】" in found["content"] else ""
-    if current_category not in POINT_CATEGORIES and "points" in found:
-        # 提出・宿題以外に変更された場合はポイントを外す
-        del found["points"]
-    elif current_category in POINT_CATEGORIES and "points" not in found:
-        found["points"] = DEFAULT_TASK_POINTS
-
-    try:
-        save_plans(guild_id, plans)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    after_str = f"{found['date']} / {found['subject']} / {found['content']}"
-    write_log(guild_id, "edit", detail=f"{before_str} → {after_str}")
-    if guild:
-        target_channel = get_subject_channel_by_name(guild, found["subject"])
-        if target_channel:
-            msg = f"編集しました！\n\n【編集前】\n{before_str}\n\n【編集後】\n{after_str}"
-            if "points" in found:
-                msg += f"\n⭐ {found['points']}pt"
-            asyncio.run_coroutine_threadsafe(
-                target_channel.send(msg), bot.loop
-            ).result(timeout=10)
-    return jsonify({"ok": True, "message": f"編集しました！\n{before_str} → {after_str}"})
-
-@app.route("/delete_schedule", methods=["POST"])
-def delete_schedule():
-    data     = request.json
-    guild_id = data.get("guild_id")
-    target   = data.get("target")
-    if not all([guild_id, target]):
-        return jsonify({"ok": False, "error": "missing fields"})
-    guild_id  = int(guild_id)
-    guild     = bot.get_guild(guild_id)
-    plans     = load_plans(guild_id)
-    deleted   = None
-    new_plans = []
-    for p in plans:
-        label = f"{p['date']}/{p['subject']}{p['content']}"
-        if label == target:
-            deleted = p
-        else:
-            new_plans.append(p)
-    if not deleted:
-        return jsonify({"ok": False, "error": "plan not found"})
-    try:
-        save_plans(guild_id, new_plans)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    write_log(guild_id, "delete", detail=f"{deleted['date']} / {deleted['subject']} / {deleted['content']}")
-    if guild:
-        target_channel = get_subject_channel_by_name(guild, deleted["subject"])
-        if target_channel:
-            asyncio.run_coroutine_threadsafe(
-                target_channel.send(f"削除しました！\n{target}"), bot.loop
-            ).result(timeout=10)
-    return jsonify({"ok": True, "message": "削除しました！"})
-
-@app.route("/list_logs", methods=["GET"])
-def list_logs():
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    logs, _ = github_get(f"logs_{guild_id}.json")
-    logs = sorted(logs or [], key=lambda l: l["time"], reverse=True)
-    return jsonify({"ok": True, "logs": logs})
-
-# ================================
-#  Flask API — 時間割
-# ================================
-def load_timetable(guild_id: int):
-    data, _ = github_get(f"timetable_{guild_id}.json")
-    return data or {}
-
-def save_timetable(guild_id: int, data: dict):
-    _, sha = github_get(f"timetable_{guild_id}.json")
-    github_put(f"timetable_{guild_id}.json", data, sha)
-
-@app.route("/list_timetable", methods=["GET"])
-def list_timetable():
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    data = load_timetable(int(guild_id))
-    overrides = [{"key": k, **v} for k, v in data.items()]
-    return jsonify({"ok": True, "overrides": overrides})
-
-@app.route("/update_timetable", methods=["POST"])
-def update_timetable():
-    data     = request.json
-    guild_id = data.get("guild_id")
-    key      = data.get("key")
-    if not all([guild_id, key]):
-        return jsonify({"ok": False, "error": "missing fields"})
-
-    err = reject_if_bug_chars({"科目": data.get("subject"), "備考": data.get("note")})
-    if err:
-        return err
-
-    tt = load_timetable(int(guild_id))
-    tt[key] = {
-        "key":     key,
-        "type":    "change",
-        "date":    data.get("date"),
-        "period":  data.get("period"),
-        "subject": data.get("subject"),
-        "items":   data.get("items", []),
-        "note":    data.get("note", ""),
+    d.folderId = targetId;
+    saveDecks(decks);
+    renderDeckListUI();
+    // ★ 公開済みデッキはサーバー側（みんなの共有フォルダ情報）にも反映する
+    if (d.filename) {
+      const ok = await queueSyncDeckToServer(d);
+      if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
     }
-    try:
-        save_timetable(int(guild_id), tt)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    write_log(int(guild_id), "edit", detail=f"時間割変更: {key} → {data.get('subject')}")
-    return jsonify({"ok": True})
+    return;
+  }
 
-@app.route("/set_holiday", methods=["POST"])
-def set_holiday():
-    data     = request.json
-    guild_id = data.get("guild_id")
-    key      = data.get("key")
-    if not all([guild_id, key]):
-        return jsonify({"ok": False, "error": "missing fields"})
-    tt = load_timetable(int(guild_id))
-    tt[key] = {
-        "key":    key,
-        "type":   "holiday",
-        "date":   data.get("date"),
-        "reason": data.get("reason", "休校"),
-        "note":   data.get("note", ""),
-    }
-    try:
-        save_timetable(int(guild_id), tt)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    write_log(int(guild_id), "edit", detail=f"休校設定: {data.get('date')} {data.get('reason')}")
-    return jsonify({"ok": True})
+  // フォルダの移動（みんなで共有）
+  const f = folders.find(x => x.id === movePickerTargetId);
+  if (!f || !canMoveFolderTo(f.id, targetId)) return;
+  try {
+    const res = await fetch(`${API_BASE}save_folder`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetId }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    await fetchAndMergeFolders();
+    renderDeckListUI();
+  } catch(e) {
+    await showCmAlert({ title: 'フォルダの移動に失敗しました', desc: e.message });
+  }
+}
 
-@app.route("/set_period_holiday", methods=["POST"])
-def set_period_holiday():
-    """
-    1コマだけの休み（period_holiday）。
-    ★ これまでこのエンドポイントが未実装だったため、フロント側
-       （Timetable.js）が保存に失敗してもエラーを握りつぶしてしまい、
-       localStorageにしか残らず「他の端末では反映されない／たまに消える」
-       原因になっていた。/set_holiday と同じ要領でサーバー側
-       （timetable_{guild_id}.json）に保存する。
-    """
-    data     = request.json
-    guild_id = data.get("guild_id")
-    key      = data.get("key")
-    period   = data.get("period")
-    if not all([guild_id, key]) or period is None:
-        return jsonify({"ok": False, "error": "missing fields"})
-    tt = load_timetable(int(guild_id))
-    tt[key] = {
-        "key":    key,
-        "type":   "period_holiday",
-        "date":   data.get("date"),
-        "period": period,
-        "reason": data.get("reason", "休み"),
-        "note":   data.get("note", ""),
-    }
-    try:
-        save_timetable(int(guild_id), tt)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    write_log(int(guild_id), "edit", detail=f"1コマ休み設定: {data.get('date')} {period}限 {data.get('reason')}")
-    return jsonify({"ok": True})
-
-@app.route("/delete_timetable", methods=["POST"])
-def delete_timetable():
-    data     = request.json
-    guild_id = data.get("guild_id")
-    key      = data.get("key")
-    if not all([guild_id, key]):
-        return jsonify({"ok": False, "error": "missing fields"})
-    tt = load_timetable(int(guild_id))
-    if key in tt:
-        del tt[key]
-        try:
-            save_timetable(int(guild_id), tt)
-        except GitHubWriteError as e:
-            return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-        write_log(int(guild_id), "edit", detail=f"時間割変更削除: {key}")
-    return jsonify({"ok": True})
-
-# ================================
-#  Flask API — 学期ごとの基本時間割（前期・後期など）
-# ================================
-#  ・「前期」「後期」のように、期間ごとにまるごと違う基本時間割（曜日×時限の
-#    科目・持ち物）を切り替えられるようにするための機能。
-#  ・1件 = { id, name, start_date, end_date, timetable: {mon:[...],...} }
-#  ・start_date〜end_date に対象日が入っていれば、その学期の時間割を
-#    ベースとして使う（フロント側 Timetable.js の getTimetableForDate 参照）。
-#  ・既存の change / holiday / period_holiday オーバーライドは、この学期の
-#    ベース時間割の上にそのまま重ねて適用されるので、前期のデータをいじらずに
-#    後期分を新規に追加・編集できる。
-def load_terms(guild_id: int):
-    data, _ = github_get(f"terms_{guild_id}.json")
-    return data or {}
-
-def save_terms(guild_id: int, terms: dict):
-    _, sha = github_get(f"terms_{guild_id}.json")
-    github_put(f"terms_{guild_id}.json", terms, sha)
-
-@app.route("/list_terms", methods=["GET"])
-def list_terms():
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    terms = load_terms(int(guild_id))
-    return jsonify({"ok": True, "terms": list(terms.values())})
-
-@app.route("/save_term", methods=["POST"])
-def save_term():
-    data       = request.json or {}
-    guild_id   = data.get("guild_id")
-    name       = data.get("name")
-    start_date = data.get("start_date")
-    end_date   = data.get("end_date")
-    timetable  = data.get("timetable")
-    if not all([guild_id, name, start_date, end_date]) or not isinstance(timetable, dict):
-        return jsonify({"ok": False, "error": "missing fields"})
-    if end_date < start_date:
-        return jsonify({"ok": False, "error": "終了日は開始日以降にしてください"})
-
-    err = reject_if_bug_chars({"学期名": name})
-    if err:
-        return err
-
-    terms = load_terms(int(guild_id))
-    term_id = data.get("id") or f"term_{time.time_ns()}"
-
-    # ★ 期間の重複チェック（自分自身は除く）。前期・後期が重なると
-    #   どちらの時間割を使うべきか曖昧になるため保存前に弾く。
-    for tid, t in terms.items():
-        if tid == term_id:
-            continue
-        if start_date <= t.get("end_date", "") and t.get("start_date", "") <= end_date:
-            return jsonify({"ok": False, "error": f"「{t.get('name')}」（{t.get('start_date')}〜{t.get('end_date')}）と期間が重なっています"})
-
-    terms[term_id] = {
-        "id":         term_id,
-        "name":       name,
-        "start_date": start_date,
-        "end_date":   end_date,
-        "timetable":  timetable,
-    }
-    try:
-        save_terms(int(guild_id), terms)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    write_log(int(guild_id), "edit", detail=f"学期時間割保存: {name}（{start_date}〜{end_date}）")
-    return jsonify({"ok": True, "id": term_id})
-
-@app.route("/delete_term", methods=["POST"])
-def delete_term():
-    data     = request.json or {}
-    guild_id = data.get("guild_id")
-    term_id  = data.get("id")
-    if not all([guild_id, term_id]):
-        return jsonify({"ok": False, "error": "missing fields"})
-    terms = load_terms(int(guild_id))
-    if term_id in terms:
-        name = terms[term_id].get("name", term_id)
-        del terms[term_id]
-        try:
-            save_terms(int(guild_id), terms)
-        except GitHubWriteError as e:
-            return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-        write_log(int(guild_id), "edit", detail=f"学期時間割削除: {name}")
-    return jsonify({"ok": True})
-
-# ================================
-#  Flask API — ユーザー認証
-# ================================
-@app.route("/get_users", methods=["GET"])
-def get_users():
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    try:
-        users = load_users(int(guild_id))
-        return jsonify({"ok": True, "users": users})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-@app.route("/add_user", methods=["POST"])
-def add_user():
-    data     = request.json
-    guild_id = data.get("guild_id")
-    user_id  = data.get("id", "").strip().upper()
-    nickname = data.get("nickname", "").strip()
-    created  = data.get("created_at") or datetime.now(JST).strftime("%Y-%m-%d")
-    if not all([guild_id, user_id, nickname]):
-        return jsonify({"ok": False, "error": "missing fields"})
-    if len(nickname) > 16:
-        return jsonify({"ok": False, "error": "nickname too long"})
-    err = reject_if_bug_chars({"ニックネーム": nickname})
-    if err:
-        return err
-    try:
-        users = load_users(int(guild_id))
-        if any(u["id"] == user_id for u in users):
-            return jsonify({"ok": False, "error": "already_exists"})
-        users.append({"id": user_id, "nickname": nickname, "created_at": created})
-        save_users(int(guild_id), users)
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-@app.route("/notify_dm", methods=["POST"])
-def notify_dm():
-    """
-    body: { guild_id, student_id, title(省略可), message }
-    ★ 生徒がDiscord上で /id連携 を済ませていれば、botから本人にDMを送る。
-      ブラウザのタブを閉じていても、他のサイトを見ていても、
-      Discordアプリ／PC版の通知として届く
-      （Discord側の通知設定・DM許可がオフの場合は届かない）。
-    """
-    data       = request.json or {}
-    guild_id   = data.get("guild_id")
-    student_id = data.get("student_id")
-    title      = data.get("title") or "StudyLog"
-    message    = data.get("message")
-
-    if not all([guild_id, student_id, message]):
-        return jsonify({"ok": False, "error": "missing fields"})
-
-    try:
-        links = load_discord_links(int(guild_id))
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-    discord_user_id = links.get(str(student_id).strip().upper())
-    if not discord_user_id:
-        # まだ /id連携 していない生徒。呼び出し側（フロント）で
-        # ブラウザ通知にフォールバックできるよう、専用のエラーコードを返す
-        return jsonify({"ok": False, "error": "not_linked"})
-
-    async def _send_dm():
-        user = bot.get_user(int(discord_user_id))
-        if user is None:
-            user = await bot.fetch_user(int(discord_user_id))
-        await user.send(f"**{title}**\n{message}")
-
-    try:
-        future = asyncio.run_coroutine_threadsafe(_send_dm(), bot.loop)
-        future.result(timeout=10)
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"dm_failed: {e}"})
-
-# ================================
-#  Flask API — 勉強ログ
-# ================================
-@app.route("/list_study_logs", methods=["GET"])
-def list_study_logs():
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    logs = load_study_logs(int(guild_id))
-    return jsonify({"ok": True, "logs": logs})
-
-# ================================
-#  Flask API — ポイント
-# ================================
-@app.route("/get_points", methods=["GET"])
-def get_points():
-    """全ユーザーのポイント合計を返す"""
-    guild_id = request.args.get("guild_id")
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing guild_id"})
-    pts = load_points(int(guild_id))
-    return jsonify({"ok": True, "points": pts})
-
-# ================================
-#  Flask API — 課題達成
-# ================================
-@app.route("/get_completed_tasks", methods=["GET"])
-def get_completed_tasks():
-    """
-    student_id を指定: そのユーザーの達成済み課題リストを返す（達成日・ポイント・ニックネーム付き）
-    student_id を省略: 全ユーザー分を { student_id: [...] } の形でまとめて返す
-                        （週間ランキングで全員の課題達成ポイントを集計するために使用）
-    """
-    guild_id   = request.args.get("guild_id")
-    student_id = request.args.get("student_id")  # 省略可
-    if not guild_id:
-        return jsonify({"ok": False, "error": "missing params"})
-
-    tasks = load_completed_tasks(int(guild_id))
-
-    if student_id:
-        raw = tasks.get(student_id, [])
-        normalized = [_normalize_task_entry(e) for e in raw]
-        return jsonify({"ok": True, "done": normalized})
-
-    # student_id 省略 → 全員分をまとめて返す
-    all_normalized = {
-        sid: [_normalize_task_entry(e) for e in raw]
-        for sid, raw in tasks.items()
-    }
-    return jsonify({"ok": True, "done": all_normalized})
-
-
-@app.route("/complete_task", methods=["POST"])
-def complete_task():
-    data       = request.json or {}
-    guild_id   = int(data.get("guild_id"))
-    student_id = data.get("student_id")
-    task_id    = data.get("task_id")
-    nickname   = data.get("nickname")  # ★ ニックネームを受け取る
-
-    if not student_id or not task_id:
-        return jsonify({"ok": False, "error": "missing fields"})
-
-    err = reject_if_bug_chars({"ニックネーム": nickname})
-    if err:
-        return err
-
-    # --- ★ points はクライアントから受け取らず、サーバー側の予定データから引き直す ---
-    #     （クライアントが任意の points を送っても無視される）
-    points = find_task_points(guild_id, task_id)
-    if points is None:
-        return jsonify({"ok": False, "error": "task not found"})
-
-    # --- 達成済み課題保存（達成日・ポイント・ニックネーム付き） ---
-    done = load_completed_tasks(guild_id)
-    if student_id not in done:
-        done[student_id] = []
-
-    # 既存エントリを正規化したうえで重複チェック
-    normalized = [_normalize_task_entry(e) for e in done[student_id]]
-    existing_ids = [e["id"] for e in normalized]
-
-    if task_id not in existing_ids:
-        normalized.append({
-            "id":       task_id,
-            "date":     datetime.now(JST).strftime("%Y-%m-%d"),
-            "points":   points,
-            "nickname": nickname,  # ★ ニックネームを保存
-        })
-
-    done[student_id] = normalized
-    try:
-        save_completed_tasks(guild_id, done)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-
-    # --- ポイント加算 ---
-    pts = load_points(guild_id)
-    pts[student_id] = pts.get(student_id, 0) + points
-    try:
-        save_points(guild_id, pts)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-
-    return jsonify({"ok": True, "total": pts[student_id]})
-
-
-@app.route("/uncomplete_task", methods=["POST"])
-def uncomplete_task():
-    """
-    /complete_task の逆操作。
-    指定 student_id の達成済みリストから task_id を取り除き、
-    そのタスクに付与されていたポイント分を累計ポイントから減算する。
-    （ポイントが0未満にならないようガードする）
-    """
-    data       = request.json
-    guild_id   = int(data.get("guild_id"))
-    student_id = data.get("student_id")
-    task_id    = data.get("task_id")
-
-    if not student_id or not task_id:
-        return jsonify({"ok": False, "error": "missing fields"})
-
-    done = load_completed_tasks(guild_id)
-    if student_id not in done:
-        return jsonify({"ok": False, "error": "not completed"})
-
-    normalized = [_normalize_task_entry(e) for e in done[student_id]]
-    target = next((e for e in normalized if e["id"] == task_id), None)
-    if target is None:
-        return jsonify({"ok": False, "error": "task not found in completed list"})
-
-    normalized = [e for e in normalized if e["id"] != task_id]
-    done[student_id] = normalized
-    try:
-        save_completed_tasks(guild_id, done)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-
-    # --- ポイント減算（0未満にはしない） ---
-    removed_points = target.get("points") or 0
-    pts = load_points(guild_id)
-    pts[student_id] = max(0, pts.get(student_id, 0) - removed_points)
-    try:
-        save_points(guild_id, pts)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-
-    return jsonify({"ok": True, "total": pts[student_id]})
-
-# ================================
-#  Flask API — 単語カード
-# ================================
-CARDS_DIR = "words"
-CARDS_INDEX_FILE = "cards_index.json"
-# ★ 追加：CardMakerのフロントエンドURL。Discord通知に「該当デッキへ飛ぶリンク」を
-#   付けるために使う（Cardmaker.js 側で ?deck=<filename> を見て自動で移動する）。
-CARDMAKER_URL = "https://1istudyweb.pages.dev/Cardmaker.html"
-
-def list_card_files():
-    url     = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CARDS_DIR}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    r = requests.get(url, headers=headers, timeout=15)
-    if r.status_code == 404:
-        return []
-    r.raise_for_status()
-    files = r.json()
-    return [f for f in files if isinstance(f, dict) and f["name"].endswith(".json")]
-
-def get_card_file(filename):
-    data, sha = github_get(f"{CARDS_DIR}/{filename}")
-    return data, sha
-
-def put_card_file(filename, content_obj, sha=None):
-    github_put(f"{CARDS_DIR}/{filename}", content_obj, sha)
-
-def generate_card_filename():
-    import random, string
-    now   = datetime.now(JST)
-    date  = now.strftime("%Y%m%d")
-    time_ = now.strftime("%H%M")
-    rand  = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    return f"set_{date}_{time_}_{rand}.json"
-
-def _meta_from_card_data(filename, data):
-    cards = data.get("cards", [])
+// ★ list_cards（軽量メタ情報のみ）を取得して decks にマージする共通処理（画面描画はしない）
+//   ─────────────────────────────────────────────
+//   以前はここで全デッキの cards 本体（画像含む）を丸ごと取得していたため、
+//   デッキ数や画像が増えるほど一覧表示が遅くなっていた。
+//   現在の list_cards はカード本体を含まない軽量なメタ情報（name/count/subject/
+//   folder_id/published_by/incomplete など）だけを返すので、一覧表示はすぐに終わる。
+//   カード本体は、デッキを実際に開く（プレイ／編集）ときに
+//   ensureDeckCardsLoaded() で個別に取得する。
+async function fetchAndMergeDecks() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  // ★ cache: 'no-store' を追加：これが無いと、Chromeなどのブラウザが
+  //   list_cards のレスポンスをキャッシュしてしまい、新規作成・公開した
+  //   カードが自分の端末の一覧にすぐ反映されないことがあるため。
+  const res  = await fetch(`${API_BASE}list_cards`, { signal: controller.signal, cache: 'no-store' });
+  clearTimeout(timer);
+  const txt = await res.text();
+  const data = JSON.parse(txt);
+  if (!data.ok) return { changed: false, txt };
+  const fetched = data.sets.map(s => {
+    const existing = decks.find(d => d.filename === s.filename);
+    // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
+    //   未読み込みなら空配列のままにし、開いたときに取得する。
+    const keepLoadedCards = existing && existing.cardsLoaded;
     return {
-        "filename": filename,
-        "name":     data.get("name", filename),
-        "count":    len(cards),
-        "subject":  data.get("subject"),
-        "folder_id": data.get("folder_id"),
-        "has_folder_id": "folder_id" in data,
-        "published_by": (data.get("published_by") or {}).get("nickname"),
-        "incomplete": bool(data.get("incomplete", False)),
+      id: existing ? existing.id : genId(),
+      name: s.name,
+      cards: keepLoadedCards ? existing.cards : [],
+      cardsLoaded: !!keepLoadedCards,
+      filename: s.filename,
+      count: s.count,
+      subject: s.subject || (existing && existing.subject) || null,
+      published_by: s.published_by || (existing && existing.published_by) || null,
+      // ★ 未完成フラグはサーバー側の索引（list_cards）にも保存されるようになったため、
+      //   他人の端末でも同じ表示になるようサーバー値を信頼する。
+      incomplete: !!s.incomplete,
+      // ★ 追加：「作成中」（＝一度も公開して保存を経ていない）かどうかは、サーバー側には
+      //   保存されていないローカル限定の状態なので、この端末に記録が残っていればそれを
+      //   引き継ぐ。記録が無い（＝他人の端末で初めて見るデッキ）場合は、サーバー登録直後の
+      //   カード0枚のまま（旧来の判定基準）だけを「作成中」とみなし、それ以外は
+      //   既に公開済みとして扱う（誤って永久に「未完成」表示から動けなくなるのを防ぐため）。
+      notYetPublished: existing && typeof existing.notYetPublished === 'boolean'
+        ? existing.notYetPublished
+        : (s.count === 0 && !!s.incomplete),
+      // ★ フォルダ所属はサーバー側が正（みんなで共有）。
+      //   has_folder_id が true の場合は、folder_id が null（＝ルート）であっても
+      //   それをそのまま信頼する（＝ルートへ移動されたことを正しく反映する）。
+      //   has_folder_id が false の場合だけ、まだこの機能に未対応の古いデータなので
+      //   ローカルに残っている値をフォールバックとして使う。
+      folderId: s.has_folder_id
+        ? (s.folder_id || null)
+        : (existing ? (existing.folderId || null) : null),
+    };
+  });
+  const publishedNames = new Set(fetched.map(f => f.name));
+  // ★ ローカル限定デッキ（未公開）は常にカード本体を持っているので cardsLoaded=true 扱い
+  const localOnly = decks.filter(d => !d.filename && !publishedNames.has(d.name))
+    .map(d => ({ ...d, cardsLoaded: true }));
+  decks = [...localOnly, ...fetched];
+  saveDecks(decks);
+  return { changed: true, txt };
+}
+
+// ★ 公開済みデッキのカード本体（問題・解答・画像など）を、必要になった時点で取得する。
+//   ・ローカル限定（未公開）デッキは常にカードを保持しているので何もしない。
+//   ・既に読み込み済み（cardsLoaded=true）でも、force=true が指定された場合は
+//     必ずサーバーから最新を取り直す（他の人が後から編集・移動している可能性があるため）。
+//   ・取得中は loadingDeckIds に id を入れて一覧を再描画し、「読み込み中…」を表示する。
+let loadingDeckIds = new Set();
+// ★ 戻り値を { ok: true } | { ok: false, reason: 'network' | 'mismatch' | 'not_found', ... } に変更。
+//   単純な true/false ではなく「なぜ失敗したか」を区別できるようにし、
+//   呼び出し側で「再試行」「強制的に空のまま開く」などの回復手段を提示できるようにする。
+// ★ 修正：デッキを開く際のタイムアウトを防ぐための調整。
+//   ・画像を多く含む大きなデッキや、通信環境が悪い状況では、以前の8秒という
+//     タイムアウト時間だと正常に取得できているのに間に合わず「読み込みに
+//     失敗しました」と表示されてしまうことがあった。
+//   ・タイムアウト時間を余裕を持たせつつ、さらに一度だけ自動で（ユーザーに
+//     気づかれないよう静かに）再試行してから失敗として扱うようにすることで、
+//     一時的な通信の遅延・瞬断だけでは失敗扱いにならないようにする。
+const DECK_LOAD_TIMEOUT_MS = 20000; // 8秒 → 20秒に延長
+async function fetchCardSetOnce(filename) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DECK_LOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(filename)}`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    return data;
+  } catch (e) {
+    clearTimeout(timer);
+    throw e;
+  }
+}
+
+async function ensureDeckCardsLoaded(deckId, force = false) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return { ok: false, reason: 'not_found' };
+  if (!deck.filename) { deck.cardsLoaded = true; return { ok: true }; }
+  if (deck.cardsLoaded && !force) return { ok: true };
+
+  // ★ 直前まで一覧（list_cardsのメタ情報）で分かっていた問題数を控えておく。
+  //   これと比べて、実際に取得できたカード数が不自然に少なければ
+  //   「サーバーはok:trueを返したが、実は異常な状態だった」とみなして
+  //   失敗扱いにする（＝空データでdeck.cardsを上書きしない）ための安全策。
+  //   ★ 修正：deck.count（サーバー由来のメタ情報）だけでなく、この端末に
+  //     既に読み込み済みのカード実数（deck.cards.length）も比較対象に含める。
+  //     何らかの理由でサーバーへの同期がまだ済んでいない状態でも、
+  //     「今ローカルにある枚数より減っている」場合は同じく異常とみなし、
+  //     せっかく手元にあるカードを空／少ない件数で上書きしないようにする。
+  const knownCount = deck.cardsLoaded ? deck.cards.length : 0;
+  const metaCount = typeof deck.count === 'number' ? deck.count : 0;
+  const expectedCount = Math.max(knownCount, metaCount) || null;
+
+  loadingDeckIds.add(deckId);
+  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+
+  try {
+    // ★ 修正：まず1回試し、タイムアウトも含むネットワークエラーの場合だけ、
+    //   間を置いて（500ms）もう一度だけ静かに自動再試行する。
+    //   これにより、一時的な遅延・瞬断だけでユーザーに失敗を見せてしまうことを防ぐ。
+    let data;
+    try {
+      data = await fetchCardSetOnce(deck.filename);
+    } catch (firstErr) {
+      await new Promise(r => setTimeout(r, 500));
+      data = await fetchCardSetOnce(deck.filename);
+    }
+    const fetchedCards = data.cards || [];
+
+    // ★ 安全策：サーバーが ok:true を返していても、直前まで分かっていた問題数
+    //   （または、この端末に既に読み込み済みだった実際の枚数）より
+    //   取得できたカード数が少ない場合は、通信は成功していても内容としては
+    //   信用できないので「失敗」として扱う。
+    //   これにより、編集画面が空／一部欠けた状態で開いてしまい、そのまま公開して
+    //   サーバー側（または手元）の本物のカードを少ないデータで上書きしてしまう事故を防ぐ。
+    if (expectedCount !== null && expectedCount > 0 && fetchedCards.length < expectedCount) {
+      console.warn(`[cardmaker] get_card_set が${fetchedCards.length}件しか返しませんでしたが、${expectedCount}件のはずです。 filename=${deck.filename}`);
+      return { ok: false, reason: 'mismatch', expectedCount, fetchedCount: fetchedCards.length };
     }
 
-def load_cards_index():
-    """索引ファイルを取得する。存在しない場合は None を返す（呼び出し側で再構築する）。"""
-    data, sha = github_get(CARDS_INDEX_FILE)
-    return data, sha
+    deck.cards = fetchedCards;
+    deck.cardsLoaded = true;
+    deck.count = deck.cards.length;
+    // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
+    if ('incomplete' in data) deck.incomplete = !!data.incomplete;
+    saveDecks(decks);
+    return { ok: true };
+  } catch(e) {
+    return { ok: false, reason: 'network' };
+  } finally {
+    loadingDeckIds.delete(deckId);
+    if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  }
+}
 
-def save_cards_index(index_list, sha=None):
-    if sha is None:
-        _, sha = github_get(CARDS_INDEX_FILE)
-    github_put(CARDS_INDEX_FILE, index_list, sha)
+// ★ ensureDeckCardsLoaded を呼び出した上で、失敗した場合に
+//   「行き止まりのアラートで終わらせず」ユーザーに回復手段を提示する共通処理。
+//   ─────────────────────────────────────────────
+//   ・reason: 'mismatch'（件数不一致）の場合は、まず必ず最新のメタ情報
+//     （list_cards）を取り直してから再判定する。ローカルに残っている古い
+//     件数のせいで「本当は0件が正しい」デッキまで誤って詰んでしまうのを防ぐため。
+//   ・それでも不一致が解消しない場合は「もう一度試す」「空のまま開く（上級者向け）」
+//     の2択を提示し、ユーザーの意思で先に進めるようにする（＝二度と開けなくなる、
+//     という事態を避ける）。
+//   ・reason: 'network' の場合は、単純に「もう一度試す」か「やめる」かを聞く。
+async function loadDeckCardsWithRecovery(deckId) {
+  while (true) {
+    const result = await ensureDeckCardsLoaded(deckId, true);
+    if (result.ok) return true;
 
-def rebuild_cards_index():
-    """
-    索引ファイルが無い（初回・以前のデータ）場合に、wordsフォルダを
-    スキャンして索引を作り直す。これは初回だけ発生する重い処理。
-    """
-    files = list_card_files()
-    index = []
-    for f in files:
-        data, _ = github_get(f"{CARDS_DIR}/{f['name']}")
-        if data is None:
-            continue
-        index.append(_meta_from_card_data(f["name"], data))
-    try:
-        save_cards_index(index, sha=None)
-    except GitHubWriteError as e:
-        print(f"[WARN] cards_index の再構築保存に失敗しました: {e}")
-    return index
+    if (result.reason === 'mismatch') {
+      // ★ 判定前に最新のメタ情報を取り直す（ローカルの古いcountによる誤判定を防ぐ）
+      try { await fetchAndMergeDecks(); } catch(e) {}
+      const deck = decks.find(d => d.id === deckId);
+      if (!deck) return false;
 
-def upsert_cards_index_entry(filename, data):
-    """save_cards のたびに呼び出し、索引ファイル内の該当エントリだけを更新する。"""
-    index, sha = load_cards_index()
-    if index is None:
-        index = rebuild_cards_index()
-        index, sha = load_cards_index()
-    meta = _meta_from_card_data(filename, data)
-    found = False
-    for i, entry in enumerate(index):
-        if entry.get("filename") == filename:
-            index[i] = meta
-            found = True
-            break
-    if not found:
-        index.append(meta)
-    save_cards_index(index, sha)
+      // メタ情報を更新した結果、期待件数が0（＝本当に空が正解）になっていれば、
+      // ここで改めて通常読み込みすれば矛盾なく成功するはず
+      if (deck.count === 0) continue;
 
-def remove_cards_index_entry(filename):
-    """delete_cards のたびに呼び出し、索引ファイルから該当エントリを削除する。"""
-    index, sha = load_cards_index()
-    if index is None:
-        index = rebuild_cards_index()
-        index, sha = load_cards_index()
-    new_index = [e for e in index if e.get("filename") != filename]
-    if len(new_index) != len(index):
-        save_cards_index(new_index, sha)
-
-
-@app.route("/list_cards", methods=["GET"])
-def list_cards():
-    try:
-        index, _ = load_cards_index()
-        if index is None:
-            index = rebuild_cards_index()
-        return jsonify({"ok": True, "sets": index})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-@app.route("/get_card_set", methods=["GET"])
-def get_card_set():
-    filename = request.args.get("filename")
-    if not filename:
-        return jsonify({"ok": False, "error": "filename は必須です"})
-    try:
-        data, _ = get_card_file(filename)
-        if data is None:
-            return jsonify({"ok": False, "error": "ファイルが見つかりません"})
-        return jsonify({
-            "ok": True,
-            "filename": filename,
-            "name": data.get("name", filename),
-            "cards": data.get("cards", []),
-            "subject": data.get("subject"),
-            "folder_id": data.get("folder_id"),
-            "published_by": (data.get("published_by") or {}).get("nickname"),
-            # ★ カード本体を開いた際にも未完成フラグを返す
-            "incomplete": bool(data.get("incomplete", False)),
-        })
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-@app.route("/save_cards", methods=["POST"])
-def save_cards():
-    data     = request.json
-    name     = data.get("name")
-    cards    = data.get("cards")
-    filename = data.get("filename")
-    guild_id = data.get("guild_id")
-    subject  = data.get("subject")
-    folder_id = data.get("folder_id")
-    publisher_id       = data.get("publisher_id")
-    publisher_nickname = data.get("publisher_nickname") or "匿名"
-    silent   = data.get("silent", False)  # ★ 追加：trueなら通知しない
-    incomplete = bool(data.get("incomplete", False))  # ★ 追加：未完成フラグ（みんなに表示するため保存する）
-    # ★ 追加：フロント側（Cardmaker.js）が「これがこのデッキにとって初めての
-    #   『公開して保存』かどうか」を明示的に伝えてくるフラグ。
-    #   ・「作成中」として announceNewDeckToServer 経由で先にファイルだけ
-    #     登録済みのデッキは、実際に公開したタイミングでも filename が
-    #     既に存在するため、is_update（＝ファイルの有無）だけで判定すると
-    #     「更新されました」という誤った通知文言になってしまう。
-    #   ・first_publish が明示的に渡されていれば、通知文言の判定はそちらを優先する。
-    first_publish = data.get("first_publish")
-
-    if not name or not isinstance(cards, list):
-        return jsonify({"ok": False, "error": "name と cards は必須です"})
-
-    # --- ★ 制御文字・不可視文字・壊れた符号位置を弾く（デッキ名・各カードの本文） ---
-    check_fields = {"デッキ名": name, "公開者ニックネーム": publisher_nickname}
-    for i, c in enumerate(cards):
-        if not isinstance(c, dict):
-            continue
-        check_fields[f"カード{i+1}の問題文"] = c.get("question")
-        check_fields[f"カード{i+1}の解答"]   = c.get("answer")
-        check_fields[f"カード{i+1}の解説"]   = c.get("explanation")
-    err = reject_if_bug_chars(check_fields)
-    if err:
-        return err
-
-    is_update = bool(filename)
-    if not filename:
-        filename = generate_card_filename()
-
-    sha = None
-    if is_update:
-        _, sha = get_card_file(filename)
-
-    card_payload = {
-        "name": name,
-        "cards": cards,
-        "subject": subject,
-        "folder_id": folder_id,
-        "published_by": {
-            "id": publisher_id,
-            "nickname": publisher_nickname,
-        },
-        "incomplete": incomplete,  # ★ 未完成フラグを保存（他人の端末にも同じ表示をするため）
+      const choice = await showCmChoiceDialog({
+        title: '問題データの読み込みに不整合があります',
+        desc: `一覧では${result.expectedCount}問のはずですが、サーバーから0問しか取得できませんでした。\nこのまま開いて保存すると、サーバー側のデータが消える可能性があります。`,
+        choices: [
+          { icon: '🔄', label: 'もう一度試す', sub: 'まずはこちらをおすすめします', value: 'retry' },
+          { icon: '⚠️', label: '空のまま開く（上級者向け）', sub: '保存すると中身が消える可能性があります', value: 'force' },
+        ],
+        cancelLabel: 'やめる',
+      });
+      if (choice === 'retry') continue;
+      if (choice === 'force') {
+        const d = decks.find(x => x.id === deckId);
+        if (d) { d.cards = []; d.cardsLoaded = true; saveDecks(decks); }
+        return true;
+      }
+      return false; // やめる
     }
 
-    try:
-        put_card_file(filename, card_payload, sha)
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
+    // ネットワークエラー・その他の場合
+    const retry = await showCmConfirm({
+      title: '読み込みに失敗しました',
+      desc: '通信環境を確認してもう一度お試しください。',
+      okLabel: 'もう一度試す', cancelLabel: 'やめる',
+    });
+    if (!retry) return false;
+    // ループして再試行
+  }
+}
 
-    # ★ 索引ファイルも合わせて更新する（list_cardsを軽く保つため）
-    try:
-        upsert_cards_index_entry(filename, card_payload)
-    except GitHubWriteError as e:
-        # カード本体の保存自体は成功しているので、索引更新の失敗は警告に留める。
-        # 次回 list_cards アクセス時に再構築されるので実害は小さい。
-        print(f"[WARN] cards_index の更新に失敗しました: {e}")
+async function renderDeckList() {
+  decks = loadDecks();
+  folders = loadFoldersCache();
+  renderDeckListUI();
+  try {
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
+    renderDeckListUI();
+  } catch(e) {}
+}
 
-    # --- Discord通知（silentがtrueならスキップ） ---
-    if guild_id and not silent:
-        try:
-            guild_id_int = int(guild_id)
-            guild = bot.get_guild(guild_id_int)
-            if guild:
-                # ★ 修正：is_update（＝ファイルが既に存在するか）だけで「更新」と
-                #   判定すると、「作成中」として先に登録されていたデッキを
-                #   初めて公開したときも「更新されました」と表示されてしまっていた。
-                #   first_publish が明示的に true で渡されてきた場合は、
-                #   filenameの有無に関わらず「公開（新規）」として扱う。
-                is_actual_update = is_update and not bool(first_publish)
-                action = "更新" if is_actual_update else "公開"
-                # ★ 追加：通知から直接そのデッキの場所まで飛べるよう、CardMakerへの
-                #   リンクに ?deck=<filename> を付与する。Cardmaker.js 側がこのパラメータを
-                #   見て、該当デッキのあるフォルダまで自動的に移動しハイライト表示する。
-                # ★ 修正：プレーンテキストの「[デッキ名](url)」はDiscordの通常メッセージでは
-                #   マスクされたリンクとして描画されない（そのまま文字列として表示されてしまう）ため、
-                #   埋め込み（Embed）のdescriptionにマスクリンクとして書く形に変更した。
-                #   Embed内であれば [表示テキスト](url) がちゃんとクリック可能なリンクになる。
-                deck_url = f"{CARDMAKER_URL}?deck={filename}"
-                embed = discord.Embed(
-                    title=f"📇 単語カードが{action}されました",
-                    description=(
-                        f"[{name}]({deck_url})\n"
-                        f"{publisher_nickname}さんによって{action}（{len(cards)}問）"
-                    ),
-                    color=discord.Color.blue(),
-                )
+// ── デッキメニュー ─────────────────────
+function openDeckMenu(id) {
+  menuTargetId = id;
+  const deck = decks.find(d => d.id === id);
+  document.getElementById('menu-deck-name').textContent = deck.name;
+  document.getElementById('menu-unpublish-item').style.display = deck.filename ? '' : 'none';
+  openModal('modal-deck-menu');
+}
+async function menuEdit()   { closeModal('modal-deck-menu'); await openEditDeck(menuTargetId); }
+function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId); }
+function menuMove()   { closeModal('modal-deck-menu'); openMovePicker('deck', menuTargetId); }
 
-                target_channel = get_subject_channel_by_name(guild, subject) if subject else None
-                if not target_channel:
-                    config = load_config(guild_id_int)
-                    channel_id = config.get("notice_channel_id")   #自分で変更
-                    target_channel = bot.get_channel(channel_id) if channel_id else None
+async function menuUnpublish() {
+  closeModal('modal-deck-menu');
+  const deck = decks.find(d => d.id === menuTargetId);
+  if (!deck || !deck.filename) return;
+  const ok = await showCmConfirm({
+    title: '非公開に戻しますか？',
+    desc: `「${deck.name}」をGitHubから削除して非公開に戻します。`,
+    okLabel: '非公開に戻す', okStyle: 'danger',
+  });
+  if (!ok) return;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${API_BASE}delete_cards`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: deck.filename }), signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '削除失敗');
+    deck.filename = null; deck.count = undefined; deck.published_by = null; deck.incomplete = false;
+    deck.planPublish = false; // ★ 追加：明示的に非公開へ戻した場合は「作成中」ではなく「非公開」表示にする
+    deck.notYetPublished = true; // ★ 追加：再度公開する場合は改めて「公開して保存」を経る必要がある状態に戻す
+    saveDecks(decks); renderDeckListUI();
+    showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
+  } catch(e) {
+    await showCmAlert({ title: 'GitHubからの削除に失敗しました', desc: e.message });
+  }
+}
 
-                if target_channel:
-                    asyncio.run_coroutine_threadsafe(
-                        target_channel.send(embed=embed), bot.loop
-                    ).result(timeout=10)
-        except Exception as e:
-            print(f"[WARN] save_cards notify failed: {e}")
-
-    return jsonify({"ok": True, "filename": filename, "is_update": is_update})
-
-@app.route("/delete_cards", methods=["POST"])
-def delete_cards():
-    data     = request.json
-    filename = data.get("filename")
-    if not filename:
-        return jsonify({"ok": False, "error": "filename は必須です"})
-    url     = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CARDS_DIR}/{filename}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    r = requests.get(url, headers=headers, timeout=15)
-    if r.status_code == 404:
-        return jsonify({"ok": False, "error": "ファイルが見つかりません"})
-    sha = r.json().get("sha")
-    del_res = requests.delete(url, headers=headers, json={"message": f"delete {filename}", "sha": sha}, timeout=15)
-    if del_res.status_code not in (200, 201):
-        return jsonify({"ok": False, "error": f"github_delete_failed: {del_res.status_code} {del_res.text[:300]}"})
-
-    # ★ 索引ファイルからも削除する
-    try:
-        remove_cards_index_entry(filename)
-    except GitHubWriteError as e:
-        print(f"[WARN] cards_index からの削除に失敗しました: {e}")
-
-    # ★ 並び順（list_order.json）からも、このデッキのキーを取り除いておく
-    cleanup_list_order(remove_keys={f"deck:{filename}"})
-
-    return jsonify({"ok": True})
-
-# ================================
-#  Flask API — 作成中デッキ（公開予定だがまだ未公開のもの）をみんなで共有表示する
-# ================================
-#  ・カード名だけ入力して「作成」を押した時点で登録し、他の人の一覧にも
-#    「🟠 作成中（〇〇さん）」として表示できるようにする。
-#  ・カード本体（問題・解答）はここには一切含めない（軽量なメタ情報のみ）。
-#  ・実際に公開（save_cards）されたら、対応するエントリはここから取り除く。
-#  ・登録から一定期間（IN_PROGRESS_STALE_DAYS）経っても公開されないものは、
-#    作成を放棄したものとみなして list_in_progress を返す際に自動的に間引く。
-IN_PROGRESS_FILE = "in_progress_decks.json"
-IN_PROGRESS_STALE_DAYS = 14
-
-def load_in_progress():
-    data, sha = github_get(IN_PROGRESS_FILE)
-    return (data or []), sha
-
-def save_in_progress(items, sha=None):
-    if sha is None:
-        _, sha = github_get(IN_PROGRESS_FILE)
-    github_put(IN_PROGRESS_FILE, items, sha)
-
-def _prune_stale_in_progress(items):
-    """登録から IN_PROGRESS_STALE_DAYS 日以上経過したエントリを取り除いた新しいリストを返す。
-    （壊れた/古い形式の created_at は安全側に倒して除外しない）"""
-    now_jst = datetime.now(JST)
-    kept = []
-    for it in items:
-        created_at = it.get("created_at")
-        try:
-            created_dt = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=JST)
-            if (now_jst - created_dt).days > IN_PROGRESS_STALE_DAYS:
-                continue
-        except Exception:
-            pass
-        kept.append(it)
-    return kept
-
-@app.route("/list_in_progress", methods=["GET"])
-def list_in_progress():
-    try:
-        items, sha = load_in_progress()
-        pruned = _prune_stale_in_progress(items)
-        if len(pruned) != len(items):
-            try:
-                save_in_progress(pruned, sha)
-            except GitHubWriteError as e:
-                print(f"[WARN] in_progress の自動間引き保存に失敗しました: {e}")
-        return jsonify({"ok": True, "items": pruned})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-@app.route("/register_in_progress", methods=["POST"])
-def register_in_progress():
-    """
-    body: { id, name, subject, folder_id, creator_id, creator_nickname }
-    ・id はフロント側で生成しているデッキのローカルID（他人と衝突しない前提）。
-    ・同じ id で既にエントリがある場合は上書きする（念のため）。
-    """
-    data = request.json or {}
-    draft_id = data.get("id")
-    name     = data.get("name")
-    if not draft_id or not name:
-        return jsonify({"ok": False, "error": "id と name は必須です"})
-
-    creator_nickname = data.get("creator_nickname") or "匿名"
-    err = reject_if_bug_chars({
-        "デッキ名": name,
-        "科目": data.get("subject"),
-        "作成者ニックネーム": creator_nickname,
-    })
-    if err:
-        return err
-
-    entry = {
-        "id": draft_id,
-        "name": name,
-        "subject": data.get("subject"),
-        "folder_id": data.get("folder_id"),
-        "creator_id": data.get("creator_id"),
-        "creator_nickname": creator_nickname,
-        "created_at": datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
+async function menuDelete() {
+  closeModal('modal-deck-menu');
+  const okDelete = await showCmConfirm({
+    title: 'このデッキを削除しますか？', desc: 'この操作は取り消せません。',
+    okLabel: '削除する', okStyle: 'danger',
+  });
+  if (!okDelete) return;
+  const deck = decks.find(d => d.id === menuTargetId);
+  if (deck && deck.filename) {
+    try {
+      await fetch(`${API_BASE}delete_cards`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: deck.filename }),
+      });
+    } catch(e) {
+      const localOnly = await showCmConfirm({
+        title: 'GitHubからの削除に失敗しました',
+        desc: 'ローカルからだけ削除しますか？',
+        okLabel: 'ローカルから削除', okStyle: 'danger',
+      });
+      if (!localOnly) return;
     }
-    try:
-        items, sha = load_in_progress()
-        items = [it for it in items if it.get("id") != draft_id]
-        items.append(entry)
-        save_in_progress(items, sha)
-        return jsonify({"ok": True})
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+  }
+  decks = decks.filter(d => d.id !== menuTargetId);
+  saveDecks(decks); renderDeckList();
+}
 
-@app.route("/update_in_progress", methods=["POST"])
-def update_in_progress():
-    """
-    body: { id, name?, subject?, folder_id? }
-    作成中デッキの名前変更・フォルダ移動をみんなの表示にも反映する。
-    該当エントリが無ければ（既に公開済み・削除済みなど）何もせず ok:true を返す。
-    """
-    data     = request.json or {}
-    draft_id = data.get("id")
-    if not draft_id:
-        return jsonify({"ok": False, "error": "id は必須です"})
-    try:
-        items, sha = load_in_progress()
-        found = False
-        for it in items:
-            if it.get("id") == draft_id:
-                if "name" in data:      it["name"]      = data["name"]
-                if "subject" in data:   it["subject"]   = data["subject"]
-                if "folder_id" in data: it["folder_id"] = data["folder_id"]
-                found = True
-                break
-        if found:
-            save_in_progress(items, sha)
-        return jsonify({"ok": True, "found": found})
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+// ── 新規作成 ──────────────────────────
+function openNewSet() {
+  document.getElementById('new-set-name').value = '';
+  document.getElementById('new-plan-publish').checked = true; // ★ 追加：毎回デフォルトで「公開予定」に戻す
+  showScreen('new');
+  loadSubjects();
+  setTimeout(() => document.getElementById('new-set-name').focus(), 200);
+}
 
-@app.route("/remove_in_progress", methods=["POST"])
-def remove_in_progress():
-    """body: { id } — 公開された・削除された・非公開のまま維持することにした等で不要になったエントリを消す。"""
-    data     = request.json or {}
-    draft_id = data.get("id")
-    if not draft_id:
-        return jsonify({"ok": False, "error": "id は必須です"})
-    try:
-        items, sha = load_in_progress()
-        new_items = [it for it in items if it.get("id") != draft_id]
-        if len(new_items) != len(items):
-            save_in_progress(new_items, sha)
-        return jsonify({"ok": True})
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-# ================================================================
-#  
-# ================================================================
+async function loadSubjects() {
+  const sel = document.getElementById('new-subject');
+  sel.innerHTML = '<option value="">読み込み中…</option>';
+  try {
+    // ★ cache: 'no-store' を追加：科目（チャンネル）一覧が古いまま
+    //   表示され続けることを防ぐため。
+    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok || !data.channels.length) throw new Error();
+    sel.innerHTML = '<option value="">科目を選択（任意）</option>' +
+      data.channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  } catch(e) {
+    sel.innerHTML = '<option value="">（科目を取得できませんでした）</option>';
+  }
+}
 
-NOTICES_DIR = "notices"
-NOTICES_META_FILE = "notices_meta.json"
-NOTICE_ALLOWED_EXT = (".md", ".txt")
+async function startEdit() {
+  const subject = document.getElementById('new-subject').value;
+  const input   = document.getElementById('new-set-name').value.trim();
+  if (!input) { shake('new-set-name'); return; }
+  if (await warnIfBugChars(input, 'new-set-name')) return;
+  // ★ 追加：サーバーへの登録待ち（announceNewDeckToServer）の間、
+  //   ボタンが押せた／今処理中だと分かるようスピナー表示に切り替える。
+  const btn = document.getElementById('btn-create-deck');
+  setBtnLoading(btn, true, '作成中…');
+  const name = subject ? `${subject} ${input}` : input;
+  // ★ 追加：このデッキを公開予定として作成するかどうか（デフォルトtrue＝公開予定）
+  const planPublish = document.getElementById('new-plan-publish').checked;
+  // ★ notYetPublished: まだ一度も「公開して保存」（完成／未完成の選択）を経ていないことを表す。
+  //   これが true の間は、カードが何枚あっても常に「作成中」バッジとして扱う（プレイ不可・編集は可）。
+  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true };
+  decks.push(deck); saveDecks(decks);
+  // ★ 追加：公開予定なら、この時点（作成ボタンを押した直後）でサーバーにも
+  //   「まだ中身は空・作成中」として登録し、他の人の一覧にもすぐ表示されるようにする。
+  //   （失敗しても致命的ではないので、その場合はこれまで通りこの端末だけの
+  //     下書きとして続行する＝一覧のバッジは「作成中」のまま変わらない）
+  if (planPublish) {
+    await announceNewDeckToServer(deck.id);
+  }
+  setBtnLoading(btn, false); // ★ 追加：この後すぐ画面遷移するが、念のため元に戻しておく
+  openEditDeck(deck.id);
+}
 
-
-def _is_safe_notice_filename(filename: str) -> bool:
-    """パストラバーサル対策・拡張子チェック"""
-    if not filename:
-        return False
-    if "/" in filename or "\\" in filename or ".." in filename:
-        return False
-    return filename.lower().endswith(NOTICE_ALLOWED_EXT)
-
-
-def list_notice_files():
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NOTICES_DIR}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    r = requests.get(url, headers=headers, timeout=15)
-    if r.status_code == 404:
-        return []
-    r.raise_for_status()
-    files = r.json()
-    return [
-        f for f in files
-        if isinstance(f, dict) and f["name"].lower().endswith(NOTICE_ALLOWED_EXT)
-    ]
-
-
-def load_notices_meta():
-    data, sha = github_get(NOTICES_META_FILE)
-    return (data or {}), sha
-
-
-def save_notices_meta(meta, sha=None):
-    if sha is None:
-        _, sha = github_get(NOTICES_META_FILE)
-    github_put(NOTICES_META_FILE, meta, sha)
-
-
-@app.route("/list_notices", methods=["GET"])
-def list_notices():
-    """お知らせファイルの一覧を返す（中身は含まない、投稿者名つき）"""
-    try:
-        files = list_notice_files()
-        meta, _ = load_notices_meta()
-        notices = []
-        for f in files:
-            m = meta.get(f["name"], {})
-            notices.append({
-                "filename": f["name"],
-                "size": f.get("size"),
-                "ext": f["name"].rsplit(".", 1)[-1].lower(),
-                "uploader": m.get("uploader"),
-                "uploaded_at": m.get("uploaded_at"),
-            })
-        # ファイル名（先頭に日付を付ける運用を推奨）で新しい順に並べる
-        notices.sort(key=lambda n: n["filename"], reverse=True)
-        return jsonify({"ok": True, "notices": notices})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-
-@app.route("/get_notice", methods=["GET"])
-def get_notice():
-    """お知らせ1件の中身（テキスト本文）と投稿者名を返す"""
-    filename = request.args.get("filename", "")
-    if not _is_safe_notice_filename(filename):
-        return jsonify({"ok": False, "error": "invalid filename"})
-    try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NOTICES_DIR}/{filename}"
-        headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-        r = requests.get(url, headers=headers, timeout=15)
-        if r.status_code == 404:
-            return jsonify({"ok": False, "error": "not found"})
-        r.raise_for_status()
-        data = r.json()
-        content = base64.b64decode(data["content"]).decode("utf-8")
-
-        meta, _ = load_notices_meta()
-        m = meta.get(filename, {})
-
-        return jsonify({
-            "ok": True,
-            "filename": filename,
-            "content": content,
-            "uploader": m.get("uploader"),
-            "uploaded_at": m.get("uploaded_at"),
-        })
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-
-@app.route("/upload_notice", methods=["POST"])
-def upload_notice():
-    """お知らせファイル（.md / .txt）をアップロード（新規 or 上書き）する"""
-    data = request.json or {}
-    filename = (data.get("filename") or "").strip()
-    content = data.get("content")
-    uploader = (data.get("uploader") or "匿名").strip() or "匿名"
-    guild_id = data.get("guild_id")
-
-    if not _is_safe_notice_filename(filename):
-        return jsonify({"ok": False, "error": ".md または .txt ファイルのみアップロードできます"})
-    if content is None or not content.strip():
-        return jsonify({"ok": False, "error": "内容が空です"})
-
-    err = reject_if_bug_chars({"内容": content, "アップロード者": uploader})
-    if err:
-        return err
-
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NOTICES_DIR}/{filename}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-
-    # 既存ファイルなら上書き（sha が必要）
-    r = requests.get(url, headers=headers, timeout=15)
-    sha = r.json().get("sha") if r.status_code == 200 else None
-    is_update = sha is not None
-
-    encoded = base64.b64encode(content.encode("utf-8")).decode()
-    payload = {
-        "message": f"{'update' if is_update else 'add'} notice: {filename} by {uploader}",
-        "content": encoded,
+// ★ 追加：デッキ作成直後、公開予定なら中身が空の状態でもサーバーに登録して
+//   「🟠 作成中」として他の人の一覧にも表示されるようにする処理。
+//   ・save_cards は既存のAPIをそのまま利用する（cards: [] ・ incomplete: true ・ silent: true）。
+//   ・カード枚数が0件のまま incomplete=true のデッキは「作成中」バッジとして
+//     区別して表示する（renderDeckListUI 側のロジックを参照）。
+//   ・Discordへの通知は送らない（silent:true）。
+async function announceNewDeckToServer(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+  const session = getLoginSession();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    // ★ 修正：以前はここで常に cards: [] を送ってしまっていたため、
+    //   （例：デッキ名編集モーダルで「公開予定」を後からONにした場合など）
+    //   既にローカルで作成済みのカードが無視され、サーバー側は「0枚」として
+    //   登録されてしまっていた。その結果、次に編集画面を開いた際に強制的な
+    //   最新化（force reload）でローカルのカードがサーバー側の0枚で
+    //   上書きされて消えてしまう、という重大な不具合につながっていた。
+    //   ここでは必ず「今ローカルにある実際のカード」をそのまま送る
+    //   （まだ1枚も無ければ結果的に空配列になるだけで、これまで通り）。
+    const cards = deck.cards.map(c => ({
+      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
+      imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [],
+    }));
+    const res = await fetch(`${API_BASE}save_cards`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: deck.name,
+        cards,
+        guild_id: GUILD_ID,
+        subject: deck.subject || null,
+        folder_id: deck.folderId || null,
+        publisher_id: session ? session.student_id : null,
+        publisher_nickname: session ? session.nickname : '匿名',
+        silent: true,      // ★ 作成しただけなのでDiscord通知はしない
+        incomplete: true,  // ★ まだ「保存して公開」を経ていないので「未完成（作成中）」扱いにする
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    // ★ POST完了までの間に他の同期処理でdecks配列が入れ替わっている可能性があるため、
+    //   必ずこの時点で最新のdecksからidで探し直してから更新・保存する。
+    decks = loadDecks();
+    const target = decks.find(d => d.id === deckId);
+    if (target) {
+      target.filename = data.filename;
+      target.count = cards.length; // ★ 修正：実際に送ったカード数を反映する（常に0にしない）
+      target.cardsLoaded = true;
+      target.published_by = session ? session.nickname : '匿名';
+      target.incomplete = true;
+      target.notYetPublished = true; // ★ まだ「公開して保存」を経ていないので「作成中」のまま
+      saveDecks(decks);
     }
-    if sha:
-        payload["sha"] = sha
+  } catch (e) {
+    // ★ サーバー登録に失敗した場合は、これまで通りこの端末だけの下書き
+    //   （filenameなし）として続行する。次にカードを保存して公開すれば
+    //   その時にサーバーへ反映される。
+  }
+}
 
-    put_res = requests.put(url, headers=headers, json=payload, timeout=15)
-    if put_res.status_code not in (200, 201):
-        return jsonify({
-            "ok": False,
-            "error": f"github_write_failed: {put_res.status_code} {put_res.text[:300]}"
-        })
+// ── カード編集画面 ────────────────────
+// ★ 公開済みデッキはカード本体が未読み込みの可能性があるので、
+//   編集画面を開く前に ensureDeckCardsLoaded() で取得しておく。
+async function openEditDeck(deckId) {
+  currentDeckId = deckId;
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
 
-    # --- 投稿者メタ情報を notices_meta.json に保存 ---
-    try:
-        meta, meta_sha = load_notices_meta()
-        meta[filename] = {
-            "uploader": uploader,
-            "uploaded_at": datetime.now(JST).strftime("%Y-%m-%d %H:%M"),
+  // ★ 編集は「サーバー全体を丸ごと上書き保存」につながる操作なので、
+  //   キャッシュ済みでも必ず最新のカードを取り直す。失敗した場合は
+  //   loadDeckCardsWithRecovery が「もう一度試す／空のまま開く」を
+  //   ユーザーに選ばせるので、行き止まりにならない。
+  // ★ 修正：直前の操作（カード追加/削除など）のサーバー同期がまだ完了していない
+  //   場合に備え、強制リロードの前に必ずその完了を待つ（データ消失防止）。
+  await waitForPendingSync(deckId);
+  const ok = await loadDeckCardsWithRecovery(deckId);
+  if (!ok) return; // ユーザーが「やめる」を選んだ場合は編集画面を開かない
+
+  document.getElementById('edit-deck-title').textContent = deck.name;
+  // ★ 修正：以前は「サーバー登録済み（公開予定／作成中を含む）」なら
+  //   「保存」（ローカルのみ保存して戻る）ボタンを隠し、常に完全な
+  //   「公開して保存」（ログイン確認・完成/未完成の選択・Discord通知）を
+  //   通らないと編集を中断できなかった。
+  //   単に作業を保存していったん戻りたいだけのときにも毎回この確認を
+  //   挟まれるのは不便なため、「保存」ボタンは常に表示するようにする。
+  //   （saveCard() 側で、filenameがあるデッキの「保存」は通知なしで
+  //     静かにサーバーへも反映するよう修正済み）
+  document.getElementById('btn-save-local').style.display = '';
+  document.getElementById('btn-done').textContent = deck.filename ? '公開して保存' : '保存して公開';
+  clearEditor(); renderCreatedList(); showScreen('edit');
+  setTimeout(() => document.getElementById('ta-q').focus(), 200);
+}
+function clearEditor() {
+  ['q','a','e'].forEach(k => {
+    const el = document.getElementById('ta-'+k);
+    el.value = '';
+    autoResize(el);
+    el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 数式プレビューもクリアする
+    imgBuf[k] = [];
+    document.getElementById('imgs-'+k).innerHTML = '';
+  });
+}
+
+async function saveCard(mode) {
+  const q = document.getElementById('ta-q').value.trim();
+  const a = document.getElementById('ta-a').value.trim();
+  const e = document.getElementById('ta-e').value.trim();
+  const deck = decks.find(d => d.id === currentDeckId);
+  if (q || a) {
+    if (!q || !a) { shake(!q ? 'ta-q' : 'ta-a'); return; }
+    if (await warnIfBugChars(q, 'ta-q')) return;
+    if (await warnIfBugChars(a, 'ta-a')) return;
+    if (await warnIfBugChars(e, 'ta-e')) return;
+    if (await warnIfDuplicateOrSameCard(deck, q, a, e)) return;
+    deck.cards.push({ id:genId(), question:q, answer:a,
+      explanation: e,
+      imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
+    saveDecks(decks);
+    document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+    // ★ 修正：サーバー登録済み（filenameあり＝「作成中」含む）のデッキは、
+    //   カードを1枚追加するたびに必ずサーバーへも反映しておく。
+    //   ここで反映しないと、編集画面を出てもう一度開いたときの強制リロード
+    //   （openEditDeck → loadDeckCardsWithRecovery）でサーバー側の
+    //   古い（まだこのカードを知らない）データに上書きされ、
+    //   せっかく追加したカードがローカルごと消えてしまう不具合があった。
+    if (deck.filename) queueSyncDeckToServer(deck);
+  }
+  if (mode === 'publish') {
+    // ★ 未ログインチェック（公開ボタンを押した時だけ）／自前UIで確認する
+    if (!getLoginSession()) {
+      const proceedAnon = await showCmConfirm({
+        title: 'ログインしていません',
+        desc: 'このまま公開すると「匿名」として公開されます。',
+        cancelLabel: 'ログイン画面へ',
+        okLabel: '匿名のまま公開する',
+        okStyle: 'blue',
+      });
+      if (!proceedAnon) {
+        sessionStorage.setItem('post_login_redirect', location.href); // ログイン後に戻ってくる先を記憶
+        location.href = LOGIN_PATH;
+        return;
+      }
+    }
+    // ★ 完成／未完成を選択してもらう（自前UI）。未完成なら通知なし（silent）で公開する
+    const choice = await showCmChoiceDialog({
+      title: 'このデッキは完成していますか？',
+      desc: '未完成として公開すると、Discordへの通知は送られません。\nあとから編集して完成にできます。',
+      choices: [
+        { icon: '✅', label: '完成として公開する',   sub: '通知が送信されます',   value: 'complete' },
+        { icon: '🟡', label: '未完成として公開する', sub: '通知は送信されません', value: 'draft' },
+      ],
+    });
+    if (!choice) return; // キャンセル
+    // ★ deck.id だけを渡し、publishDeck 側で常に最新のdecks配列から探し直す
+    //   （画面遷移で decks 配列が入れ替わっても更新が失われないようにするため）
+    publishDeck(deck.id, choice === 'complete');
+  } else if (mode === 'local') {
+    saveDecks(decks);
+    // ★ 修正：サーバー登録済み（公開予定／作成中を含む）のデッキは、
+    //   「保存」ボタンでも公開確認は挟まずに、通知なし（silent）で
+    //   静かにサーバーへ反映してから一覧に戻る。
+    //   ここで反映しておかないと、いったん一覧に戻って次に編集画面を
+    //   開き直したときの強制リロードで、まだサーバーに届いていない
+    //   直前の変更が消えてしまう（以前あった不具合と同じ原因）。
+    if (deck.filename) {
+      // ★ 追加：サーバー反映を待つ間、押した感が分かるようスピナー表示にする
+      const saveBtn = document.getElementById('btn-save-local');
+      setBtnLoading(saveBtn, true, '保存中…');
+      const ok = await queueSyncDeckToServer(deck);
+      setBtnLoading(saveBtn, false);
+      if (!ok) showBanner('⚠ サーバーへの保存に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+    showScreen('list');
+  } else {
+    clearEditor(); renderCreatedList();
+    document.getElementById('edit-scroll').scrollTo(0,0);
+    document.getElementById('ta-q').focus();
+  }
+}
+
+// ★ deckId で受け取り、サーバーへの保存が完了するたびに毎回「最新のdecks配列」から
+//   対象を探し直して更新する。
+//   ─────────────────────────────────────────────
+//   以前は deck オブジェクトへの参照を直接書き換えていたが、この関数の冒頭で
+//   showScreen('list') を呼ぶと内部で decks = loadDecks() が実行され、
+//   decks 配列全体が新しいオブジェクト群に入れ替わってしまう。
+//   その結果、渡された deck オブジェクトは新しい decks 配列に含まれない
+//   「孤立した参照」になり、公開完了後の filename 更新が保存されず
+//   一覧表示がいつまでも「非公開」のままになる不具合があった。
+async function publishDeck(deckId, isComplete = true) {
+  saveDecks(decks); showScreen('list');
+
+  // showScreen('list') 実行後の最新の decks から対象デッキを取得する
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+
+  const session = getLoginSession();
+  const cards = deck.cards.map(c => ({
+    id: c.id, // サーバーが対応していれば id を保持したまま返してもらうため付与
+    question: c.question, answer: c.answer, explanation: c.explanation || '',
+    imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [], // ★ 画像も公開する
+  }));
+  // ★ 追加：サーバー側の is_update（＝filenameが既に存在するか）だけでは、
+  //   「作成中（作成時にannounceNewDeckToServerで登録済み）」のデッキが
+  //   初めて『公開して保存』されたときも filename が既に存在するため
+  //   「更新」と判定されてしまい、通知が「新規公開」ではなく「更新されました」
+  //   という誤った文言になってしまっていた。
+  //   ここでは「一度でも実際に『公開して保存』を経たことがあるか」
+  //   （＝deck.notYetPublished）を見て、まだなら「これが初めての公開」として
+  //   サーバーへ明示的に伝える。
+  const isFirstPublish = deck.notYetPublished !== false;
+  const body = {
+    name: deck.name,
+    cards,
+    guild_id: GUILD_ID,
+    subject: deck.subject || null,                       // ★ 科目ごとのチャンネル振り分け用
+    folder_id: deck.folderId || null,                     // ★ フォルダ所属（みんなで共有）
+    publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
+    publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
+    silent: !isComplete, // ★ 未完成として公開する場合は通知しない
+    incomplete: !isComplete, // ★ 未完成フラグをサーバーに保存し、他の人の端末にも表示させる
+    first_publish: isFirstPublish, // ★ 追加：通知文言を「公開」/「更新」どちらにするか判定するためのヒント
+  };
+  if (deck.filename) body.filename = deck.filename;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res  = await fetch(`${API_BASE}save_cards`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+
+    // ★ ここが重要：POST完了までの間にバックグラウンド同期（10秒ごとのポーリング等）
+    //   で decks 配列が再び入れ替わっている可能性があるため、必ずこの時点で
+    //   もう一度 loadDecks() し、id で探し直してから更新・保存する。
+    decks = loadDecks();
+    const target = decks.find(d => d.id === deckId);
+    if (target) {
+      target.filename = data.filename;
+      target.count = target.cards.length;
+      target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
+      target.published_by = session ? session.nickname : '匿名';
+      target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持（サーバーにも保存済み）
+      target.notYetPublished = false; // ★ 追加：「公開して保存」を実際に経たので、以降は未完成／公開済みで判定する
+      saveDecks(decks);
+    }
+    renderDeckListUI();
+    showBanner(
+      isComplete ? '✓ 保存して公開しました！' : '🟡 未完成として公開しました（通知なし）',
+      isComplete ? '#dcfce7' : '#fef9c3',
+      isComplete ? '#166534' : '#854d0e'
+    );
+  } catch(e) {
+    showBanner('💾 ローカルに保存しました（GitHub同期失敗）', '#fffbeb', '#92400e');
+  }
+}
+
+// ★ 作成済みカード一覧の描画。各行にドラッグハンドル（⠿）を付け、
+//   data-key にカードの安定キー（cardKey）を持たせておく。
+//   ドラッグ処理側はこの data-key を使って最終的な並び順を復元する。
+function renderCreatedList() {
+  const deck = decks.find(d => d.id === currentDeckId);
+  const section = document.getElementById('created-section');
+  const list    = document.getElementById('created-list');
+  if (!deck||!deck.cards.length) { section.style.display='none'; return; }
+  section.style.display='block';
+  list.innerHTML = deck.cards.map((c,i) => `
+    <div class="created-item" data-key="${esc(cardKey(c))}">
+      <span class="drag-handle" title="ドラッグして並び替え">⠿</span>
+      <div class="created-item-num">${i+1}</div>
+      <div class="created-item-body">
+        <div class="created-item-q">${esc(mathToPlainText(c.question))}</div>
+        <div class="created-item-a">${esc(mathToPlainText(c.answer))}</div>
+      </div>
+      <div class="created-item-btns">
+        <button class="btn btn-ghost btn-sm" onclick="openCardEditModal(${i})">編集</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCardFromDeck(${i})">削除</button>
+      </div>
+    </div>`).join('');
+}
+
+// ============================================================
+//  ★ 追加：作成済みカードのドラッグ並び替え（Pointer Events）
+//  ─────────────────────────────────────────────
+//  ・マウス／タッチの両方を同じコードで扱える Pointer Events API を使用。
+//    HTML5標準のdraggable属性はスマホでの挙動が不安定なため使わない。
+//  ・renderCreatedList() は編集のたびに #created-list の中身を毎回
+//    innerHTML で丸ごと再生成するので、各アイテムに直接リスナーを付けるのではなく
+//    #created-list 自体に1回だけイベント委任（delegation）で登録する。
+//  ・ドラッグ中はDOM上の要素を直接入れ替えて視覚的な並び替えを行い、
+//    指を離した瞬間に「今のDOM上の並び順（data-key）」を読み取って
+//    deck.cards を実際に並び替える。カードの内容そのものはcardKeyで
+//    引き当てるので、インデックスのズレによる事故が起きない。
+// ============================================================
+(function setupCardDragReorder() {
+  const list = document.getElementById('created-list');
+  if (!list) return;
+
+  let dragEl = null;
+  let startY = 0;
+  // ★ 追加：ドラッグ中の「指」を識別するID。
+  //   これにより、ハンドルを掴んでいる指の動きだけをドラッグとして扱い、
+  //   もう片方の指の動きはブラウザ標準のスクロールとして自由に使えるようにする。
+  let dragTouchId = null;
+
+  // ★ 追加：ドラッグ中に画面端（上下）に近づいたら自動スクロールするための状態。
+  const scrollContainer = document.getElementById('edit-scroll');
+  let lastClientY = 0;
+  let autoScrollRAF = null;
+  // ★ バグ修正：カードを掴んだ位置がたまたま画面の上端／下端付近だった場合、
+  //   指を全く動かしていないのに自動スクロールが始まり、そのまま一番上／
+  //   一番下まで一気に並び替わってしまう不具合があった。
+  //   これを防ぐため「掴んだ位置（dragOriginY）からその方向へ実際に
+  //   指を動かした」場合にだけ自動スクロールを有効にする。
+  let dragOriginY = 0;
+  const EDGE_ARM_PX = 24; // これだけ掴んだ位置から動かして初めて自動スクロールが有効になる
+
+  function getItems() {
+    return Array.from(list.querySelectorAll('.created-item'));
+  }
+
+  // ★ 追加：ドラッグ中、指（またはマウス）が edit-scroll の上端／下端付近に
+  //   あるあいだ、毎フレーム少しずつスクロールさせる。
+  //   端に近いほど速くスクロールする（ratioで速度を調整）。
+  //   スクロールした分だけ startY をずらし、指の位置に対するカードの
+  //   見た目の位置（translateY）がズレないようにする。
+  function autoScrollTick() {
+    if (!dragEl || !scrollContainer) { autoScrollRAF = null; return; }
+    const rect = scrollContainer.getBoundingClientRect();
+    const edge = 60;      // 端から何pxでスクロールを開始するか
+    const maxSpeed = 14;  // 1フレームあたりの最大スクロール量(px)
+    let speed = 0;
+
+    // ★ 修正：端に近いだけでなく、掴んだ位置からその方向へ実際に
+    //   EDGE_ARM_PX 以上動かしていることも条件に加える。
+    if (lastClientY < rect.top + edge && lastClientY < dragOriginY - EDGE_ARM_PX) {
+      const ratio = Math.min(1, (rect.top + edge - lastClientY) / edge);
+      speed = -maxSpeed * ratio;
+    } else if (lastClientY > rect.bottom - edge && lastClientY > dragOriginY + EDGE_ARM_PX) {
+      const ratio = Math.min(1, (lastClientY - (rect.bottom - edge)) / edge);
+      speed = maxSpeed * ratio;
+    }
+
+    if (speed !== 0) {
+      const before = scrollContainer.scrollTop;
+      scrollContainer.scrollTop += speed;
+      const actualDelta = scrollContainer.scrollTop - before; // 端まで来ていたらここが0になる
+      if (actualDelta !== 0) {
+        startY -= actualDelta;
+        moveDrag(lastClientY);
+      }
+    }
+    autoScrollRAF = requestAnimationFrame(autoScrollTick);
+  }
+
+  function beginDrag(item, clientY) {
+    dragEl = item;
+    startY = clientY;
+    lastClientY = clientY;
+    dragOriginY = clientY; // ★ 追加：自動スクロール発動判定の基準点
+    dragEl.classList.add('dragging');
+    dragEl.style.position = 'relative';
+    dragEl.style.zIndex = '10';
+    dragEl.style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
+    dragEl.style.opacity = '0.92';
+    if (autoScrollRAF === null) autoScrollRAF = requestAnimationFrame(autoScrollTick);
+  }
+
+  function moveDrag(clientY) {
+    if (!dragEl) return;
+    lastClientY = clientY;
+    const dy = clientY - startY;
+    dragEl.style.transform = `translateY(${dy}px)`;
+
+    const dragRect = dragEl.getBoundingClientRect();
+    const dragCenter = dragRect.top + dragRect.height / 2;
+
+    const items = getItems();
+    for (const other of items) {
+      if (other === dragEl) continue;
+      const r = other.getBoundingClientRect();
+      const otherCenter = r.top + r.height / 2;
+      const otherIsAfter = !!(dragEl.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+      if (otherIsAfter && dragCenter > otherCenter) {
+        list.insertBefore(dragEl, other.nextSibling);
+        // ★ 入れ替えのたびに基準点をリセットして、以降のtranslateYが
+        //   新しい位置からの相対移動になるようにする（ジャンプを最小限にする）
+        startY = clientY;
+        dragEl.style.transform = 'translateY(0px)';
+        break;
+      } else if (!otherIsAfter && dragCenter < otherCenter) {
+        list.insertBefore(dragEl, other);
+        startY = clientY;
+        dragEl.style.transform = 'translateY(0px)';
+        break;
+      }
+    }
+  }
+
+  async function endDrag() {
+    if (!dragEl) return;
+    if (autoScrollRAF !== null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
+    dragEl.classList.remove('dragging');
+    dragEl.style.transform = '';
+    dragEl.style.zIndex = '';
+    dragEl.style.boxShadow = '';
+    dragEl.style.opacity = '';
+    dragEl.style.position = '';
+    dragEl = null;
+
+    // ★ DOM上の最終的な並び順（data-key）から deck.cards を並び替える
+    const orderedKeys = getItems().map(it => it.dataset.key);
+    const deck = decks.find(d => d.id === currentDeckId);
+    if (!deck) return;
+    const byKey = new Map(deck.cards.map(c => [cardKey(c), c]));
+    const newCards = orderedKeys.map(k => byKey.get(k)).filter(Boolean);
+    if (newCards.length !== deck.cards.length) { renderCreatedList(); return; } // 念のための整合性チェック
+    deck.cards = newCards;
+    saveDecks(decks);
+    renderCreatedList();
+
+    // ★ 公開済みなら並び順もサーバーへ反映する（通知はしない）
+    if (deck.filename) {
+      const ok = await queueSyncDeckToServer(deck);
+      if (!ok) showBanner('⚠ 並び替えのサーバー反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+  }
+
+  // ── マウス操作（PC） ──
+  function onMouseDown(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const item = handle.closest('.created-item');
+    if (!item) return;
+    e.preventDefault();
+    beginDrag(item, e.clientY);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp, { once: true });
+  }
+  function onMouseMove(e) { moveDrag(e.clientY); }
+  function onMouseUp() {
+    window.removeEventListener('mousemove', onMouseMove);
+    endDrag();
+  }
+
+  // ── タッチ操作（スマホ） ──
+  // ★ ハンドルに触れた指の identifier だけを追跡し、その指のtouchmoveだけを
+  //   ドラッグ処理として扱う（＝preventDefaultする）。もう片方の指のtouchmoveは
+  //   ここで何もしないので、ブラウザ標準の縦スクロールがそのまま働く。
+  //   これにより「片方の指でカードを移動させながら、もう片方の指でスクロール」ができる。
+  function onTouchStart(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    if (dragTouchId !== null) return; // 既に別の指でドラッグ中なら何もしない
+    const item = handle.closest('.created-item');
+    if (!item) return;
+    const touch = e.changedTouches[0];
+    dragTouchId = touch.identifier;
+    e.preventDefault();
+    beginDrag(item, touch.clientY);
+  }
+  function findDragTouch(touchList) {
+    if (dragTouchId === null) return null;
+    for (let i = 0; i < touchList.length; i++) {
+      if (touchList[i].identifier === dragTouchId) return touchList[i];
+    }
+    return null;
+  }
+  function onTouchMove(e) {
+    const t = findDragTouch(e.changedTouches);
+    if (!t) return; // ドラッグ中の指以外の動き（＝スクロール用の指）はここで無視する
+    e.preventDefault();
+    moveDrag(t.clientY);
+  }
+  function onTouchEnd(e) {
+    const t = findDragTouch(e.changedTouches);
+    if (!t) return;
+    dragTouchId = null;
+    endDrag();
+  }
+
+  list.addEventListener('mousedown', onMouseDown);
+  list.addEventListener('touchstart', onTouchStart, { passive: false });
+  list.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  list.addEventListener('touchend',   onTouchEnd);
+  list.addEventListener('touchcancel', onTouchEnd);
+})();
+
+// ============================================================
+//  ★ 追加：ホーム画面（デッキ・フォルダ一覧）の並び替え
+//  ─────────────────────────────────────────────
+//  ・スマホは横幅に余裕がないため、編集画面のような専用ハンドル（⠿）は
+//    追加しない。代わりにカード本体（ボタン部分を除く）を長押しすると
+//    そのまま並び替えモードに入る、という編集画面と同じ「掴んで動かす」
+//    操作感をボタン無しで実現する。
+//  ・短いタップはこれまで通り（フォルダを開く／何もしない）。
+//    長押し＋移動、または長押しだけでも「ドラッグ扱い」とし、
+//    指を離した瞬間に発生するクリックは openFolder 側で無視する
+//    （cmDragJustEndedAt によるガード。冒頭のstate変数として定義済み）。
+//  ・並び順はフォルダ・デッキ共通の data-key（例: "folder:xxx" / "deck:yyy"）で
+//    保存し、フォルダ／デッキが混在したまま自由に並び替えられる。
+//  ・renderDeckListUI() は毎回 #deck-grid の中身を丸ごと再生成するので、
+//    要素ごとにリスナーを付けず、#deck-grid自体に1回だけイベント委任する。
+// ============================================================
+(function setupListDragReorder() {
+  const grid = document.getElementById('deck-grid');
+  if (!grid) return;
+
+  const LONG_PRESS_MS  = 380; // これだけ指を止めたままにすると並び替えモードに入る
+  const MOVE_CANCEL_PX = 10;  // 判定前にこれ以上動いたら「スクロール」とみなし長押しをキャンセル
+  // ★ 修正：タッチ開始と同時に touch-action:none にしていたのをやめ、
+  //   この時間（ms）だけ「様子見」してからtouch-action:noneを適用するようにする。
+  //   詳細は onPointerDown 内のコメント参照。
+  const TOUCH_ACTION_DELAY_MS = 60;
+
+  // ★ 修正：grid の touch-action は 'pan-y'（縦スクロールはブラウザのネイティブ処理に任せる）にする。
+  //   以前は常に 'none' にして、その代わりJSで手動スクロール（慣性込み）を
+  //   再現していたが、ネイティブのスクロール感（滑らかさ・慣性・ラバーバンド等）
+  //   には及ばず「うまくスクロールできない」原因になっていた。
+  //   ─────────────────────────────────────────
+  //   'pan-y' にしておくと、指を動かした瞬間にブラウザ側がそれを
+  //   「スクロールしたいのだ」と判断してネイティブスクロールを開始してくれる
+  //   （その際 pointercancel が飛んでくるので、下の onPointerUp 側で
+  //   長押し判定を自動的にキャンセルできる）。
+  //   一方、指を止めたまま LONG_PRESS_MS 経過すれば、その時点ではまだ
+  //   ネイティブスクロールは始まっていないので、こちらで安全にドラッグ
+  //   （並び替え）モードへ移行できる。
+  grid.style.touchAction = 'pan-y';
+
+  let pressTimer = null;
+  let pressItem = null;
+  let pressPointerId = null;
+  let pressStartX = 0, pressStartY = 0;
+
+  let dragEl = null;
+  let startY = 0;
+  let lastClientY = 0;
+  let lastClientX = 0; // ★ 追加：フォルダの上に重なっているか判定するためX座標も保持する
+  let autoScrollRAF = null;
+  let scrollParent = null;
+
+  // ★ 追加：デッキ／フォルダをドラッグ中、フォルダの上にしばらく重ねたままにしていると
+  //   自動的にそのフォルダを開く（iOSのホーム画面でアプリをフォルダの上に重ねる操作と同様）。
+  //   開くと同時に、掴んでいる項目も実際にそのフォルダの中へ移動させる
+  //   （見た目だけ開いて中身のデータは元のフォルダのまま…という不整合を避けるため）。
+  //   ★ 追加：逆に、間違えてフォルダに入ってしまった時のために、ドラッグしたまま画面上部の
+  //     パンくず付近まで持ち上げると同じ仕組みで親フォルダへ戻れるようにしている
+  //     （autoOpenFolderDuringDrag は「どこへ移動して開くか」を汎用的に扱うので、
+  //     戻り先（親フォルダ）を渡せば「出る」動作もそのまま実現できる）。
+  const HOVER_OPEN_MS = 650; // これだけ同じ場所（フォルダ／パンくず付近）で止めておくと自動的に反応する
+  let hoverFolderEl = null;
+  let hoverFolderTimer = null;
+  let hoverOpenInProgress = false; // ★ フォルダ自動オープンの処理中に二重発火しないようにする
+  // ★ バグ修正：デッキ／フォルダを掴んだ位置がたまたま画面の上端／下端付近
+  //   （例：スクロールしてすぐ見えている一番上の項目を掴んだ場合など）だと、
+  //   指を全く動かしていないのに自動スクロールが始まり、そのまま一番上／
+  //   一番下まで一瞬で並び替わってしまう不具合があった。
+  //   これを防ぐため「掴んだ位置（dragOriginY）からその方向へ実際に
+  //   指を動かした」場合にだけ自動スクロールを有効にする。
+  let dragOriginY = 0;
+  const EDGE_ARM_PX = 24; // これだけ掴んだ位置から動かして初めて自動スクロールが有効になる
+
+  // ★ touch-action:noneは「指がほとんど動かないまま少し待った後」にだけ適用する
+  //   （＝TOUCH_ACTION_DELAY_MS。詳細はonPointerDown内のコメント参照）。
+  //   これにより、普通のスワイプ操作はtouch-actionに一切触れられることなく
+  //   ネイティブスクロールがそのまま働く。万一、猶予時間内に既にtouch-action:none
+  //   が適用された直後に指が動いてしまった場合（レアなタイミングのケース）だけ、
+  //   ネイティブスクロールはもう使えないのでJSの手動スクロールで代わりに動かす。
+  let touchActionItem = null;   // touch-actionをnoneにした対象（後で元に戻すため）
+  let touchActionTimer = null;  // ★ 追加：touch-action:noneを適用するまでの「様子見」タイマー
+  let manualScrollActive = false;
+  let manualScrollParent = null;
+  let manualScrollLastY = 0;
+  let manualScrollPointerId = null; // ★ cancelPress()でpressPointerIdがnullになった後も
+                                     //   同じ指の動きを追跡し続けるための専用ID
+  // ★ 追加：長押し判定中（またはtouch-action:noneの間）にスワイプへ切り替わった際の
+  //   「手動スクロール」が、touchmoveのたびにscrollTopを直接書き換えていたため、
+  //   ネイティブスクロールの滑らかさ・慣性に比べて「がくがく」して見えていた。
+  //   ─────────────────────────────────────────
+  //   毎フレーム（requestAnimationFrame）でまとめて1回だけscrollTopを反映するように
+  //   バッチ化し、体感の滑らかさをネイティブスクロールに近づける。
+  let manualScrollPendingDelta = 0;
+  let manualScrollRAF = null;
+
+  function getItems() {
+    return Array.from(grid.querySelectorAll(':scope > .deck-card'));
+  }
+
+  // ★ HTML構造に依存せず、実際にスクロールしている祖先要素を探す
+  //   （このページの実際のスクロール領域は .cm-scroll-body だが、
+  //   将来レイアウトが変わっても壊れないように動的に探す）
+  function findScrollParent(el) {
+    let node = el.parentElement;
+    while (node) {
+      const style = getComputedStyle(node);
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function autoScrollTick() {
+    if (!dragEl || !scrollParent) { autoScrollRAF = null; return; }
+    const rect = scrollParent.getBoundingClientRect();
+    const edge = 60, maxSpeed = 14;
+    let speed = 0;
+    // ★ 修正：端に近いだけでなく、掴んだ位置からその方向へ実際に
+    //   EDGE_ARM_PX 以上動かしていることも条件に加える。
+    if (lastClientY < rect.top + edge && lastClientY < dragOriginY - EDGE_ARM_PX) {
+      speed = -maxSpeed * Math.min(1, (rect.top + edge - lastClientY) / edge);
+    } else if (lastClientY > rect.bottom - edge && lastClientY > dragOriginY + EDGE_ARM_PX) {
+      speed = maxSpeed * Math.min(1, (lastClientY - (rect.bottom - edge)) / edge);
+    }
+    if (speed !== 0) {
+      const before = scrollParent.scrollTop;
+      scrollParent.scrollTop += speed;
+      const actualDelta = scrollParent.scrollTop - before;
+      if (actualDelta !== 0) { startY -= actualDelta; moveDrag(lastClientX, lastClientY); }
+    }
+    autoScrollRAF = requestAnimationFrame(autoScrollTick);
+  }
+
+  function beginDrag(item, clientY, initialDy) {
+    initialDy = initialDy || 0; // ★ 追加：フォルダ切り替え直後の再開時、指の位置とカードの見た目を
+                                 //   一致させるための初期オフセット（通常の掴み始めは0でよい）
+    dragEl = item;
+    cmListDragActive = true; // ★ ドラッグ中は renderDeckListUI() 側で再描画をスキップさせる
+    startY = clientY - initialDy;
+    lastClientY = clientY;
+    dragOriginY = clientY; // ★ 追加：自動スクロール発動判定の基準点
+    scrollParent = findScrollParent(grid);
+    dragEl.classList.add('dragging');
+    dragEl.style.position = 'relative';
+    dragEl.style.zIndex = '10';
+    dragEl.style.boxShadow = '0 6px 18px rgba(0,0,0,.20)';
+    dragEl.style.opacity = '0.92';
+    dragEl.style.touchAction = 'none';
+    dragEl.style.transform = `translateY(${initialDy}px) scale(1.02)`;
+    if (navigator.vibrate) navigator.vibrate(12); // ★ つかんだ瞬間に軽い振動でフィードバック（対応端末のみ）
+    if (autoScrollRAF === null) autoScrollRAF = requestAnimationFrame(autoScrollTick);
+  }
+
+  function moveDrag(clientX, clientY) {
+    if (!dragEl) return;
+    lastClientY = clientY;
+    lastClientX = clientX;
+    const dy = clientY - startY;
+    dragEl.style.transform = `translateY(${dy}px) scale(1.02)`;
+
+    const dragRect = dragEl.getBoundingClientRect();
+    const dragCenter = dragRect.top + dragRect.height / 2;
+
+    const items = getItems();
+    for (const other of items) {
+      if (other === dragEl) continue;
+      const r = other.getBoundingClientRect();
+      const otherCenter = r.top + r.height / 2;
+      const otherIsAfter = !!(dragEl.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (otherIsAfter && dragCenter > otherCenter) {
+        grid.insertBefore(dragEl, other.nextSibling);
+        startY = clientY;
+        dragEl.style.transform = 'translateY(0px) scale(1.02)';
+        break;
+      } else if (!otherIsAfter && dragCenter < otherCenter) {
+        grid.insertBefore(dragEl, other);
+        startY = clientY;
+        dragEl.style.transform = 'translateY(0px) scale(1.02)';
+        break;
+      }
+    }
+
+    // ★ 追加：フォルダの上に重なっているかどうかをチェックし、重なっていれば
+    //   一定時間後に自動的にそのフォルダを開く
+    checkHoverFolder(clientX, clientY);
+  }
+
+  // ★ 追加：指（ポインタ）の真下にあるフォルダカード、または画面上部のパンくず付近を調べ、
+  //   少しの間そこに留まっていたら自動的に「フォルダの中へ入る」／「親フォルダへ戻る」を行う。
+  //   ドラッグ中の要素自身は判定対象から除外する。
+  function checkHoverFolder(clientX, clientY) {
+    if (!dragEl || hoverOpenInProgress) return;
+
+    // ① まず「パンくず付近まで持ち上げたら親フォルダへ戻る」ゾーンを判定する
+    //   （フォルダの中にいる時だけ。ルート表示中は戻り先が無いので対象外）
+    const exitZone = getExitZoneRect();
+    if (exitZone && clientY <= exitZone.bottom) {
+      const parentFolder = folders.find(f => f.id === currentFolderId);
+      const parentId = parentFolder ? (parentFolder.parentId ?? null) : null;
+      const dragKey = dragEl.dataset.key;
+      let ok = true;
+      if (dragKey.startsWith('folder:')) {
+        ok = canMoveFolderTo(dragKey.slice('folder:'.length), parentId);
+      }
+      if (ok) {
+        applyHoverTarget(exitZone.el, parentId);
+        return;
+      }
+    }
+
+    // dragEl自身が指の真下にあるとelementFromPointがそれを拾ってしまうため、
+    // 判定中だけ一時的にpointer-eventsを外して「透明」にする
+    const prevPE = dragEl.style.pointerEvents;
+    dragEl.style.pointerEvents = 'none';
+    const under = document.elementFromPoint(clientX, clientY);
+    dragEl.style.pointerEvents = prevPE;
+
+    const folderCard = under ? under.closest('.folder-card') : null;
+    let targetFolderId = null;
+
+    if (folderCard && folderCard.parentElement === grid && folderCard !== dragEl) {
+      const fid = folderCard.dataset.key.slice('folder:'.length);
+      const dragKey = dragEl.dataset.key;
+      // 掴んでいるのがフォルダで、その移動先が自分自身／自分の子孫フォルダの場合は
+      // 開けない（無限ループ・不正な階層構造の防止。canMoveFolderToで判定）
+      if (dragKey.startsWith('folder:')) {
+        const draggedFolderId = dragKey.slice('folder:'.length);
+        if (canMoveFolderTo(draggedFolderId, fid)) targetFolderId = fid;
+      } else {
+        targetFolderId = fid;
+      }
+    }
+
+    if (targetFolderId) {
+      applyHoverTarget(folderCard, targetFolderId);
+    } else {
+      clearHoverFolder();
+    }
+  }
+
+  // ★ 追加：② のゾーン判定用。画面上部のパンくずバー付近（少し余白を持たせた範囲）を返す。
+  //   ルート表示中（パンくず非表示）は戻り先が無いのでnullを返す。
+  function getExitZoneRect() {
+    if (!currentFolderId) return null;
+    const bar = document.getElementById('folder-breadcrumb');
+    if (!bar || getComputedStyle(bar).display === 'none') return null;
+    const r = bar.getBoundingClientRect();
+    const PAD = 16; // パンくずの少し上・下まで含めて「持ち上げたら戻る」を反応しやすくする
+    return { top: r.top - PAD, bottom: r.bottom + PAD, el: bar };
+  }
+
+  // ★ 追加：ホバー対象（フォルダカード or パンくず）が確定した際の共通処理。
+  //   同じ対象に留まり続けている間だけタイマーを進め、離れたらリセットする。
+  function applyHoverTarget(el, targetFolderId) {
+    if (hoverFolderEl === el) return; // 既に同じ対象を計測中
+    clearHoverFolder();
+    hoverFolderEl = el;
+    // ★ 重ねている間、見た目でも分かるようにハイライトする
+    hoverFolderEl.style.outline = '3px solid #3b82f6';
+    hoverFolderEl.style.outlineOffset = '-3px';
+    hoverFolderTimer = setTimeout(() => {
+      hoverFolderTimer = null;
+      autoOpenFolderDuringDrag(targetFolderId);
+    }, HOVER_OPEN_MS);
+  }
+
+  function clearHoverFolder() {
+    if (hoverFolderTimer) { clearTimeout(hoverFolderTimer); hoverFolderTimer = null; }
+    if (hoverFolderEl) {
+      hoverFolderEl.style.outline = '';
+      hoverFolderEl.style.outlineOffset = '';
+      hoverFolderEl = null;
+    }
+  }
+
+  // ★ 追加：ドラッグ中の項目を、指を重ねていたフォルダの中へ実際に移動させたうえで、
+  //   そのフォルダを自動的に開く。開いた後も同じ項目のドラッグをそのまま継続できるようにする。
+  async function autoOpenFolderDuringDrag(targetFolderId) {
+    if (!dragEl) return;
+    hoverOpenInProgress = true;
+    clearHoverFolder();
+
+    const key = dragEl.dataset.key;
+
+    try {
+      if (key.startsWith('folder:')) {
+        const fid = key.slice('folder:'.length);
+        const f = folders.find(x => x.id === fid);
+        if (!f) return;
+        f.parentId = targetFolderId; // 楽観的にローカルへ反映
+        saveFoldersCache(folders);
+        fetch(`${API_BASE}save_folder`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetFolderId }),
+          signal: AbortSignal.timeout(8000),
+        }).then(res => res.json()).then(data => {
+          if (!data.ok) showBanner('⚠ フォルダ移動のサーバー反映に失敗しました', '#fffbeb', '#92400e');
+          else fetchAndMergeFolders();
+        }).catch(() => showBanner('⚠ フォルダ移動のサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e'));
+      } else {
+        const d = key.startsWith('deck:')
+          ? decks.find(x => x.filename === key.slice('deck:'.length))
+          : decks.find(x => x.id === key.slice('localdeck:'.length));
+        if (!d) return;
+        if (d.filename) {
+          const loaded = await loadDeckCardsWithRecovery(d.id);
+          if (!loaded || !dragEl) return; // ユーザーが「やめる」を選んだ／その間にドラッグが終了した場合は中断
         }
-        save_notices_meta(meta, meta_sha)
-    except GitHubWriteError as e:
-        # 本体の保存自体は成功しているので、メタ情報の失敗は警告に留める
-        print(f"[WARN] notices_meta の更新に失敗しました: {e}")
+        d.folderId = targetFolderId;
+        saveDecks(decks);
+        if (d.filename) {
+          queueSyncDeckToServer(d).then(ok => {
+            if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+          });
+        }
+      }
 
-    # --- 任意：Discordの通知チャンネルに投稿 ---
-    #     /setchannel main で設定した「お知らせ用」チャンネルを優先し、
-    #     未設定の場合は通生用チャンネル（remind_channel_id）にフォールバックする
-    if guild_id:
-        try:
-            guild_id_int = int(guild_id)
-            guild = bot.get_guild(guild_id_int)
-            if guild:
-                config = load_config(guild_id_int)
-                channel_id = config.get("notice_channel_id") or config.get("remind_channel_id")
-                channel = bot.get_channel(channel_id) if channel_id else None
-                if channel:
-                    action = "更新" if is_update else "公開"
-                    msg = f"📢 お知らせ「{filename}」が{uploader}さんによって{action}されました！"
-                    asyncio.run_coroutine_threadsafe(
-                        channel.send(msg), bot.loop
-                    ).result(timeout=10)
-        except Exception as e:
-            print(f"[WARN] upload_notice notify failed: {e}")
+      if (!dragEl) return; // 上のawait中に指が離された場合はここで終了
 
-    return jsonify({"ok": True, "filename": filename, "is_update": is_update, "uploader": uploader})
+      // ★ 追加：フォルダを切り替える直前の「見た目の位置」と、その時点の最新の指の位置を
+      //   ここで（＝各種await完了後の最新の状態で）確定させる。デッキ読み込み待ちなどの
+      //   非同期処理中に指が動いていた場合でも、ここで最新値を使うことでズレを防ぐ。
+      const oldVisualTop = dragEl.getBoundingClientRect().top;
+      const resumeClientX = lastClientX;
+      const resumeClientY = lastClientY;
+
+      // フォルダを開く
+      currentFolderId = targetFolderId;
+
+      // ★ ドラッグ中は renderDeckListUI() が丸ごとスキップされるため、ここだけ
+      //   一時的にガードを外して再描画し、開いたフォルダの中身を表示する。
+      const wasDragActive = cmListDragActive;
+      cmListDragActive = false;
+      renderDeckListUI();
+      cmListDragActive = wasDragActive;
+
+      const body = document.querySelector('#screen-list .cm-scroll-body');
+      if (body) body.scrollTop = 0;
+
+      // ★ 再描画で古いdragEl要素はDOMから外れてしまったので、新しく描画された
+      //   同じ項目（data-keyで特定）を探し直し、そのままドラッグを継続する。
+      //   （ファイル名に特殊文字を含む可能性があるためCSSセレクタは使わずJSで探す）
+      const newEl = getItems().find(it => it.dataset.key === key) || null;
+      if (newEl) {
+        // ★ 新しく描画された要素は、開いたフォルダの一覧の中の「自然な位置」に
+        //   配置されている（＝指の位置とは無関係）。切り替え直前の見た目の位置
+        //   （oldVisualTop）との差分を初期オフセットとして与えることで、
+        //   カードが指の位置からずれずにそのまま連続して見えるようにする。
+        const newNaturalTop = newEl.getBoundingClientRect().top;
+        const initialDy = oldVisualTop - newNaturalTop;
+        beginDrag(newEl, resumeClientY, initialDy);
+        lastClientX = resumeClientX;
+        // ★ 重要：ここで新しい要素にポインターキャプチャを張り直す。
+        //   フォルダを開き直す際に元の要素をDOMごと作り直しているため、
+        //   長押し開始時に張ったキャプチャ（pressItem側）が外れてしまう。
+        //   張り直さないと、この後 指がパンくず付近（#deck-grid の外）に
+        //   出た瞬間から pointermove/pointerup が grid に届かなくなり、
+        //   endDrag() が一切呼ばれずに touch-action:none 等が要素に残り続けて
+        //   「スクロールも何もできなくなる」不具合の原因になる。
+        try { newEl.setPointerCapture(pressPointerId); } catch (_) {}
+      } else {
+        // 万一見つからなければドラッグ状態を安全に終了させる
+        dragEl = null;
+        cmListDragActive = false;
+      }
+    } finally {
+      hoverOpenInProgress = false;
+    }
+  }
+
+  function endDrag() {
+    if (!dragEl) return;
+    clearHoverFolder(); // ★ ドロップ時にフォルダのハイライト・自動オープン待ちタイマーを解除する
+    if (autoScrollRAF !== null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
+    dragEl.classList.remove('dragging');
+    dragEl.style.transform = '';
+    dragEl.style.zIndex = '';
+    dragEl.style.boxShadow = '';
+    dragEl.style.opacity = '';
+    dragEl.style.position = '';
+    dragEl.style.touchAction = '';
+    dragEl = null;
+    cmListDragActive = false; // ★ 再描画スキップガードを解除（次のポーリングで最新状態に更新される）
+
+    // ★ DOM上の最終的な並び順（data-key）をこのフォルダのスコープに保存する
+    const orderedKeys = getItems().map(it => it.dataset.key);
+    saveListOrder(currentFolderId, orderedKeys);
+
+    // ★ フォルダ／公開済みデッキ（＝みんなに共有される項目）が含まれていれば、
+    //   サーバーにも反映して他の人の一覧にも同じ並びを届ける。
+    //   自分だけの下書きデッキしか含まれていない場合はサーバー通信自体を省略する。
+    if (orderedKeys.some(isSharedOrderKey)) {
+      pushSharedOrderToServer(currentFolderId, orderedKeys).then(ok => {
+        if (!ok) showBanner('⚠ 並び替えのサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e');
+      });
+    }
+
+    // ★ 指を離した瞬間に発生するクリックで意図せずフォルダが開かないようにするガード
+    cmDragJustEndedAt = Date.now();
+  }
+
+  function cancelPress() {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    if (touchActionTimer) { clearTimeout(touchActionTimer); touchActionTimer = null; } // ★ 追加
+    pressItem = null; pressPointerId = null;
+    // ★ 追加：実際のドラッグに移行しなかった（＝dragElがまだ無い）場合だけ、
+    //   ここで再描画ブロックを解除する。既にドラッグ中（dragElあり）の場合は
+    //   endDrag() 側の解除に任せる（そちらの方が後）。
+    if (!dragEl) cmListDragActive = false;
+  }
+
+  function onPointerDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (dragEl) return; // 既に別の指・別のポインタでドラッグ中
+    const item = e.target.closest('.deck-card');
+    if (!item || item.parentElement !== grid) return;
+    // ▶プレイ／✏️メニューなどのボタンから始まった場合は、通常のタップ操作を優先する
+    if (e.target.closest('button, .btn, .icon-btn, a')) return;
+
+    pressItem = item;
+    pressPointerId = e.pointerId;
+    pressStartX = e.clientX;
+    pressStartY = e.clientY;
+    // ★ バグ修正：長押し判定が成立する前（pressTimer発火前）の待機中に
+    //   バックグラウンドポーリングなどから renderDeckListUI() が呼ばれて
+    //   #deck-grid が丸ごと作り直されると、pressItem が新しいDOMから浮いた
+    //   「孤立した古い要素」になってしまう。その状態で長押しが成立して
+    //   beginDrag(pressItem, ...) が呼ばれると、既に画面上に新しく描画された
+    //   本物の項目とは別に、この孤立した古い要素も見た目上表示されてしまい、
+    //   「デッキ／フォルダが一時的に2つ表示される」不具合の原因になっていた。
+    //   これを防ぐため、長押し判定中（＝指を置いてから離す/確定するまでの間）も
+    //   ドラッグ中と同様に再描画をスキップさせる。
+    cmListDragActive = true;
+
+    if (e.pointerType === 'touch') {
+      // ★ 修正：以前はタッチ開始と同時にtouch-action:noneにしていたが、
+      //   これだと普通にスワイプでスクロールしたいだけの操作でも、その瞬間だけ
+      //   ネイティブスクロールが止められてしまい「スワイプしづらい／引っかかる」
+      //   原因になっていた（この後JS側の手動スクロールに切り替わるが、
+      //   慣性が無いぶんネイティブスクロールより明らかに動きが重くなる）。
+      //   ─────────────────────────────────────────
+      //   そこで、指を置いてからTOUCH_ACTION_DELAY_MSの間だけ「様子見」し、
+      //   その間に指がある程度動けば「スクロールしたいのだ」と判断して
+      //   このタイマーをキャンセルする（＝touch-actionには一切触れず、
+      //   ネイティブスクロールに完全に任せる。onPointerMove側もこの場合は
+      //   手動スクロールへ切り替えない）。
+      //   逆に、その間ほとんど動かなければ「長押し（並び替え）したいのだ」と
+      //   判断してtouch-action:noneを適用する。このタイミングであれば、
+      //   まだ最初のtouchmoveが発生していないため、iOS Safariでも問題なく
+      //   反映される（「長押し成立後（380ms後）まで遅らせると手遅れになる」
+      //   というのは、その間に指がある程度動いてしまっているケースの話）。
+      manualScrollParent = findScrollParent(item);
+      manualScrollLastY = e.clientY;
+      manualScrollActive = false;
+      touchActionTimer = setTimeout(() => {
+        touchActionTimer = null;
+        if (pressItem !== item) return; // 既に指を離した／スクロールに切り替わっていたら何もしない
+        touchActionItem = item;
+        touchActionItem.style.touchAction = 'none';
+      }, TOUCH_ACTION_DELAY_MS);
+    }
+
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      if (!pressItem) return;
+      // ★ 追加の安全策：万一ここまでの間に何らかの理由で pressItem が
+      //   #deck-grid から外れてしまっていたら（＝孤立した古い要素なら）、
+      //   ドラッグを開始せずに静かに諦める（見た目上の複製を防ぐ）。
+      if (!pressItem.isConnected || pressItem.parentElement !== grid) { cancelPress(); return; }
+      try { pressItem.setPointerCapture(pressPointerId); } catch (_) {}
+      lastClientX = pressStartX; // ★ フォルダ重なり判定の初期X座標
+      beginDrag(pressItem, pressStartY);
+    }, LONG_PRESS_MS);
+  }
+
+  // ★ 追加：手動スクロールの差分（manualScrollPendingDelta）を、画面の描画タイミング
+  //   （requestAnimationFrame）に合わせて1フレームに1回だけ scrollTop へ反映する。
+  function manualScrollTick() {
+    manualScrollRAF = null;
+    if (!manualScrollActive) { manualScrollPendingDelta = 0; return; }
+    if (manualScrollPendingDelta !== 0 && manualScrollParent) {
+      manualScrollParent.scrollTop += manualScrollPendingDelta;
+      manualScrollPendingDelta = 0;
+    }
+  }
+
+  function onPointerMove(e) {
+    if (dragEl && e.pointerId === pressPointerId) {
+      e.preventDefault();
+      moveDrag(e.clientX, e.clientY);
+      return;
+    }
+    // ★ 長押し判定キャンセル後も、cancelPress()でpressPointerIdはnullに
+    //   なってしまうため、同じ指の手動スクロールは別IDで追跡を続ける。
+    if (manualScrollActive && e.pointerId === manualScrollPointerId) {
+      e.preventDefault();
+      // ★ 修正：以前はここで毎回 scrollTop を直接書き換えていたため、
+      //   touchmoveイベントの発火間隔のブレがそのまま描画のガタつき
+      //   （がくがく）として見えてしまっていた。
+      //   ここでは差分を貯めておくだけにし、実際の反映は下のrAFループで
+      //   画面の描画タイミングに合わせて1回ずつまとめて行うことで、
+      //   ネイティブスクロールに近い滑らかさにする。
+      const delta = manualScrollLastY - e.clientY; // 指を上に動かした→下にスクロール
+      manualScrollPendingDelta += delta;
+      manualScrollLastY = e.clientY;
+      if (manualScrollRAF === null) manualScrollRAF = requestAnimationFrame(manualScrollTick);
+      return;
+    }
+
+    if (pressPointerId === null || e.pointerId !== pressPointerId) return; // 追跡中の指以外は無視
+
+    // 長押し確定前：しきい値を超えて動いたら「スクロールしたいのだ」とみなし、
+    // 長押し判定をキャンセルする。
+    // ★ タッチの場合は touch-action:none にしてあるためネイティブスクロールは
+    //   もう発生しないので、以降はこちらで手動スクロールを行う。
+    if (pressTimer) {
+      const dx = e.clientX - pressStartX, dy = e.clientY - pressStartY;
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        // ★ 修正：touch-actionがまだ'none'になっていない（＝touchActionTimerがまだ
+        //   発火していない）場合は、ネイティブスクロールがまだ生きているということなので
+        //   JSの手動スクロールへ切り替える必要はない（切り替えると二重にスクロールして
+        //   カクつく）。touchActionItemが既にセットされている場合だけ、ネイティブ
+        //   スクロールがもう使えない状態なので手動スクロールで代わりに動かす。
+        if (e.pointerType === 'touch' && touchActionItem) {
+          manualScrollPointerId = e.pointerId;
+          manualScrollActive = true;
+        }
+        cancelPress();
+      }
+    }
+  }
+
+  function resetTouchAction() {
+    if (manualScrollRAF !== null) { cancelAnimationFrame(manualScrollRAF); manualScrollRAF = null; }
+    manualScrollPendingDelta = 0;
+    if (touchActionItem) { touchActionItem.style.touchAction = ''; touchActionItem = null; }
+    manualScrollActive = false;
+    manualScrollParent = null;
+    manualScrollPointerId = null;
+  }
+
+  function onPointerUp(e) {
+    if (dragEl && e.pointerId === pressPointerId) { endDrag(); cancelPress(); resetTouchAction(); return; }
+    if (e.pointerId === pressPointerId) { cancelPress(); resetTouchAction(); return; }
+    if (e.pointerId === manualScrollPointerId) { resetTouchAction(); }
+  }
+
+  grid.addEventListener('pointerdown', onPointerDown);
+  grid.addEventListener('pointermove', onPointerMove, { passive: false });
+  grid.addEventListener('pointerup', onPointerUp);
+  grid.addEventListener('pointercancel', onPointerUp);
+
+  // ★ 追加の保険：フォルダの自動オープン／自動で戻る操作の直後は、指が一時的に
+  //   #deck-grid の外（パンくず付近など）にあることがあり、万一ポインターキャプチャの
+  //   張り直しがうまく効かない端末があっても、指を離した／キャンセルされたイベント自体は
+  //   documentまでは必ずバブリングしてくる。ここで拾って必ず後片付け（endDrag等）が
+  //   走るようにし、touch-action:none等が要素に残り続ける事故を防ぐ。
+  document.addEventListener('pointerup', onPointerUp);
+  document.addEventListener('pointercancel', onPointerUp);
+
+  // ★ 修正：並び替え中にスマホの画面が勝手にスクロールしてしまう不具合の対策。
+  //   ─────────────────────────────────────────
+  //   このコードは「触れた瞬間に対象カードの touch-action を 'none' にすれば、
+  //   その後のブラウザのネイティブスクロールを抑えられる」という前提で
+  //   組まれているが、実機（特にAndroid Chromeなど）では pointerdown 内で
+  //   touch-action を書き換えても、タイミングによってはブラウザ側の
+  //   ジェスチャー判定に間に合わず、ネイティブの縦スクロールが始まってしまう
+  //   ことがある。その場合、長押しでドラッグが「始まったように見える」のに
+  //   指を動かすと画面ごとスクロールしてしまう、という症状になる。
+  //   touch-action の設定タイミングに依存しない、より確実な方法として、
+  //   素の touchmove イベントを passive:false で監視し、このカード上で
+  //   長押し判定中・ドラッグ中・手動スクロール中のいずれかであれば
+  //   毎回 e.preventDefault() してネイティブスクロールの発生自体を止める。
+  function onNativeTouchMove(e) {
+    // ★ 修正：以前は「長押し判定中（pressPointerId !== null）」というだけで
+    //   毎回 preventDefault していたため、ただのスワイプでも最初の一瞬だけ
+    //   ネイティブスクロールが止められ「スワイプしづらい」原因になっていた。
+    //   touchActionItem（＝実際にtouch-action:noneを適用した対象）がある時だけ
+    //   preventDefaultすれば十分で、それ以外（様子見中）はネイティブスクロールに
+    //   触れないようにする。
+    if (dragEl || manualScrollActive || touchActionItem) {
+      e.preventDefault();
+    }
+  }
+  grid.addEventListener('touchmove', onNativeTouchMove, { passive: false });
+})();
+
+async function deleteCardFromDeck(idx) {
+  const ok = await showCmConfirm({
+    title: 'このカードを削除しますか？', okLabel: '削除する', okStyle: 'danger',
+  });
+  if (!ok) return;
+  const deck = decks.find(d => d.id === currentDeckId);
+  deck.cards.splice(idx, 1); saveDecks(decks);
+  document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+  renderCreatedList();
+  // ★ 修正：追加時と同じ理由で、削除もサーバー登録済みなら即座に反映しておく
+  //   （そうしないと、次に編集画面を開いたときの強制リロードで
+  //     削除前の古いカードがサーバーから復活してしまう）
+  if (deck.filename) queueSyncDeckToServer(deck);
+}
+async function confirmLeaveEdit() {
+  const ok = await showCmConfirm({
+    title: '編集を終了しますか？', desc: '一覧画面に戻ります。',
+    okLabel: '終了する', okStyle: 'blue',
+  });
+  if (ok) showScreen('list');
+}
+
+// ── カード編集モーダル（デッキ編集画面 / 学習画面 共通） ─────
+let editingDeckId  = null;
+let editingCardKey = null;
+let editingContext = 'editor'; // 'editor'（デッキ編集画面）| 'study'（プレイ中）
+
+// ★ 追加：カード編集モーダル内での画像編集用バッファ
+//   デッキ編集画面の新規カード作成用バッファ（imgBuf）とは別に持つことで、
+//   モーダルを開いている最中に新規カード作成側のバッファを壊さないようにする。
+let editImgBuf = { q: [], a: [], e: [] };
+// ★ 追加：img-file-input の change イベントが「新規カード作成用（editor）」と
+//   「カード編集モーダル用（modal）」のどちらから呼ばれたかを区別するためのフラグ
+let imgContext = 'editor';
+
+// ★ 追加：カード編集モーダルを開く前に、公開済みデッキなら
+//   サーバーから最新のカードを読み込み直しておく（一度だけ）。
+//   ─────────────────────────────────────────
+//   他の端末・他の人が先に編集して公開していた場合、古いキャッシュの
+//   まま編集して保存すると、その人の変更を上書きして消してしまう。
+//   これを防ぐため、モーダルを開く直前に必ず最新化する。
+//   （失敗時は loadDeckCardsWithRecovery が再試行/中止をユーザーに委ねる）
+async function reloadCardBeforeEdit(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck || !deck.filename) return true; // 未公開デッキはローカルのみなので不要
+  // ★ 修正：例えば「10番のカードを作って次へ→すぐ6番を編集」のように、
+  //   直前の追加/削除のサーバー同期（queueSyncDeckToServer）がまだ完了していない
+  //   状態でここに来ることがある。その状態でいきなり強制リロードすると、
+  //   サーバーがまだ知らない直前の変更がこの端末からも消えてしまうため、
+  //   まず保留中の同期処理の完了を待ってから最新化する。
+  await waitForPendingSync(deckId);
+  return await loadDeckCardsWithRecovery(deckId);
+}
+
+async function openCardEditModal(idx) {
+  const deck = decks.find(d => d.id === currentDeckId);
+  if (!deck) return;
+  // ★ 修正：ここは「今まさにこの端末で開いているデッキ編集画面」の中で、
+  //   同じデッキの別のカードを編集するケース。openEditDeck() が
+  //   この編集セッションの最初に既にサーバーから最新化しており、それ以降の
+  //   追加・削除もローカル→サーバーの順に同期キューへ積まれている。
+  //   ここで毎回さらに強制的にサーバーから取り直すと、
+  //   直前に送った変更がサーバー側にまだ反映しきっていない（反映に数秒かかる等）
+  //   タイミングでは、その反映前の古い内容で上書きしてしまい、
+  //   「10番を作って次へ→すぐ6番を編集」のような操作でカードが消える事故に
+  //   つながっていた。この画面の中で編集する分には、この端末のローカルの内容が
+  //   最新であることは保証されているため、強制リロードはしない。
+  const freshCard = deck.cards[idx];
+  if (!freshCard) return;
+  openCardEditModalCommon(deck.id, freshCard, 'editor');
+}
+
+// ★ プレイ中に今表示しているカードを編集する
+async function editCurrentStudyCard() {
+  const c = studyCards[studyIdx];
+  if (!c) return;
+  const deckId = c.__deckId || studyDeckId; // ★
+  const key = cardKey(c);
+
+  const ok = await reloadCardBeforeEdit(deckId);
+  if (!ok) return; // ユーザーが読み込みを中止した
+
+  const deck = decks.find(d => d.id === deckId);
+  const freshCard = deck ? deck.cards.find(x => cardKey(x) === key) : null;
+  if (!freshCard) {
+    await showCmAlert({ title: 'このカードは既に削除されています', desc: '最新の内容に更新しました。' });
+    return;
+  }
+  openCardEditModalCommon(deckId, freshCard, 'study');
+}
+
+function openCardEditModalCommon(deckId, c, context) {
+  editingDeckId  = deckId;
+  editingCardKey = cardKey(c);
+  editingContext = context;
+  document.getElementById('modal-edit-q').value = mathToPlainText(c.question);
+  document.getElementById('modal-edit-a').value = mathToPlainText(c.answer);
+  document.getElementById('modal-edit-e').value = mathToPlainText(c.explanation||'');
+  ['modal-edit-q','modal-edit-a','modal-edit-e'].forEach(id => {
+    const el = document.getElementById(id);
+    autoResize(el);
+    el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 既存の数式プレビューを反映させる
+  });
+
+  // ★ 追加：既存の画像をモーダル専用バッファへコピーして表示する
+  //   （元の配列を直接触らず、保存時にまとめて書き戻すため）
+  editImgBuf = {
+    q: [...(c.imgs_q || [])],
+    a: [...(c.imgs_a || [])],
+    e: [...(c.imgs_e || [])],
+  };
+  ['q','a','e'].forEach(k => renderModalImgStrip(k));
+
+  document.getElementById('card-edit-ok').style.display  = 'none';
+  document.getElementById('card-edit-err').style.display = 'none';
+  openModal('modal-card-edit');
+}
+
+async function saveCardEdit() {
+  const q = document.getElementById('modal-edit-q').value.trim();
+  const a = document.getElementById('modal-edit-a').value.trim();
+  const e = document.getElementById('modal-edit-e').value.trim();
+  const errBar = document.getElementById('card-edit-err');
+  if (!q || !a) {
+    errBar.textContent = '✕ 問題文と解答は必須です';
+    errBar.style.display = 'block';
+    setTimeout(() => errBar.style.display = 'none', 3000);
+    return;
+  }
+  if (await warnIfBugChars(q, 'modal-edit-q')) return;
+  if (await warnIfBugChars(a, 'modal-edit-a')) return;
+  if (await warnIfBugChars(e, 'modal-edit-e')) return;
+  const deck = decks.find(d => d.id === editingDeckId);
+  if (!deck) { closeModal('modal-card-edit'); return; }
+  const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
+  if (idx === -1) { closeModal('modal-card-edit'); return; }
+
+  if (await warnIfDuplicateOrSameCard(deck, q, a, e, idx)) return;
+
+  // 既存オブジェクトを直接書き換える
+  const card = deck.cards[idx];
+  card.question    = q;
+  card.answer      = a;
+  card.explanation = e;
+  // ★ 追加：画像もモーダルバッファから書き戻す
+  card.imgs_q = [...editImgBuf.q];
+  card.imgs_a = [...editImgBuf.a];
+  card.imgs_e = [...editImgBuf.e];
+
+  // ★ studyCards 側（プレイ中の配列）にも同期する。
+  //   以前は deck.cards と同じオブジェクト参照だったため自動的に反映されていたが、
+  //   カード編集前に deck.cards を丸ごと読み込み直すようになったため、
+  //   もはや同じ参照とは限らない。取りこぼさないよう明示的に書き戻す。
+  const studySameIdx = studyCards.findIndex(sc =>
+    cardKey(sc) === editingCardKey && (sc.__deckId || studyDeckId) === deck.id
+  );
+  if (studySameIdx !== -1) {
+    const sc = studyCards[studySameIdx];
+    sc.question = q; sc.answer = a; sc.explanation = e;
+    sc.imgs_q = [...editImgBuf.q]; sc.imgs_a = [...editImgBuf.a]; sc.imgs_e = [...editImgBuf.e];
+  }
+
+  saveDecks(decks);
+  closeModal('modal-card-edit');
+
+  if (editingContext === 'study') {
+    refreshStudyCardDisplay(card);
+  } else if (editingContext === 'listview') {
+    // ★ 追加：一覧表示画面から編集した場合はその一覧を再描画する
+    renderListView();
+  } else {
+    renderCreatedList();
+  }
+
+  // ★ 公開済みならサーバー（GitHub）側にも反映する
+  if (deck.filename) {
+    const ok = await queueSyncDeckToServer(deck);
+    if (ok) {
+      showBanner('💾 保存しました', '#dcfce7', '#166534');
+    } else {
+      showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+  } else {
+    // 未公開デッキはローカル保存のみ
+    showBanner('💾 保存しました（ローカル）', '#dcfce7', '#166534');
+  }
+}
+
+// プレイ中の表示だけを更新（めくり状態はそのまま維持）
+function refreshStudyCardDisplay(c) {
+  // ★ 反転モードなら問題⇔解答を入れ替えて表示する（データ自体は変えない）
+  const qText = studyReverse ? c.answer   : c.question;
+  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
+  const aText = studyReverse ? c.question : c.answer;
+  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
+
+  setMathText(document.getElementById('study-q-text'), qText);
+  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  setMathText(document.getElementById('study-a-text'), aText);
+  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  const explWrap = document.getElementById('study-expl-wrap');
+  if (c.explanation) {
+    setMathText(document.getElementById('study-e-text'), c.explanation);
+    explWrap.style.display = '';
+  } else {
+    explWrap.style.display = 'none';
+  }
+}
+
+// ── デッキ名変更 ──────────────────────
+let renamingDeckId = null;
+async function openRename(id) {
+  renamingDeckId = id;
+  const deck = decks.find(d => d.id === id);
+  const currentSubject = deck.subject || '';
+  const currentName = currentSubject && deck.name.startsWith(currentSubject + ' ')
+    ? deck.name.slice(currentSubject.length + 1) : deck.name;
+  document.getElementById('modal-rename-input').value = currentName;
+  // ★ 追加：まだサーバー未登録（非公開・作成中のローカル下書き）のデッキだけ
+  //   「公開予定」トグルを表示する。既にサーバー登録済み（filenameあり）の
+  //   デッキは、公開予定を取り消したい場合は既存の「非公開に戻す」メニューを使う。
+  const planRow = document.getElementById('modal-rename-plan-publish-row');
+  if (!deck.filename) {
+    planRow.style.display = '';
+    document.getElementById('modal-rename-plan-publish').checked = deck.planPublish !== false;
+  } else {
+    planRow.style.display = 'none';
+  }
+  const sel = document.getElementById('modal-rename-subject');
+  sel.innerHTML = '<option value="">読み込み中…</option>';
+  openModal('modal-rename');
+  try {
+    // ★ cache: 'no-store' を追加
+    const res  = await fetch(`${API_BASE}channels?guild_id=${GUILD_ID}`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok || !data.channels.length) throw new Error();
+    sel.innerHTML = '<option value="">科目なし</option>' +
+      data.channels.map(c =>
+        `<option value="${c.name}"${c.name === currentSubject ? ' selected' : ''}>${c.name}</option>`
+      ).join('');
+  } catch(e) {
+    sel.innerHTML = `<option value="${currentSubject}">${currentSubject || '（取得失敗）'}</option>`;
+  }
+  setTimeout(() => document.getElementById('modal-rename-input').focus(), 150);
+}
+async function saveRename() {
+  const subject = document.getElementById('modal-rename-subject').value;
+  const input   = document.getElementById('modal-rename-input').value.trim();
+  if (!input) return;
+  if (await warnIfBugChars(input, 'modal-rename-input')) return;
+  const deck = decks.find(d => d.id === renamingDeckId);
+  const newName = subject ? `${subject} ${input}` : input;
+  // ★ 追加：まだサーバー未登録のデッキのみ、公開予定トグルの変更を反映する
+  const wasPlanPublish = deck.planPublish !== false;
+  let planPublishChanged = false;
+  if (!deck.filename) {
+    const nowPlanPublish = document.getElementById('modal-rename-plan-publish').checked;
+    if (nowPlanPublish !== wasPlanPublish) planPublishChanged = true;
+    deck.planPublish = nowPlanPublish;
+  }
+  deck.subject = subject;
+  deck.name    = newName;
+  saveDecks(decks);
+  closeModal('modal-rename');
+  renderDeckListUI();
+
+  // ★ 追加：公開予定が「なし→あり」に変わった場合、この時点でサーバーへ登録し、
+  //   他の人の一覧にも「作成中」として表示されるようにする。
+  if (!deck.filename && planPublishChanged && deck.planPublish) {
+    await announceNewDeckToServer(deck.id);
+    renderDeckListUI();
+  }
+
+  // ★ 公開済みならサーバー側のファイルも更新する（通知はしない）
+  //   ※ カード本体が未読み込みでも、renameだけならcardsが空でも
+  //     サーバー側は既存ファイルの中身を維持したまま名前だけ変えたいところだが、
+  //     save_cards は cards を丸ごと上書きする仕様なので、未読み込みのまま
+  //     送るとカードが消えてしまう。そのため rename 前に必ず読み込んでおく。
+  //   ★ 修正：cardsLoaded=true のキャッシュがあっても古い可能性があるため必ず
+  //     最新化する。失敗時も loadDeckCardsWithRecovery が回復手段を提示するので、
+  //     rename操作だけがずっとできなくなる、ということはない。
+  if (deck.filename) {
+    // ★ 追加：この直後の強制リロードでローカルの変更（追加/削除など未同期分）が
+    //   消えてしまわないよう、まず直前の同期処理が終わるのを待つ。
+    await waitForPendingSync(deck.id);
+    const loaded = await loadDeckCardsWithRecovery(deck.id);
+    if (!loaded) {
+      showBanner('⚠ 名前の変更はローカルには反映されています（サーバーへの反映は未実施）', '#fffbeb', '#92400e');
+      return;
+    }
+    const ok = await queueSyncDeckToServer(deck);
+    if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
+  }
+}
+
+// ★ 追加：デッキごとに「直近のサーバー同期処理」を1本の待ち合わせ可能なPromiseとして
+//   直列に繋いでおくための仕組み。
+//   ─────────────────────────────────────────────
+//   カードを次々に追加・削除する場面（例：10問作って「次へ」で連続作成）では、
+//   1回1回の syncDeckToServer() 完了を待たずに次の操作へ進めるようにしたい
+//   （待つとテンポが悪くなる）一方で、「作成済みリストから別の問題（例：6番）を
+//   タップして編集する」ときは reloadCardBeforeEdit() が強制的にサーバーから
+//   最新カードを取り直すため、直前の追加分の同期がまだ完了していないと
+//   その追加分がサーバーに存在しないまま上書き取得されて消えてしまう。
+//   これを防ぐため、同期を開始するときは必ず queueSyncDeckToServer() を通し、
+//   強制リロードの直前で waitForPendingSync() を使ってその完了を待ち合わせる。
+const deckSyncPromises = new Map(); // deckId -> 直近の同期処理のPromise
+function queueSyncDeckToServer(deck) {
+  const prev = deckSyncPromises.get(deck.id) || Promise.resolve();
+  const next = prev.then(() => syncDeckToServer(deck)).catch(() => false);
+  deckSyncPromises.set(deck.id, next);
+  return next;
+}
+async function waitForPendingSync(deckId) {
+  const pending = deckSyncPromises.get(deckId);
+  if (pending) { try { await pending; } catch(e) {} }
+}
+
+// ★ 公開済みデッキの内容をサーバーに反映する共通処理（通知なし）
+async function syncDeckToServer(deck) {
+  try {
+    const cards = deck.cards.map(c => ({
+      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
+      imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [], // ★ 画像も同期する
+    }));
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}save_cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: deck.name,
+        cards,
+        filename: deck.filename,
+        guild_id: GUILD_ID,
+        subject: deck.subject || null,
+        folder_id: deck.folderId || null, // ★ フォルダ所属（みんなで共有）
+        publisher_id: session ? session.student_id : null,
+        publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
+        silent: true, // ★ 通知しない
+        incomplete: !!deck.incomplete, // ★ 未完成フラグを維持したままサーバーへ反映する
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    deck.count = deck.cards.length;
+    saveDecks(decks);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ── 学習 ─────────────────────────────
+function getUnsureSet(deckId) {
+  try { const raw = localStorage.getItem('unsure_' + deckId); return new Set(raw ? JSON.parse(raw) : []); }
+  catch { return new Set(); }
+}
+function saveUnsureSet(deckId, set) {
+  localStorage.setItem('unsure_' + deckId, JSON.stringify([...set]));
+}
+
+// ★ 追加：学習の続きから再開するための進捗保存・読込・削除
+//   ・デッキ / フォルダそれぞれ独立したキーで保存する
+//   ・保存するのは「そのときのカードの並び順（キー配列）」「今何問目か」
+//     「'all'/'unsure' のどちらのモードだったか」「反転モードだったか」
+//     「シャッフル済みだったか」
+//   ・カードの内容自体は保存しない（常に最新の decks から引き直すため、
+//     編集や画像追加をしても続きから再開したときにズレない）
+function progressKey(isFolder, id) {
+  return (isFolder ? 'cm_progress_folder_' : 'cm_progress_deck_') + id;
+}
+function saveStudyProgress() {
+  const id = studyIsFolder ? studyFolderId : studyDeckId;
+  if (!id || !studyCards.length) return;
+  const data = {
+    order: studyCards.map(c => cardKey(c)),
+    idx: studyIdx,
+    mode: studyMode,
+    reverse: studyReverse,
+    autoGrade: studyAutoGrade, // ★ 追加：自動採点モードだったかどうかを保存し、再開時に復元する
+    shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
+    updatedAt: Date.now(),
+  };
+  try { localStorage.setItem(progressKey(studyIsFolder, id), JSON.stringify(data)); } catch(e) {}
+}
+function loadStudyProgress(isFolder, id) {
+  try {
+    const data = JSON.parse(localStorage.getItem(progressKey(isFolder, id)));
+    if (!data || !Array.isArray(data.order) || !data.order.length) return null;
+    if (typeof data.idx !== 'number' || data.idx >= data.order.length) return null;
+    return data;
+  } catch(e) { return null; }
+}
+function clearStudyProgress(isFolder, id) {
+  try { localStorage.removeItem(progressKey(isFolder, id)); } catch(e) {}
+}
+
+// ★ 追加：学習を最後まで終えた（完了した）記録の保存・読込
+//   ・「プレイ中（続きから）」とは別のキーで、完了した日時と問題数だけを保存する
+function completedKey(isFolder, id) {
+  return (isFolder ? 'cm_completed_folder_' : 'cm_completed_deck_') + id;
+}
+function saveCompletionRecord(isFolder, id, total) {
+  if (!id || !total) return;
+  const data = { total, completedAt: Date.now() };
+  try { localStorage.setItem(completedKey(isFolder, id), JSON.stringify(data)); } catch(e) {}
+}
+function loadCompletionRecord(isFolder, id) {
+  try {
+    const data = JSON.parse(localStorage.getItem(completedKey(isFolder, id)));
+    if (!data || typeof data.completedAt !== 'number' || !data.total) return null;
+    return data;
+  } catch(e) { return null; }
+}
+
+let studyDeckId = null;
+let studyShuffled = false;   // ★ 追加：現在シャッフル済みの並びで学習中かどうか（続きから再開時の表示・保存用）
+let studyIsFolder = false;   // ★ 追加：フォルダ単位のプレイ中かどうか
+let studyFolderId = null;    // ★ 追加：プレイ中のフォルダid
+let folderPlayDecks = [];    // ★ 追加：フォルダプレイの対象デッキ一覧
+let loadingFolderIds = new Set(); // ★ 追加：カード読み込み中のフォルダid
+
+// ★ フォルダ配下の全デッキ（サブフォルダ含む）を1つの学習セッションとしてプレイする
+async function openFolderPlayMode(folderId) {
+  const folder = folders.find(f => f.id === folderId);
+  const targetDecks = collectDecksInFolder(folderId)
+    .filter(d => (d.filename ? (d.count ?? d.cards.length) : d.cards.length) > 0);
+  if (!targetDecks.length) return;
+
+  loadingFolderIds.add(folderId);
+  renderDeckListUI();
+
+  // ★ プレイ開始時は毎回サーバーの最新カードを取りに行く（force=true）。
+  //   キャッシュ済みでも取り直すことで、他の人が直した修正がすぐプレイ画面に反映される。
+  // ★ 修正：直前の編集でのサーバー同期がまだ終わっていない状態で強制リロードすると、
+  //   同期前の古い内容（最悪カード0枚）で上書きされてしまうため、各デッキの保留中の
+  //   同期を先に待ってから読み込み直す。
+  await Promise.all(targetDecks.map(d => waitForPendingSync(d.id)));
+  // ★ 修正：1回失敗しただけで行き止まりのアラートを出して終わらせず、
+  //   失敗したデッキだけを対象に「もう一度試す」を選べるようにする
+  //   （タイムアウトを含む一時的な通信エラーでフォルダのプレイを諦めなくて済むように）。
+  let pending = targetDecks;
+  while (pending.length) {
+    const results = await Promise.all(pending.map(d => ensureDeckCardsLoaded(d.id, true)));
+    pending = pending.filter((d, i) => !results[i].ok);
+    if (!pending.length) break;
+    const retry = await showCmConfirm({
+      title: '読み込みに失敗しました',
+      desc: `${pending.length}件のデッキが読み込めませんでした。通信環境を確認してもう一度お試しください。`,
+      okLabel: 'もう一度試す', cancelLabel: 'やめる',
+    });
+    if (!retry) { loadingFolderIds.delete(folderId); renderDeckListUI(); return; }
+  }
+
+  loadingFolderIds.delete(folderId);
+  renderDeckListUI();
+
+  folderPlayDecks = targetDecks;
+  studyIsFolder = true;
+  studyFolderId = folderId;
+  studyDeckId = null;
+
+  document.getElementById('reverse-mode-checkbox').checked = false;
+  document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：モーダルを開くたびに未チェックへリセット
+  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
+  document.getElementById('play-mode-deck-name').textContent = folder ? `📁 ${folder.name}` : 'フォルダ';
+
+  const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
+  document.getElementById('play-mode-all-sub').textContent = `${allCount} 問`;
+
+  const unsureCount = folderPlayDecks.reduce((s, d) => {
+    const unsure = getUnsureSet(d.id);
+    return s + d.cards.filter(c => unsure.has(cardKey(c))).length;
+  }, 0);
+  const unsureItem = document.getElementById('play-mode-unsure-item');
+  if (unsureCount > 0) {
+    document.getElementById('play-mode-unsure-sub').textContent = `${unsureCount} 問`;
+    unsureItem.style.display = '';
+  } else {
+    unsureItem.style.display = 'none';
+  }
+
+  // ★ 続きから再開できる場合は「続きから」の項目を表示する
+  const savedF = loadStudyProgress(true, folderId);
+  const resumeItemF = document.getElementById('play-mode-resume-item');
+  if (savedF) {
+    document.getElementById('play-mode-resume-sub').textContent = `${savedF.idx + 1} / ${savedF.order.length} 問から`;
+    resumeItemF.style.display = '';
+  } else {
+    resumeItemF.style.display = 'none';
+  }
+
+  openModal('modal-play-mode');
+}
+// ★ プレイ開始のたびに、必ずサーバーから最新のカードを取り直す（force=true）。
+//   ─────────────────────────────────────────────
+//   以前は cardsLoaded=true（一度読み込み済み）のデッキはキャッシュのまま
+//   プレイ画面を開いていたため、他の人が先に修正していても気づけず、
+//   「同じ間違いをまた編集してしまう」「もう直っていたのに気づかない」
+//   といったすれ違いが起きやすかった。プレイのたびに読み込み直すことで、
+//   誰かが編集した直後でも次にプレイした人にはほぼ即座に反映される。
+async function openPlayMode(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+  studyIsFolder = false;
+  studyDeckId = deckId;
+
+  // ★ 修正：直前にカードを追加/削除した際のサーバー同期（queueSyncDeckToServer）が
+  //   まだ完了していない状態で強制リロードすると、その同期前の古い（最悪カード0枚の）
+  //   内容をサーバーから取得して上書きしてしまい、「中身があるのに0問で完了」に
+  //   なってしまう不具合があった。force reloadの前に必ず保留中の同期を待つ。
+  await waitForPendingSync(deckId);
+  // ★ 修正：1回失敗しただけで行き止まりのアラートを出して終わらせず、
+  //   loadDeckCardsWithRecovery と同様に「もう一度試す」を選べるようにする
+  //   （タイムアウトを含む一時的な通信エラーでプレイを諦めなくて済むように）。
+  let result = await ensureDeckCardsLoaded(deckId, true);
+  while (!result.ok) {
+    const retry = await showCmConfirm({
+      title: '読み込みに失敗しました',
+      desc: '通信環境を確認してもう一度お試しください。',
+      okLabel: 'もう一度試す', cancelLabel: 'やめる',
+    });
+    if (!retry) return;
+    result = await ensureDeckCardsLoaded(deckId, true);
+  }
+
+  document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
+  document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：自動採点トグルも未チェックへリセット
+  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
+  document.getElementById('play-mode-deck-name').textContent = deck.name;
+  document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
+  const unsure = getUnsureSet(deckId);
+  const unsureCount = deck.cards.filter(c => unsure.has(cardKey(c))).length;
+  const unsureItem = document.getElementById('play-mode-unsure-item');
+  if (unsureCount > 0) {
+    document.getElementById('play-mode-unsure-sub').textContent = `${unsureCount} 問`;
+    unsureItem.style.display = '';
+  } else {
+    unsureItem.style.display = 'none';
+  }
+
+  // ★ 続きから再開できる場合は「続きから」の項目を表示する
+  const savedD = loadStudyProgress(false, deckId);
+  const resumeItemD = document.getElementById('play-mode-resume-item');
+  if (savedD) {
+    document.getElementById('play-mode-resume-sub').textContent = `${savedD.idx + 1} / ${savedD.order.length} 問から`;
+    resumeItemD.style.display = '';
+  } else {
+    resumeItemD.style.display = 'none';
+  }
+
+  // ★ 反転トグルを必ず見せるため、わからないカードの有無に関わらずモーダルを開く
+  openModal('modal-play-mode');
+}
+
+// ★ 追加：反転モードのON/OFFに応じて自動採点トグルの表示を切り替える。
+//   反転モード（問題と解答を逆にする）中は自動採点の対象がずれてしまうため、
+//   反転ONの間はトグル自体を隠し、内部的にもOFFへ強制的に戻しておく。
+function onReverseModeToggleChange() {
+  const reversed = document.getElementById('reverse-mode-checkbox').checked;
+  const row = document.getElementById('auto-grade-toggle-row');
+  row.style.display = reversed ? 'none' : '';
+  if (reversed) document.getElementById('auto-grade-checkbox').checked = false;
+}
+
+async function startStudyMode(mode) {
+  studyReverse = document.getElementById('reverse-mode-checkbox').checked;
+  // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
+  studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
+  const progressId = studyIsFolder ? studyFolderId : studyDeckId;
+
+  // ★ 追加：「すべてのカード」「わからないカードだけ」を選んだ場合、
+  //   既に「続きから」の再開データが残っていると、この後の処理で
+  //   問答無用でそのデータが破棄されてしまう（clearStudyProgress）。
+  //   気づかないうちに再開位置が消えてしまわないよう、事前に確認する。
+  if (mode !== 'resume') {
+    const existing = loadStudyProgress(studyIsFolder, progressId);
+    if (existing) {
+      const proceed = await showCmConfirm({
+        title: '「続きから」のデータが消えます',
+        desc: '保存されている再開位置は破棄され、最初からのプレイになります。\nこのまま始めますか？',
+        okLabel: 'このまま始める', cancelLabel: 'キャンセル', okStyle: 'danger',
+      });
+      if (!proceed) return;
+    }
+  }
+
+  closeModal('modal-play-mode');
+
+  let title;
+
+  if (mode === 'resume') {
+    // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定・シャッフル済みか）を復元する。
+    //   カード本体は常に最新の decks / folderPlayDecks から引き直すので、
+    //   編集や画像追加が続きから再開に影響しない。
+    const saved = loadStudyProgress(studyIsFolder, progressId);
+    if (!saved) return; // 万が一データが消えていた場合は何もしない
+    studyReverse = saved.reverse;
+    studyAutoGrade = !saved.reverse && !!saved.autoGrade; // ★ 追加：保存されていた自動採点設定を復元
+    studyMode = saved.mode || 'all';
+    studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
+
+    let pool;
+    if (studyIsFolder) {
+      pool = [];
+      folderPlayDecks.forEach(d => d.cards.forEach(c => pool.push({ ...c, __deckId: d.id })));
+      const folder = folders.find(f => f.id === studyFolderId);
+      title = folder ? `📁 ${folder.name}` : 'フォルダ';
+    } else {
+      const deck = decks.find(d => d.id === studyDeckId);
+      pool = deck ? [...deck.cards] : [];
+      title = deck ? deck.name : '';
+    }
+    const byKey = new Map(pool.map(c => [cardKey(c), c]));
+    // ★ order は保存時点の並び順（シャッフル済みならその並び）をそのまま記録しているので、
+    //   ここで単純にキーから引き直すだけで、シャッフルした状態のまま正しく再開できる。
+    studyCards = saved.order.map(k => byKey.get(k)).filter(Boolean);
+    if (!studyCards.length) return; // カードが全部消えていた場合は何もしない
+    studyIdx = Math.min(saved.idx, studyCards.length - 1);
+  } else {
+    studyMode = mode;
+    studyShuffled = false; // ★ 「すべて」「わからないだけ」を選び直した場合はシャッフル状態をリセット
+    if (studyIsFolder) {
+      // フォルダ内の全デッキのカードを、どのデッキ由来かのタグ付きでまとめる
+      const merged = [];
+      folderPlayDecks.forEach(d => {
+        const unsure = mode === 'unsure' ? getUnsureSet(d.id) : null;
+        d.cards.forEach(c => {
+          if (mode === 'unsure' && !unsure.has(cardKey(c))) return;
+          merged.push({ ...c, __deckId: d.id }); // ★ 元のデッキidを保持
+        });
+      });
+      studyCards = merged;
+      const folder = folders.find(f => f.id === studyFolderId);
+      title = folder ? `📁 ${folder.name}` : 'フォルダ';
+    } else {
+      const deck = decks.find(d => d.id === studyDeckId);
+      if (mode === 'unsure') {
+        const unsure = getUnsureSet(studyDeckId);
+        studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
+      } else {
+        studyCards = [...deck.cards];
+      }
+      title = deck.name;
+    }
+    studyIdx = 0;
+    // ★ 「すべて」「わからないだけ」を新しく選び直した場合は、
+    //   古い「続きから」データを破棄する（そのまま残すと内容と矛盾するため）
+    clearStudyProgress(studyIsFolder, progressId);
+  }
+
+  document.getElementById('study-title').textContent = title + (studyReverse ? ' 🔄' : '') + (studyShuffled ? ' 🔀' : '');
+  document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
+  showScreen('study');
+  document.getElementById('study-done').style.display    = 'none';
+  document.getElementById('study-content').style.display = 'flex';
+  renderStudyCard();
+}
+
+// ══════════ 一覧表示（問題と答えをまとめて見る） ══════════
+// ★ 追加：プレイモード選択のところから「一覧で見る」を選ぶと、1問ずつめくる
+//   学習画面ではなく、全カードの問題と答えをまとめてスクロールで見られる
+//   一覧画面を開く。studyIsFolder / studyDeckId / studyFolderId / folderPlayDecks は
+//   openPlayMode() / openFolderPlayMode() で既に設定・読み込み済みのものをそのまま使う。
+let listViewFilter = 'all';   // 'all' | 'unsure'
+let listViewReverse = false;  // 問題と解答を逆にするか
+
+function openListView() {
+  listViewReverse = document.getElementById('reverse-mode-checkbox').checked;
+  listViewFilter = 'all';
+  closeModal('modal-play-mode');
+
+  let title;
+  if (studyIsFolder) {
+    const folder = folders.find(f => f.id === studyFolderId);
+    title = folder ? `📁 ${folder.name}` : 'フォルダ';
+  } else {
+    const deck = decks.find(d => d.id === studyDeckId);
+    title = deck ? deck.name : '';
+  }
+  document.getElementById('list-view-title').textContent = title;
+
+  showScreen('list-view');
+  renderListView();
+}
+
+// ★ 一覧の元データは studyCards のようなスナップショットを持たず、
+//   毎回 decks / folderPlayDecks から直接読み直す。そのため編集で
+//   内容が変わってもここを再描画するだけで常に最新の内容が反映される。
+function getListViewPool() {
+  if (studyIsFolder) {
+    const pool = [];
+    folderPlayDecks.forEach(d => d.cards.forEach(c => pool.push({ ...c, __deckId: d.id })));
+    return pool;
+  }
+  const deck = decks.find(d => d.id === studyDeckId);
+  return deck ? [...deck.cards] : [];
+}
+
+function listViewIsUnsure(c) {
+  const deckId = c.__deckId || studyDeckId;
+  return getUnsureSet(deckId).has(cardKey(c));
+}
+
+function setListViewFilter(mode) {
+  listViewFilter = mode;
+  renderListView();
+}
+
+function toggleListViewReverse() {
+  listViewReverse = !listViewReverse;
+  renderListView();
+}
+
+function renderListView() {
+  const pool = getListViewPool();
+  const unsureCount = pool.filter(listViewIsUnsure).length;
+  const cards = listViewFilter === 'unsure' ? pool.filter(listViewIsUnsure) : pool;
+
+  document.getElementById('list-view-tab-all').textContent = `すべて (${pool.length})`;
+  document.getElementById('list-view-tab-unsure').textContent = `わからないだけ (${unsureCount})`;
+  document.getElementById('list-view-tab-all').classList.toggle('active', listViewFilter === 'all');
+  document.getElementById('list-view-tab-unsure').classList.toggle('active', listViewFilter === 'unsure');
+
+  const wrap = document.getElementById('list-view-items');
+  wrap.innerHTML = '';
+
+  if (!cards.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = `<div class="empty-icon">📭</div>${listViewFilter === 'unsure' ? 'わからないカードはありません' : 'カードがありません'}`;
+    wrap.appendChild(empty);
+    return;
+  }
+
+  cards.forEach((c, i) => {
+    const deckId = c.__deckId || studyDeckId;
+    const qText  = listViewReverse ? c.answer   : c.question;
+    const qImgs  = listViewReverse ? c.imgs_a   : c.imgs_q;
+    const aText  = listViewReverse ? c.question : c.answer;
+    const aImgs  = listViewReverse ? c.imgs_q   : c.imgs_a;
+
+    const item = document.createElement('div');
+    item.className = 'list-view-item';
+
+    const head = document.createElement('div');
+    head.className = 'list-view-item-head';
+
+    const num = document.createElement('div');
+    num.className = 'list-view-item-num';
+    num.textContent = i + 1;
+    head.appendChild(num);
+
+    if (studyIsFolder) {
+      const d = decks.find(x => x.id === deckId);
+      if (d) {
+        const tag = document.createElement('div');
+        tag.className = 'list-view-deck-tag';
+        tag.textContent = d.name;
+        head.appendChild(tag);
+      }
+    }
+
+    if (listViewIsUnsure(c)) {
+      const badge = document.createElement('span');
+      badge.className = 'list-view-unsure-badge';
+      badge.textContent = '🔖';
+      head.appendChild(badge);
+    }
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'list-view-edit-btn';
+    editBtn.textContent = '✏️';
+    editBtn.onclick = () => editListViewCard(cardKey(c), deckId);
+    head.appendChild(editBtn);
+
+    item.appendChild(head);
+
+    const qTag = document.createElement('div');
+    qTag.className = 'list-view-q-tag';
+    qTag.textContent = '問題';
+    item.appendChild(qTag);
+
+    const qEl = document.createElement('div');
+    qEl.className = 'list-view-q-text';
+    item.appendChild(qEl);
+    setMathText(qEl, qText);
+
+    if (qImgs && qImgs.length) {
+      const qImgWrap = document.createElement('div');
+      qImgWrap.className = 'list-view-imgs';
+      qImgWrap.innerHTML = qImgs.map(s => `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+      item.appendChild(qImgWrap);
+    }
+
+    const aTag = document.createElement('div');
+    aTag.className = 'list-view-a-tag';
+    aTag.textContent = '解答';
+    item.appendChild(aTag);
+
+    const aEl = document.createElement('div');
+    aEl.className = 'list-view-a-text';
+    item.appendChild(aEl);
+    setMathText(aEl, aText);
+
+    if (aImgs && aImgs.length) {
+      const aImgWrap = document.createElement('div');
+      aImgWrap.className = 'list-view-imgs';
+      aImgWrap.innerHTML = aImgs.map(s => `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+      item.appendChild(aImgWrap);
+    }
+
+    if (c.explanation) {
+      const eTag = document.createElement('div');
+      eTag.className = 'list-view-e-tag';
+      eTag.textContent = '解説';
+      item.appendChild(eTag);
+
+      const eEl = document.createElement('div');
+      eEl.className = 'list-view-e-text';
+      item.appendChild(eEl);
+      setMathText(eEl, c.explanation);
+    }
+
+    wrap.appendChild(item);
+  });
+}
+
+// ★ 一覧画面のカードをタップで編集する（保存後は renderListView() が呼ばれ再描画される）
+async function editListViewCard(key, deckId) {
+  const ok = await reloadCardBeforeEdit(deckId);
+  if (!ok) return; // ユーザーが読み込みを中止した
+
+  const deck = decks.find(d => d.id === deckId);
+  const freshCard = deck ? deck.cards.find(x => cardKey(x) === key) : null;
+  if (!freshCard) {
+    await showCmAlert({ title: 'このカードは既に削除されています', desc: '最新の内容に更新しました。' });
+    renderListView();
+    return;
+  }
+  openCardEditModalCommon(deckId, freshCard, 'listview');
+}
+
+// ★ 追加：プレイ中のカードが「元のデッキ順で何問目か」を、
+//   青色の「問題」ラベル（.study-q-tag）の横に番号だけ表示する。
+//   ─────────────────────────────────────────
+//   シャッフルすると study-prog-label（例:「3 / 20」）は再生順の位置に
+//   なってしまい、元の問題番号が分からなくなる。このバッジは常に
+//   元のデッキ内でのカード順（deck.cards内でのインデックス）の番号だけを表示する。
+//   バッジ要素はHTML側に無いので、初回はJSで動的に作って隣に挿入する。
+function updateStudyOriginalNumberBadge(c) {
+  let badge = document.getElementById('study-orig-num-badge');
+  if (!badge) {
+    const label = document.querySelector('.study-q-tag');
+    if (!label) return; // 「問題」ラベルが見つからなければ何もしない
+    badge = document.createElement('span');
+    badge.id = 'study-orig-num-badge';
+    badge.style.cssText = 'margin-left:4px;';
+    label.appendChild(badge); // ★「問題」の文字のすぐ右（タグの中）に入れる
+  }
+  const deckId = c.__deckId || studyDeckId;
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) { badge.textContent = ''; return; }
+  const origIdx = deck.cards.findIndex(x => cardKey(x) === cardKey(c));
+  badge.textContent = origIdx !== -1 ? String(origIdx + 1) : '';
+}
+
+function renderStudyCard() {
+  const progressId = studyIsFolder ? studyFolderId : studyDeckId;
+  if (studyIdx >= studyCards.length) {
+    document.getElementById('study-content').style.display = 'none';
+    document.getElementById('study-done').style.display    = 'flex';
+    document.getElementById('study-prog-fill').style.width  = '100%';
+    document.getElementById('study-prog-label').textContent = `${studyCards.length} / ${studyCards.length}`;
+    const doneBadge = document.getElementById('study-orig-num-badge');
+    if (doneBadge) doneBadge.textContent = '';
+    clearStudyProgress(studyIsFolder, progressId); // ★ 完了したら続きデータは不要になるので消す
+    saveCompletionRecord(studyIsFolder, progressId, studyCards.length); // ★ 追加：完了したことを記録する
+    renderInProgressUI(); // ★ 追加：ホームの「プレイ中」「プレイ済み」欄を最新状態に更新
+    return;
+  }
+  const c = studyCards[studyIdx];
+
+  // ★ 反転モードなら「問題」欄に解答、「解答」欄に問題文を出す（解説はそのまま解答側に表示）
+  const qText = studyReverse ? c.answer   : c.question;
+  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
+  const aText = studyReverse ? c.question : c.answer;
+  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
+
+  setMathText(document.getElementById('study-q-text'), qText);
+  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  // ★ フォルダをまとめてプレイしている場合、この問題がどのカードデッキ由来かを表示する
+  const deckTag = document.getElementById('study-deck-tag');
+  if (studyIsFolder) {
+    const srcDeck = decks.find(d => d.id === c.__deckId);
+    if (srcDeck) {
+      deckTag.textContent = `📇 ${srcDeck.name}`;
+      deckTag.style.display = '';
+    } else {
+      deckTag.style.display = 'none';
+    }
+  } else {
+    deckTag.style.display = 'none';
+  }
+  document.getElementById('study-answer-panel').classList.remove('show');
+  document.getElementById('study-reveal-bar').style.display = 'flex';
+  document.getElementById('study-nav').style.display = 'none';
+
+  // ★ 修正：解答入力欄は反転モードかどうかに関わらず常に表示する（自問自答の確認用）。
+  //   反転モード中は studyAutoGrade が常に false になる（onReverseModeToggleChange /
+  //   startStudyMode 側で強制）ため、ここで欄を表示していても自動採点（○×判定）は
+  //   行われない。あくまで「入力欄を使って自分で書いてみる」ことだけができる。
+  const answerInputWrap = document.getElementById('study-answer-input-wrap');
+  const answerInput = document.getElementById('study-answer-input');
+  answerInputWrap.style.display = '';
+  answerInput.value = '';
+  const gradeResult = document.getElementById('study-grade-result');
+  gradeResult.style.display = 'none';
+  gradeResult.className = 'study-grade-result';
+  document.getElementById('reveal-answer-btn').textContent = studyAutoGrade ? '採点する' : '答えを見る';
+
+  setMathText(document.getElementById('study-a-text'), aText);
+  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  const explWrap = document.getElementById('study-expl-wrap');
+  if (c.explanation) { setMathText(document.getElementById('study-e-text'), c.explanation); explWrap.style.display = ''; }
+  else { explWrap.style.display = 'none'; }
+  const pct = studyCards.length > 1 ? (studyIdx/(studyCards.length-1))*100 : 100;
+  document.getElementById('study-prog-fill').style.width  = pct + '%';
+  document.getElementById('study-prog-label').textContent = `${studyIdx+1} / ${studyCards.length}`;
+  updateStudyOriginalNumberBadge(c); // ★ 追加：シャッフル時も元の問題番号がわかるように表示
+  // ★ 答えを見る前・見た後、両方の「前へ」ボタンの有効/無効を同期
+  document.getElementById('study-prev').disabled     = studyIdx === 0;
+  document.getElementById('study-prev-pre').disabled = studyIdx === 0;
+  document.getElementById('study-next').textContent = studyIdx === studyCards.length-1 ? '完了 ✓' : '次へ →';
+  updateUnsureBtn();
+  saveStudyProgress(); // ★ カードを表示するたびに現在位置を保存し、次回「続きから」を出せるようにする
+}
+
+function revealAnswer() {
+  document.getElementById('study-answer-panel').classList.add('show');
+  document.getElementById('study-reveal-bar').style.display = 'none';
+  document.getElementById('study-nav').style.display = '';
+  if (studyAutoGrade) gradeCurrentAnswer(); // ★ 追加：自動採点モードなら○×判定を行う
+  updateUnsureBtn();
+}
+
+// ★ 追加：自動採点まわりの処理
+//   ─────────────────────────────────────────
+//   入力欄の解答と正解テキストを正規化（前後の空白・全角スペースを除去し小文字化）して比較し、
+//   一致していれば○正解、そうでなければ×不正解と判定する。
+//   ×だった場合は自動で「わからない」にマークする（既にマーク済みなら何もしない）。
+//   ○だった場合は既存の「わからない」マークを勝手に外したりはしない。
+function normalizeAnswerText(s) {
+  return (s || '').toLowerCase().replace(/[\s\u3000]/g, '');
+}
+function gradeCurrentAnswer() {
+  const card = studyCards[studyIdx];
+  if (!card) return;
+  const inputEl = document.getElementById('study-answer-input');
+  const input = inputEl ? inputEl.value : '';
+  const correctText = studyReverse ? card.question : card.answer; // 自動採点は反転モードでは使わない想定だが念のため
+  const normInput = normalizeAnswerText(input);
+  const isCorrect = normInput !== '' && normInput === normalizeAnswerText(correctText);
+
+  const result = document.getElementById('study-grade-result');
+  const mark = document.getElementById('grade-mark');
+  const userAnswerEl = document.getElementById('grade-user-answer');
+  result.style.display = 'flex';
+  result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
+  mark.textContent = isCorrect ? '○ 正解' : '✕ 不正解';
+  userAnswerEl.textContent = 'あなたの解答：' + (input.trim() ? input : '（未入力）');
+
+  if (!isCorrect) {
+    const key = cardKey(card);
+    const deckId = card.__deckId || studyDeckId;
+    const unsure = getUnsureSet(deckId);
+    if (!unsure.has(key)) {
+      unsure.add(key);
+      saveUnsureSet(deckId, unsure);
+    }
+  }
+}
+
+function updateUnsureBtn() {
+  const card = studyCards[studyIdx]; if (!card) return;
+  const key = cardKey(card);
+  const deckId = card.__deckId || studyDeckId; // ★ フォルダプレイなら元デッキid
+  const unsure = getUnsureSet(deckId);
+  const btn = document.getElementById('unsure-btn');
+  btn.textContent = 'わからない';
+  btn.classList.toggle('marked', unsure.has(key));
+}
+
+function toggleUnsure() {
+  const card = studyCards[studyIdx]; if (!card) return;
+  const key = cardKey(card);
+  const deckId = card.__deckId || studyDeckId; // ★
+  const unsure = getUnsureSet(deckId);
+  if (unsure.has(key)) unsure.delete(key); else unsure.add(key);
+  saveUnsureSet(deckId, unsure);
+  updateUnsureBtn();
+}
+
+// ★ 追加：カード編集モーダル（modal-card-edit）など、学習画面の上にモーダルが
+//   開いている最中かどうかを判定する。モーダルは学習画面自体（.screen.active）を
+//   切り替えずに上に重ねて表示されるため、モーダルが開いている間でも
+//   document.querySelector('.screen.active')?.id は 'screen-study' のままになる。
+//   ─────────────────────────────────────────────
+//   （Android不具合の修正）問題ごとの編集画面（カード編集モーダル）を開いた状態で
+//   左右のボタンを押すと、モーダルの裏にある学習画面のカードが進む／戻ってしまう
+//   不具合があった。原因は、上記の理由でモーダルが開いていることを検知できておらず、
+//   下の学習画面のカード送り（studyMove）がそのまま実行されてしまっていたため。
+//   ここでカードを送る前に必ずモーダルが開いていないか確認するようにする。
+function isStudyOverlayModalOpen() {
+  return !!document.querySelector('[id^="modal-"].open');
+}
+// ★ 修正：editCurrentStudyCard は重複定義されていたため削除。
+//   実体は上（reloadCardBeforeEdit の近く）で定義したものを使う。
+function studyMove(dir) {
+  if (isStudyOverlayModalOpen()) return; // ★ モーダルが開いている間は学習カードを進めない
+  studyIdx += dir; renderStudyCard();
+}
+
+function shuffleStudy() {
+  for (let i=studyCards.length-1;i>0;i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [studyCards[i],studyCards[j]]=[studyCards[j],studyCards[i]];
+  }
+  studyIdx = 0;
+  studyShuffled = true; // ★ 追加：シャッフル済み状態にする。以降の saveStudyProgress で保存され、
+                        //   「続きから」で再開したときもこのシャッフル順のまま復元される。
+  document.getElementById('study-title').textContent =
+    document.getElementById('study-title').textContent.replace(/\s*🔀$/, '') + ' 🔀'; // ★ タイトルにシャッフル中を表示
+  document.getElementById('study-done').style.display    = 'none';
+  document.getElementById('study-content').style.display = 'flex';
+  renderStudyCard();
+  saveStudyProgress(); // ★ 念のため即座に保存しておく（renderStudyCard内でも保存されるが二重に確実化）
+}
+
+document.addEventListener('keydown', e => {
+  if (document.querySelector('.screen.active')?.id !== 'screen-study') return;
+  // ★ 追加：カード編集モーダルなど、学習画面の上にモーダルが開いている間はショートカットを無効化する
+  //   （モーダルは画面遷移扱いにならないため、上のチェックだけでは検知できない）
+  if (isStudyOverlayModalOpen()) return;
+  // ★ 追加：自動採点の解答入力欄にフォーカス中は、スペースキー等が入力できるようショートカットを無効化する
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.key==='ArrowRight') studyMove(1);
+  if (e.key==='ArrowLeft' && studyIdx>0) studyMove(-1);
+  if (e.key===' ') { e.preventDefault(); revealAnswer(); }
+});
+
+// ── 画像 ─────────────────────────────
+// アップロード時に長辺を IMG_MAX_DIMENSION にリサイズしJPEG圧縮する。
+// GitHub Contents API（1ファイルあたり実用上1MB程度が上限）に収まりやすくするため。
+const IMG_MAX_DIMENSION = 1280;
+const IMG_JPEG_QUALITY  = 0.72;
+
+// --- EXIFの回転情報を読み取る（スマホ写真が横倒しにならないようにするため） ---
+function getExifOrientation(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xFFD8) return 1; // JPEGでない
+  const length = view.byteLength;
+  let offset = 2;
+  while (offset + 4 <= length) {
+    const marker = view.getUint16(offset, false);
+    if (marker === 0xFFE1) {
+      const segLength = view.getUint16(offset + 2, false);
+      return readExifOrientation(view, offset + 4, segLength);
+    } else if ((marker & 0xFF00) !== 0xFF00) {
+      break;
+    } else {
+      offset += 2 + view.getUint16(offset + 2, false);
+    }
+  }
+  return 1;
+}
+function readExifOrientation(view, start) {
+  if (start + 10 > view.byteLength) return 1;
+  if (view.getUint32(start, false) !== 0x45786966) return 1; // "Exif"
+  const tiffOffset = start + 6;
+  const little = view.getUint16(tiffOffset, false) === 0x4949;
+  const firstIFDOffset = view.getUint32(tiffOffset + 4, little);
+  const dirStart = tiffOffset + firstIFDOffset;
+  if (dirStart + 2 > view.byteLength) return 1;
+  const entries = view.getUint16(dirStart, little);
+  for (let i = 0; i < entries; i++) {
+    const entryOffset = dirStart + 2 + i * 12;
+    if (entryOffset + 10 > view.byteLength) break;
+    if (view.getUint16(entryOffset, little) === 0x0112) {
+      return view.getUint16(entryOffset + 8, little);
+    }
+  }
+  return 1;
+}
+// 1〜8のEXIF orientation値をcanvasの変形に変換する
+function applyOrientationTransform(ctx, orientation, width, height) {
+  switch (orientation) {
+    case 2: ctx.transform(-1, 0, 0, 1, width, 0); break;
+    case 3: ctx.transform(-1, 0, 0, -1, width, height); break;
+    case 4: ctx.transform(1, 0, 0, -1, 0, height); break;
+    case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+    case 6: ctx.transform(0, 1, -1, 0, height, 0); break;
+    case 7: ctx.transform(0, -1, -1, 0, height, width); break;
+    case 8: ctx.transform(0, -1, 1, 0, 0, width); break;
+    default: break; // 1（回転なし）
+  }
+}
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像の読み込みに失敗しました')); };
+    img.src = url;
+  });
+}
+async function compressImageFile(file) {
+  let orientation = 1;
+  if (file.type === 'image/jpeg') {
+    try {
+      const buf = await file.slice(0, 128 * 1024).arrayBuffer();
+      orientation = getExifOrientation(buf);
+    } catch(e) { orientation = 1; }
+  }
+
+  const img = await loadImageFromFile(file);
+  let width = img.naturalWidth || img.width;
+  let height = img.naturalHeight || img.height;
+  if (width > IMG_MAX_DIMENSION || height > IMG_MAX_DIMENSION) {
+    if (width >= height) { height = Math.round(height * IMG_MAX_DIMENSION / width); width = IMG_MAX_DIMENSION; }
+    else { width = Math.round(width * IMG_MAX_DIMENSION / height); height = IMG_MAX_DIMENSION; }
+  }
+
+  const swapDims = orientation >= 5 && orientation <= 8; // 90°/270°回転の場合は縦横が入れ替わる
+  const canvas = document.createElement('canvas');
+  canvas.width  = swapDims ? height : width;
+  canvas.height = swapDims ? width  : height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; // 透過PNGがJPEG化で黒くならないよう白背景にする
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  applyOrientationTransform(ctx, orientation, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+
+  return canvas.toDataURL('image/jpeg', IMG_JPEG_QUALITY);
+}
+
+let imgTarget = null;
+const imgInput = document.getElementById('img-file-input');
+// ★ 変更：デッキ編集画面の新規カード作成から呼ばれる場合
+function addImage(t) { imgTarget=t; imgContext='editor'; imgInput.click(); }
+// ★ 追加：カード編集モーダルから呼ばれる場合
+function addModalImage(t) { imgTarget=t; imgContext='modal'; imgInput.click(); }
+
+imgInput.addEventListener('change', async () => {
+  const file = imgInput.files[0]; if (!file||!imgTarget) return;
+  const target = imgTarget;
+  const context = imgContext; // ★ 追加：どちらの画面から呼ばれたかを確定させておく
+  imgInput.value = '';
+  try {
+    const dataUrl = await compressImageFile(file);
+    if (context === 'modal') {
+      editImgBuf[target].push(dataUrl);
+      renderModalImgStrip(target);
+    } else {
+      imgBuf[target].push(dataUrl);
+      renderImgStrip(target);
+    }
+  } catch(e) {
+    await showCmAlert({ title: '画像の読み込みに失敗しました', desc: '別の画像で試してください。' });
+  }
+});
+function renderImgStrip(k) {
+  document.getElementById('imgs-'+k).innerHTML = imgBuf[k].map((b,i)=>`
+    <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
+      <button class="img-thumb-del" onclick="removeImg('${k}',${i})">✕</button></div>`).join('');
+}
+function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
+
+// ★ 追加：カード編集モーダル用の画像ストリップ描画・削除
+function renderModalImgStrip(k) {
+  document.getElementById('modal-imgs-'+k).innerHTML = editImgBuf[k].map((b,i)=>`
+    <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
+      <button class="img-thumb-del" onclick="removeModalImg('${k}',${i})">✕</button></div>`).join('');
+}
+function removeModalImg(k,i) { editImgBuf[k].splice(i,1); renderModalImgStrip(k); }
 
 
-@app.route("/delete_notice", methods=["POST"])
-def delete_notice():
-    """お知らせファイルを削除する（メタ情報も合わせて削除）"""
-    data = request.json or {}
-    filename = data.get("filename", "")
-    if not _is_safe_notice_filename(filename):
-        return jsonify({"ok": False, "error": "invalid filename"})
+// ── モーダル ──────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function onOverlayClick(e,id) { if(e.target===document.getElementById(id)) closeModal(id); }
 
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NOTICES_DIR}/{filename}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    r = requests.get(url, headers=headers, timeout=15)
-    if r.status_code == 404:
-        return jsonify({"ok": False, "error": "ファイルが見つかりません"})
-    sha = r.json().get("sha")
-    del_res = requests.delete(
-        url, headers=headers,
-        json={"message": f"delete notice {filename}", "sha": sha},
-        timeout=15
-    )
-    if del_res.status_code not in (200, 201):
-        return jsonify({
-            "ok": False,
-            "error": f"github_delete_failed: {del_res.status_code} {del_res.text[:300]}"
-        })
+// ── 画像ライトボックス（タップで拡大表示） ──────
+function openImgLightbox(src) {
+  if (!src) return;
+  document.getElementById('img-lightbox-img').src = src;
+  document.getElementById('img-lightbox').classList.add('open');
+}
+function closeImgLightbox() {
+  document.getElementById('img-lightbox').classList.remove('open');
+  document.getElementById('img-lightbox-img').src = '';
+}
 
-    # メタ情報からも削除
-    try:
-        meta, meta_sha = load_notices_meta()
-        if filename in meta:
-            del meta[filename]
-            save_notices_meta(meta, meta_sha)
-    except GitHubWriteError as e:
-        print(f"[WARN] notices_meta からの削除に失敗しました: {e}")
+// ── ドロワー ──────────────────────────
+function openDrawer() {
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
 
-    return jsonify({"ok": True})
+// ── バナー ────────────────────────────
+function showBanner(msg, bg, color) {
+  const banner = document.getElementById('save-ok-banner');
+  banner.textContent = msg;
+  banner.style.background = bg;
+  banner.style.color = color;
+  banner.style.display = 'block';
+  setTimeout(() => {
+    banner.style.display = 'none';
+    banner.style.background = '#dcfce7';
+    banner.style.color = '#166534';
+  }, 3500);
+}
 
-# ================================
-#  Flask API — カードのフォルダ（みんなで共有）
-# ================================
-FOLDERS_FILE = "folders.json"
-MAX_FOLDER_DEPTH = 3
+// ── ユーティリティ ────────────────────
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+function shake(id) {
+  const el=document.getElementById(id); el.style.borderColor='#EF4444'; el.focus();
+  setTimeout(()=>el.style.borderColor='',700);
+}
 
-def load_card_folders():
-    data, sha = github_get(FOLDERS_FILE)
-    return (data or []), sha
+// ★ 追加：ボタンにローディング状態（スピナー表示＋押せなくする）をトグルするユーティリティ。
+//   ─────────────────────────────────────────
+//   「作成」ボタンなどを押した際、サーバー通信が終わるまで見た目が何も
+//   変わらず「本当に押せたのか」分かりにくいという問題を解消するために使う。
+//   loading=true の間、ボタンの元の中身は data-orig-html に退避しておき、
+//   loading=false に戻すときに復元する。
+function setBtnLoading(btn, loading, loadingText) {
+  if (!btn) return;
+  if (loading) {
+    if (btn.dataset.origHtml === undefined) btn.dataset.origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('btn-loading');
+    btn.innerHTML = `<span class="btn-spinner"></span>${loadingText ? esc(loadingText) : ''}`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+    if (btn.dataset.origHtml !== undefined) {
+      btn.innerHTML = btn.dataset.origHtml;
+      delete btn.dataset.origHtml;
+    }
+  }
+}
 
-def save_card_folders(folders, sha=None):
-    if sha is None:
-        _, sha = github_get(FOLDERS_FILE)
-    github_put(FOLDERS_FILE, folders, sha)
+// ============================================================
+//  ★ 入力チェック：バグ・表示崩れ・不正な符号位置になりやすい文字を弾く
+//  ─────────────────────────────────────────────
+//  ・①②③ ㈱㈲㈹ ㍾㍽㎜㎡ などの「機種依存文字」は許可（見た目が出るため）。
+//  ・弾くのは主に次の3種類：
+//    1) 制御文字（RLO/LROなどの双方向制御・Unicodeタグ文字など）
+//    2) 見た目に何も表示されないが実害の大きい文字
+//       （ゼロ幅スペース／Word Joiner／BOMなど）
+//    3) 壊れた符号位置（孤立サロゲート・非文字コードポイント）
+//       → GitHub等でエラーになったり読み込めなくなったりする原因
+// ============================================================
 
-def _folder_level(folders, folder_id):
-    lvl = 0
-    cur = next((f for f in folders if f["id"] == folder_id), None)
-    while cur:
-        lvl += 1
-        cur = next((f for f in folders if f["id"] == cur.get("parent_id")), None)
-    return lvl
+// 私用領域（PUA）・非文字コードポイント（Unicode仕様上「文字として未定義」の符号位置）
+const BUG_CHAR_RANGES = [
+  [0xE000, 0xF8FF],   // 私用領域（外字・gaiji。フォント依存で環境ごとに表示が変わる/崩れる）
+  [0xFDD0, 0xFDEF],   // 非文字コードポイント（Unicodeで予約された「文字ではない」符号位置）
+];
+const BUG_CHAR_CODES = new Set([0xFFFE, 0xFFFF]); // 非文字コードポイント（BMP末尾）
 
-def _folder_descendants(folders, folder_id):
-    direct = [f for f in folders if f.get("parent_id") == folder_id]
-    all_desc = list(direct)
-    for f in direct:
-        all_desc += _folder_descendants(folders, f["id"])
-    return all_desc
+// ── 非表示Unicode文字（見た目に出ない・不正な文字順を偽装できる文字） ──
+// ・U+200D（ZWJ）と異体字セレクタ（VS1-16 / VS17-256）は、結合絵文字
+//   （👨‍👩‍👧‍👦など）や日本語の異体字シーケンス（IVS）で正規に使われるため対象外とする。
+const INVISIBLE_CHAR_RANGES = [
+  [0x200B, 0x200C], // ゼロ幅スペース、ZWNJ（※200Dは含まない＝ZWJは許可）
+  [0x2060, 0x2064], // Word Joiner、不可視の演算子記号など
+  [0x2066, 0x2069], // 双方向テキストの分離文字（LRI/RLI/FSI/PDI）
+  [0x202A, 0x202E], // 双方向テキストの埋め込み・上書き（LRE/RLE/PDF/LRO/RLO）
+  [0xE0000, 0xE007F], // Unicodeタグ文字（見えないままテキストを埋め込める）
+];
+const INVISIBLE_CHAR_CODES = new Set([0x00AD, 0x180E, 0xFEFF]); // ソフトハイフン／モンゴル母音分離符／BOM
 
-def _max_level_in_subtree(folders, folder_id):
-    desc = _folder_descendants(folders, folder_id)
-    levels = [_folder_level(folders, folder_id)] + [_folder_level(folders, f["id"]) for f in desc]
-    return max(levels)
+function isAllowedInvisible(cp) {
+  if (cp === 0x200D) return true; // ZWJ（絵文字結合）
+  if (cp >= 0xFE00 && cp <= 0xFE0F) return true; // VS1-16（異体字・絵文字表示指定）
+  if (cp >= 0xE0100 && cp <= 0xE01EF) return true; // VS17-256（IVS用）
+  return false;
+}
 
-def _can_move_folder_to(folders, folder_id, new_parent_id):
-    if folder_id == new_parent_id:
-        return False
-    desc_ids = [f["id"] for f in _folder_descendants(folders, folder_id)]
-    if new_parent_id and new_parent_id in desc_ids:
-        return False
-    old_level = _folder_level(folders, folder_id)
-    new_level = _folder_level(folders, new_parent_id) + 1
-    shift = new_level - old_level
-    return (_max_level_in_subtree(folders, folder_id) + shift) <= MAX_FOLDER_DEPTH
+// 文字列中の「バグ文字」だけを重複なく抽出して返す（無ければ空配列）
+function findBugChars(str) {
+  if (!str) return [];
+  const found = [];
+  for (const ch of String(str)) {
+    const cp = ch.codePointAt(0);
+    if (isAllowedInvisible(cp)) continue;
+    const isCtrl   = cp < 0x20 && ch !== '\t' && ch !== '\n' && ch !== '\r';
+    const isDel    = cp === 0x7F;
+    const isLoneSg = cp >= 0xD800 && cp <= 0xDFFF; // 孤立サロゲート（壊れた絵文字等）
+    const isRange  = BUG_CHAR_RANGES.some(([s, e]) => cp >= s && cp <= e) || BUG_CHAR_CODES.has(cp);
+    const isInvis  = INVISIBLE_CHAR_RANGES.some(([s, e]) => cp >= s && cp <= e) || INVISIBLE_CHAR_CODES.has(cp);
+    if ((isCtrl || isDel || isLoneSg || isRange || isInvis) && !found.includes(ch)) found.push(ch);
+  }
+  return found;
+}
 
-def generate_folder_id():
-    import random, string
-    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+// 該当文字があれば自前アラートで警告して true（＝入力NG）を返す
+async function warnIfBugChars(str, fieldId) {
+  const bad = findBugChars(str);
+  if (bad.length === 0) return false;
+  await showCmAlert({
+    title: '使用できない文字が含まれています',
+    desc: '見た目に表示されない特殊な制御文字（ゼロ幅スペース・文字方向の制御文字など）や、\n'
+        + '壊れた文字コード・未定義の符号位置は、他の端末や外部サービスで\n'
+        + 'エラーや文字化けの原因になるため使用できません。\n\n'
+        + `該当文字：${bad.join(' ')}\n\nお手数ですが該当箇所を削除・打ち直してください。`,
+  });
+  if (fieldId) shake(fieldId);
+  return true;
+}
 
-@app.route("/list_folders", methods=["GET"])
-def list_folders():
-    try:
-        folders, _ = load_card_folders()
-        return jsonify({"ok": True, "folders": folders})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+// ============================================================
+//  ★ 追加：理数モード（分数・ルートを「教科書と同じ普通の見た目」で入力・表示する）
+//  ─────────────────────────────────────────────
+//  ・入力欄（問題文・解答など）そのものには、常に「√(4)」「(3)/(4)」のような
+//    読みやすい簡易記法だけを表示・保存する。\(\sqrt{4}\) のような生のLaTeX記法を
+//    ユーザーの目に触れさせることは一切しない。
+//  ・実際にきれいな見た目（分数の横線、根号が伸びるルートなど）で描画したい瞬間
+//    （理数モードのプレビュー欄・プレイ画面）だけ、simpleMathToLatexで内部的に
+//    LaTeXへ変換してからKaTeXに渡す。保存されるデータ自体は最後まで簡易記法のまま。
+//  ・既に「\(\sqrt{...}\)」のような旧形式（生LaTeX）で保存済みの既存カードも、
+//    simpleMathToLatexではパターンが一致しないためそのまま素通りし、
+//    今まで通りKaTeXで正しく描画される（後方互換）。
+//  ・上付き・下付き文字や±などの記号は、単独でも問題なく表示できるよう
+//    従来どおりUnicode文字をそのまま挿入する方式のままにしている。
+// ============================================================
 
-@app.route("/save_folder", methods=["POST"])
-def save_folder():
-    """
-    新規作成: { name, parent_id }
-    改名／移動: { id, name, parent_id }
-    """
-    data      = request.json or {}
-    folder_id = data.get("id")
-    name      = (data.get("name") or "").strip()
-    parent_id = data.get("parent_id")
+// 文字列 s の位置 openIdx にある '(' に対応する ')' の位置を返す（ネスト対応）。見つからなければ -1。
+function findMatchingParen(s, openIdx) {
+  let depth = 0;
+  for (let i = openIdx; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
 
-    if not name:
-        return jsonify({"ok": False, "error": "name は必須です"})
+// simpleMathToLatexの内部再帰用：\( \) を付けない「素の」LaTeXへの変換。
+// √の中に分数がある等、ネストした数式の内側で使う（KaTeXの引数の中に\(\)を
+// 再度差し込むと壊れるため、ネスト部分には区切り記号を付けない）。
+function simpleMathToLatexRaw(s) {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if ((s[i] === '√' || s[i] === '∛') && s[i+1] === '(') {
+      const isCube = s[i] === '∛';
+      const closeIdx = findMatchingParen(s, i+1);
+      if (closeIdx !== -1) {
+        const inner = simpleMathToLatexRaw(s.slice(i+2, closeIdx));
+        out += isCube ? `\\sqrt[3]{${inner}}` : `\\sqrt{${inner}}`;
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+    if (s[i] === '(') {
+      const closeIdx = findMatchingParen(s, i);
+      if (closeIdx !== -1 && s[closeIdx+1] === '/' && s[closeIdx+2] === '(') {
+        const closeIdx2 = findMatchingParen(s, closeIdx+2);
+        if (closeIdx2 !== -1) {
+          const num = simpleMathToLatexRaw(s.slice(i+1, closeIdx));
+          const den = simpleMathToLatexRaw(s.slice(closeIdx+3, closeIdx2));
+          out += `\\frac{${num}}{${den}}`;
+          i = closeIdx2 + 1;
+          continue;
+        }
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return out;
+}
 
-    err = reject_if_bug_chars({"フォルダ名": name})
-    if err:
-        return err
+// 簡易記法（√(...) ・ ∛(...) ・ (分子)/(分母)）を、KaTeXが描画できるLaTeX記法へ変換する。
+// 内側にネストした数式（√の中に分数がある等）も再帰的に変換する。
+// 該当するパターンが無い部分（旧形式の生LaTeXや、普通の文章）はそのまま素通しする。
+function simpleMathToLatex(raw) {
+  if (raw == null) return '';
+  const s = String(raw);
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    // √(...) ・ ∛(...)
+    if ((s[i] === '√' || s[i] === '∛') && s[i+1] === '(') {
+      const isCube = s[i] === '∛';
+      const closeIdx = findMatchingParen(s, i+1);
+      if (closeIdx !== -1) {
+        const inner = simpleMathToLatexRaw(s.slice(i+2, closeIdx));
+        out += isCube ? `\\(\\sqrt[3]{${inner}}\\)` : `\\(\\sqrt{${inner}}\\)`;
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+    // (分子)/(分母)
+    if (s[i] === '(') {
+      const closeIdx = findMatchingParen(s, i);
+      if (closeIdx !== -1 && s[closeIdx+1] === '/' && s[closeIdx+2] === '(') {
+        const closeIdx2 = findMatchingParen(s, closeIdx+2);
+        if (closeIdx2 !== -1) {
+          const num = simpleMathToLatexRaw(s.slice(i+1, closeIdx));
+          const den = simpleMathToLatexRaw(s.slice(closeIdx+3, closeIdx2));
+          out += `\\(\\frac{${num}}{${den}}\\)`;
+          i = closeIdx2 + 1;
+          continue;
+        }
+      }
 
-    try:
-        folders, sha = load_card_folders()
+    }
+    out += s[i];
+    i++;
+  }
+  return out;
+}
 
-        if folder_id:
-            target = next((f for f in folders if f["id"] == folder_id), None)
-            if not target:
-                return jsonify({"ok": False, "error": "folder not found"})
-            if parent_id != target.get("parent_id"):
-                if not _can_move_folder_to(folders, folder_id, parent_id):
-                    return jsonify({"ok": False, "error": "移動できません（3階層を超える、または循環参照）"})
-                target["parent_id"] = parent_id
-            target["name"] = name
-        else:
-            if _folder_level(folders, parent_id) >= MAX_FOLDER_DEPTH:
-                return jsonify({"ok": False, "error": f"フォルダは{MAX_FOLDER_DEPTH}階層までしか作成できません"})
-            folder_id = generate_folder_id()
-            folders.append({"id": folder_id, "name": name, "parent_id": parent_id})
+// 生のテキスト（√(4)のような簡易記法、または旧形式の\(\frac{}{}\)なども含む）を、
+// 指定要素に「普通の数式の見た目」で描画する。
+// KaTeXが読み込めていない場合（オフライン等）は記法そのままの文章として表示する。
+function setMathText(el, raw) {
+  if (!el) return;
+  el.textContent = simpleMathToLatex(raw || '');
+  if (window.renderMathInElement) {
+    try {
+      renderMathInElement(el, {
+        delimiters: [{ left: '\\(', right: '\\)', display: false }],
+        throwOnError: false,
+      });
+    } catch (e) { /* 描画に失敗しても元のプレーンテキストのまま表示される */ }
+  }
+}
 
-        save_card_folders(folders, sha)
-        return jsonify({"ok": True, "id": folder_id})
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+// 一覧などの1行プレビュー（改行・スタック表示ができない場所）用に、
+// 記法をできるだけ読みやすいプレーンテキストへ変換する簡易版。
+// ★ 新形式（√(4)など）は既にそのまま読みやすい形なので無変換で素通しし、
+//   旧形式（\(\sqrt{4}\)など）だけをここで読みやすい形へ変換する。
+const MATH_SUP_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','n':'ⁿ'};
+const MATH_SUB_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋'};
+function mathToPlainText(raw) {
+  if (raw == null) return '';
+  let s = String(raw);
+  s = s.replace(/\\\(|\\\)/g, '');
+  s = s.replace(/\\sqrt\[(.*?)\]\{([^{}]*)\}/g, (m, n, a) => `${n}√(${a})`);
+  s = s.replace(/\\sqrt\{([^{}]*)\}/g, (m, a) => `√(${a})`);
+  for (let i = 0; i < 3; i++) {
+    s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, (m, a, b) => `(${a})/(${b})`);
+  }
+  s = s.replace(/\^\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUP_MAP[a] ? MATH_SUP_MAP[a] : `^${a}`);
+  s = s.replace(/_\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUB_MAP[a] ? MATH_SUB_MAP[a] : `_${a}`);
+  return s;
+}
 
-@app.route("/delete_folder", methods=["POST"])
-def delete_folder():
-    data      = request.json or {}
-    folder_id = data.get("id")
-    if not folder_id:
-        return jsonify({"ok": False, "error": "id は必須です"})
-    try:
-        folders, sha = load_card_folders()
-        desc_ids   = [f["id"] for f in _folder_descendants(folders, folder_id)]
-        remove_ids = set([folder_id] + desc_ids)
-        new_folders = [f for f in folders if f["id"] not in remove_ids]
-        save_card_folders(new_folders, sha)
+// 学習画面など「編集ではなく表示するだけ」の場所で使う簡易表示用ヘルパー。
+// KaTeXでの本描画はせず、mathToPlainTextで変換した崩れない文字列をそのまま入れる。
+function setSimpleMathText(el, raw) {
+  if (!el) return;
+  el.textContent = mathToPlainText(raw);
+}
 
-        # ★ 並び順（list_order.json）からも、削除したフォルダ自身のスコープと、
-        #   他のフォルダ内に残っていた folder: キーの参照を取り除いておく
-        cleanup_list_order(
-            remove_keys=set(f"folder:{fid}" for fid in remove_ids),
-            remove_scopes=remove_ids,
-        )
+const MATH_PAD_HTML = (function(){
+  const supKeys = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹','⁺','⁻','⁽','⁾','ⁿ'];
+  const subKeys = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉','₊','₋','₍','₎'];
+  const symKeys = ['±','∓','×','÷','≤','≥','≠','≈','∞','π','θ','°','∑','∫'];
+  const keyBtn = c => `<button type="button" class="math-key" data-ch="${c}">${c}</button>`;
+  return `
+    <div class="math-pad-header">
+      <span class="math-pad-title">🧮 理数モード</span>
+      <button type="button" class="math-pad-close" onclick="toggleMathPad(this.closest('.math-pad').id)" aria-label="閉じる">✕</button>
+    </div>
+    <div class="math-pad-body">
+      <div class="math-preview-label">プレビュー</div>
+      <div class="math-preview"></div>
+      <div class="math-row math-row-struct">
+        <span class="math-row-label">分数・ルート（教科書と同じ見た目で表示されます）</span>
+        <button type="button" class="math-key math-key-wide" data-action="frac">分数<span class="math-key-hint">(a)/(b)</span></button>
+        <button type="button" class="math-key" data-action="sqrt">√</button>
+        <button type="button" class="math-key" data-action="cbrt">∛</button>
+      </div>
+      <div class="math-row math-row-sup">
+        <span class="math-row-label">上付き文字（乗数など）</span>
+        ${supKeys.map(keyBtn).join('')}
+      </div>
+      <div class="math-row math-row-sub">
+        <span class="math-row-label">下付き文字（添字など）</span>
+        ${subKeys.map(keyBtn).join('')}
+      </div>
+      <div class="math-row math-row-sym">
+        <span class="math-row-label">記号</span>
+        ${symKeys.map(keyBtn).join('')}
+      </div>
+      <div class="math-pad-tip">💡 分数・ルートは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
+    </div>`;
+})();
 
-        return jsonify({"ok": True, "deleted_ids": list(remove_ids)})
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+function initMathPads() {
+  document.querySelectorAll('.math-pad').forEach(pad => {
+    if (pad.dataset.built) return;
+    pad.innerHTML = MATH_PAD_HTML;
+    pad.dataset.built = '1';
+    const target  = document.getElementById(pad.dataset.target);
+    const preview = pad.querySelector('.math-preview');
+    if (target && preview) {
+      const update = () => setMathText(preview, target.value);
+      target.addEventListener('input', update);
+      pad._mathUpdate = update;
+    }
+    if (target) attachInlineSimplePreview(target);
+  });
+}
 
-# ================================
-#  Flask API — 一覧（デッキ・フォルダ）の並び順（みんなで共有）
-# ================================
-#  ・フォルダを開いている場所（"__root__" またはフォルダid）ごとに、
-#    その中でのフォルダ・公開済みデッキの並び順（data-keyの配列）を保存する。
-#  ・未公開（各自の下書き）デッキは他人からは見えないデータなので、
-#    ここには含めない（フロント側でも送らないようにフィルタしている）。
-ORDER_FILE = "list_order.json"
+// ★ 追加：問題文・解答などの入力欄（ta-q / modal-edit-q など）そのものの直下に、
+//   \(\sqrt{}\) のような生のLaTeX記法ではなく「√()」のような読みやすい簡易表示を
+//   常時プレビューする。理数記号パレットをわざわざ開かなくても、入力欄を
+//   見ただけでどんな数式になっているかがひと目でわかるようにするため。
+//   （教科書と同じ本格的な見た目のプレビューは、既存の理数モードパレット内の
+//   プレビューが担当するので、ここでは崩れない軽量なテキスト表示にとどめる）
+function attachInlineSimplePreview(target) {
+  if (!target || target.dataset.simplePreviewAttached) return;
+  target.dataset.simplePreviewAttached = '1';
+  const preview = document.createElement('div');
+  preview.className = 'math-inline-simple-preview';
+  preview.style.cssText = 'margin-top:4px;padding:2px 0;font-size:13px;color:var(--text-secondary,#888);white-space:pre-wrap;word-break:break-word;';
+  target.insertAdjacentElement('afterend', preview);
+  const update = () => {
+    const plain = mathToPlainText(target.value);
+    // 数式記法を含んでいない（＝普通の文章のまま）場合は、二重表示を避けるため何も出さない
+    preview.textContent = plain === target.value ? '' : plain;
+  };
+  target.addEventListener('input', update);
+  update();
+}
 
-def load_list_order():
-    data, sha = github_get(ORDER_FILE)
-    return (data or {}), sha
+// 単純な1文字挿入（選択範囲があればそこを置き換える＝ふつうの文字入力と同じ挙動）
+function mathInsertChar(el, ch) {
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
+  el.value = el.value.slice(0, start) + ch + el.value.slice(end);
+  const pos = start + ch.length;
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  autoResize(el);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
-def save_list_order(order_map, sha=None):
-    if sha is None:
-        _, sha = github_get(ORDER_FILE)
-    github_put(ORDER_FILE, order_map, sha)
+// 「囲み挿入」。選択範囲があればそれを openStr/closeStr で囲み、無ければ間にカーソルを置く。
+// √・∛はこれ一本で、それぞれ \( \) ごと自己完結した数式として挿入される。
+function mathInsertWrap(el, openStr, closeStr) {
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
+  const sel = el.value.slice(start, end);
+  el.value = el.value.slice(0, start) + openStr + sel + closeStr + el.value.slice(end);
+  const pos = sel ? (start + openStr.length + sel.length + closeStr.length) : (start + openStr.length);
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  autoResize(el);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
-def cleanup_list_order(remove_keys=None, remove_scopes=None):
-    """
-    フォルダ・デッキが削除された際に、list_order.json から
-    もう存在しない項目のエントリを取り除いておく（放っておいても表示は壊れないが、
-    ファイルが際限なく肥大化するのを防ぐための後片付け）。
-    ・remove_keys:   各スコープの並び順配列から取り除く要素（例: {"folder:xxx", "deck:yyy.json"}）
-    ・remove_scopes: まるごと削除するスコープ自体（フォルダそのものが削除された場合、
-                     そのフォルダの中の並び順はもう意味がないのでスコープごと消す）
-    ★ 並び順の掃除は本質的な機能ではない（古い項目が残っていても、フロント側の表示時に
-       存在しないものとして自動的に無視されるだけ）ので、失敗しても警告に留め、
-       呼び出し元の本来の削除処理自体は失敗させない。
-    """
-    remove_keys   = set(remove_keys or [])
-    remove_scopes = set(remove_scopes or [])
-    if not remove_keys and not remove_scopes:
-        return
-    try:
-        order_map, sha = load_list_order()
-        changed = False
-        for scope in remove_scopes:
-            if scope in order_map:
-                del order_map[scope]
-                changed = True
-        if remove_keys:
-            for scope, keys in list(order_map.items()):
-                new_keys = [k for k in keys if k not in remove_keys]
-                if len(new_keys) != len(keys):
-                    order_map[scope] = new_keys
-                    changed = True
-        if changed:
-            save_list_order(order_map, sha)
-    except GitHubWriteError as e:
-        print(f"[WARN] list_order のクリーンアップに失敗しました: {e}")
-    except Exception as e:
-        print(f"[WARN] list_order のクリーンアップ中に予期しないエラーが発生しました: {e}")
+// 分数専用：選択範囲を分子にして (分子)/(分母) という読みやすい記法を作る。
+// 選択があれば分母側にカーソルを、無ければ分子側にカーソルを置く。
+function mathInsertFraction(el) {
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
+  const sel = el.value.slice(start, end);
+  const prefix = '(';
+  const middle = `${sel})/(`;
+  const suffix = ')';
+  el.value = el.value.slice(0, start) + prefix + middle + suffix + el.value.slice(end);
+  const numPos = start + prefix.length;
+  const denPos = start + prefix.length + middle.length;
+  const pos = sel ? denPos : numPos;
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  autoResize(el);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
-@app.route("/list_order", methods=["GET"])
-def list_order():
-    try:
-        order_map, _ = load_list_order()
-        return jsonify({"ok": True, "order": order_map})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+// パレットの表示・非表示を切り替える（ボタン側の onclick から呼ばれる）
+// 開いたときは対応する切り替えボタン（data-btn で紐付け）もハイライトし、プレビューも更新する
+function toggleMathPad(padId) {
+  const pad = document.getElementById(padId);
+  if (!pad) return;
+  const opening = pad.style.display !== 'block';
+  pad.style.display = opening ? 'block' : 'none';
+  const btn = pad.dataset.btn ? document.getElementById(pad.dataset.btn) : null;
+  if (btn) btn.classList.toggle('math-btn-active', opening);
+  if (opening && pad._mathUpdate) pad._mathUpdate();
+}
 
-@app.route("/save_order", methods=["POST"])
-def save_order():
-    """
-    body: { scope: "__root__" または フォルダid, keys: ["folder:xxx", "deck:yyy", ...] }
-    指定したscope（フォルダの場所）の並び順だけを丸ごと置き換えて保存する。
-    """
-    data  = request.json or {}
-    scope = data.get("scope")
-    keys  = data.get("keys")
-    if not scope or not isinstance(keys, list):
-        return jsonify({"ok": False, "error": "scope と keys は必須です"})
-    try:
-        order_map, sha = load_list_order()
-        order_map[scope] = keys
-        save_list_order(order_map, sha)
-        return jsonify({"ok": True})
-    except GitHubWriteError as e:
-        return jsonify({"ok": False, "error": f"github_write_failed: {e}"})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+// ボタンタップは1か所に委任して処理（パレットは複数箇所に存在するため）
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.math-key');
+  if (!btn) return;
+  const pad = btn.closest('.math-pad');
+  if (!pad) return;
+  const target = document.getElementById(pad.dataset.target);
+  if (!target) return;
+  switch (btn.dataset.action) {
+    case 'frac': mathInsertFraction(target); break;
+    case 'sqrt': mathInsertWrap(target, '√(', ')'); break;
+    case 'cbrt': mathInsertWrap(target, '∛(', ')'); break;
+    default:     mathInsertChar(target, btn.dataset.ch || '');
+  }
+});
 
-# ================================
-#  スケジューラー & 起動
-# ================================
-scheduler.add_job(send_tomorrow_plans,     "cron", hour=20, minute=0)
-scheduler.add_job(send_today_plans_commute, "cron", hour=5,  minute=30)  # 通生（現行時間）
-scheduler.add_job(send_today_plans_dorm,    "cron", hour=7,  minute=20)  # 寮生
-scheduler.add_job(cleanup_past_plans,       "cron", hour=0,  minute=0)
-scheduler.add_job(send_weekly_plans,        "cron", day_of_week="sun", hour=14, minute=0)  # 毎週日曜14:00に今週の予定
+initMathPads();
 
-started = False
-synced_once = False
+// ── 起動 ──────────────────────────────
+renderDeckList().then(jumpToDeckFromUrl);
 
-@bot.event
-async def on_ready():
-    global started, synced_once
-    print(f"Bot is ready! {bot.user}")
+// ===== Discord通知からのディープリンク対応 =====
+// ★ 追加：通知メッセージのリンク（例: Cardmaker.html?deck=set_xxxx.json）から
+//   開かれた場合、そのデッキがあるフォルダまで自動で移動し、該当デッキを
+//   ハイライト表示して分かりやすくする。
+//   ・renderDeckList() で最新のdecks/foldersを取得し終えた後に実行する
+//     （まだ取得前だと該当デッキが見つからず何もできないため）。
+//   ・一度処理したら history.replaceState で ?deck= をURLから消しておき、
+//     その後リロードしたり通知を再度開いたりしても毎回飛ばないようにする。
+async function jumpToDeckFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const targetFilename = params.get('deck');
+  if (!targetFilename) return;
 
-    # ★ 429対策①：コマンド同期は起動後1回だけ行う。
-    #    再接続（resume失敗などで on_ready が複数回呼ばれるケース）のたびに
-    #    tree.sync() を叩くと、それ自体がAPI呼び出しの積み重ねになり
-    #    レート制限を誘発しやすくなるため、初回のみに限定する。
-    if not synced_once:
-        try:
-            synced = await bot.tree.sync()
-            print(f"Synced {len(synced)} commands")
-        except discord.HTTPException as e:
-            print(f"[WARN] tree.sync failed (will not retry until next process start): {e}")
-        synced_once = True
+  // URLをきれいな状態に戻しておく（ブックマーク・再読み込み時に毎回飛ばされないように）
+  history.replaceState(null, '', location.pathname + location.hash);
 
-    if not started:
-        scheduler.start()
-        started = True
-        print("Scheduler started!")
+  const deck = decks.find(d => d.filename === targetFilename);
+  if (!deck) return; // 見つからなければ何もしない（削除された・未同期などのケース）
 
+  // デッキが入っているフォルダ（ルートなら null）まで画面を移動する
+  openFolder(deck.folderId || null);
 
-@bot.event
-async def on_disconnect():
-    print("[WARN] Discord からの接続が切断されました。discord.py 内部で自動再接続を試みます。")
+  // renderDeckListUI() によるDOM再構築を待ってから、該当デッキまでスクロール＆ハイライトする
+  requestAnimationFrame(() => {
+    const grid = document.getElementById('deck-grid');
+    const el = grid && grid.querySelector(`[data-key="deck:${CSS.escape(targetFilename)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.transition = 'box-shadow 0.3s ease, transform 0.3s ease';
+    el.style.boxShadow = '0 0 0 3px #3b82f6, 0 4px 14px rgba(59,130,246,0.35)';
+    el.style.transform = 'scale(1.02)';
+    setTimeout(() => {
+      el.style.boxShadow = '';
+      el.style.transform = '';
+    }, 2200);
+  });
+}
 
+// ===== JSON変更監視（公開デッキ list_cards のみ） =====
+let lastCardsHash = null;
 
-keep_alive()
+// SHA-256 ハッシュ計算
+async function digestMessage(message) {
+  const msgUint8 = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
-print(f"[INFO] TOKEN set: {bool(TOKEN)}, length: {len(TOKEN) if TOKEN else 0}")
-print(f"[INFO] Starting bot.run()...")
+// 公開デッキJSONの変更チェック
+// ★ 変更点：location.reload() をやめ、画面を邪魔しない更新に変更。
+//   ・一覧画面を見ている時だけ、その場で表示を更新
+//   ・編集中／プレイ中の画面はそのままにして、リロードもしない
+//     （データはバックグラウンドで decks / localStorage に反映されるので、
+//       次に一覧へ戻った時には最新の状態になっている）
+//   ・list_cards は軽量メタ情報のみなので、このポーリング自体も軽くなった。
+async function checkCardsUpdate() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    // ★ cache: 'no-store' を追加：これが無いと、ハッシュ比較のための取得自体が
+    //   キャッシュされたレスポンスを見てしまい、更新検知が機能しないことがあるため。
+    const res = await fetch(`${API_BASE}list_cards`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
 
-# ================================
-#  ★ 429対策：プロセスを終了させず、同じプロセス内で
-#     待ってから再ログインするループに変更
-#
-#  ・discord.py はゲートウェイ切断からの再接続（resume/reconnect）は
-#    それ自体で自動的にバックオフしながら処理してくれる。
-#    問題になりやすいのは「プロセスごと落ちて、ホスティング側
-#    （Render等）がすぐ再起動 → 起動のたびに新規IDENTIFY」を繰り返すケースで、
-#    これが Cloudflare 側の 429（1015 Too Many Requests）を招きやすい。
-#  ・そのため、bot.run() が例外で終了しても "プロセスを終了させず"、
-#    ここで指数バックオフしながら bot.run() をやり直す。
-#  ・429（discord.HTTPException, status==429）の場合は
-#    レスポンスの retry_after 秒だけ確実に待ってから再試行する。
-# ================================
-MAX_BACKOFF = 300  # 最大5分待機
+    // 初回は保存だけ
+    if (lastCardsHash === null) {
+      lastCardsHash = hash;
+      return;
+    }
 
-def run_bot_forever():
-    backoff = 5
-    while True:
-        try:
-            # bot.run() は内部で asyncio.run() を呼ぶため、
-            # ここが正常終了/例外終了するたびにイベントループは閉じられる。
-            # discord.py の Client は close 後も再度 run() できる設計になっている。
-            bot.run(TOKEN)
-            # bot.run() が例外を投げずに戻ってきた場合（bot.close()等による正常終了）
-            print("[INFO] bot.run() が正常終了しました。5秒後に再起動します。")
-            time.sleep(5)
-            backoff = 5
-            continue
+    // ハッシュが変わっていなければ何もしない
+    if (hash === lastCardsHash) return;
+    lastCardsHash = hash;
 
-        except discord.HTTPException as e:
-            # 429（レート制限）はここで最優先に処理する
-            if e.status == 429:
-                retry_after = None
-                try:
-                    retry_after = float(e.response.headers.get("Retry-After"))
-                except Exception:
-                    pass
-                if not retry_after:
-                    retry_after = backoff
-                print(f"[WARN] Discordからレート制限(429)を受けました。{retry_after:.1f}秒待機して再接続します。")
-                time.sleep(retry_after + 1)
-                backoff = min(backoff * 2, MAX_BACKOFF)
-            else:
-                print(f"[ERROR] discord.HTTPException: {e}. {backoff}秒後に再試行します。")
-                time.sleep(backoff)
-                backoff = min(backoff * 2, MAX_BACKOFF)
+    // データをバックグラウンドでマージ（プレイ中・編集中の画面はそのまま）
+    await fetchAndMergeDecks();
 
-        except discord.LoginFailure as e:
-            # トークンが無効な場合はリトライしても無駄なので停止する
-            print(f"[FATAL] ログインに失敗しました。TOKENを確認してください: {e}")
-            break
+    // 一覧画面を見ている時だけ、その場で再描画する
+    const activeScreen = document.querySelector('.screen.active')?.id;
+    if (activeScreen === 'screen-list') {
+      renderDeckListUI();
+    }
+  } catch(e) {}
+}
 
-        except Exception as e:
-            # ネットワーク瞬断やその他予期しない例外はプロセスを落とさず再試行
-            print(f"[ERROR] 予期しないエラーが発生しました: {e}. {backoff}秒後に再試行します。")
-            time.sleep(backoff)
-            backoff = min(backoff * 2, MAX_BACKOFF)
+// 10秒ごとにチェック
+setInterval(checkCardsUpdate, 10000);
 
+// ===== ページ復帰時の強制リフレッシュ（Chromeのbfcache / バックグラウンド対策） =====
+//   ・ドロワーで他のページに移動して「戻る」で復帰したとき、Chromeなどは
+//     ページをスクリプト再実行せずそのまま凍結復元することがある（bfcache）。
+//     この場合、setIntervalによるポーリングは次のタイミングまで動かないため、
+//     他の人が更新した内容がすぐには反映されない。
+//   ・スマホでアプリを切り替えて長時間バックグラウンドに置いた場合も、
+//     復帰直後はまだ古いデータのままになりがち。
+//   → ページが「再び見える状態になった瞬間」に、10秒待たず即座に
+//     最新データを取りに行くことで解消する。
+let isForceRefreshing = false;
+async function forceRefreshOnReturn() {
+  if (isForceRefreshing) return;
+  isForceRefreshing = true;
+  try {
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
+    if (document.querySelector('.screen.active')?.id === 'screen-list') {
+      renderDeckListUI();
+    }
+  } finally {
+    isForceRefreshing = false;
+  }
+}
 
-run_bot_forever()
+// bfcacheから復元された場合（persisted === true）に発火
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) forceRefreshOnReturn();
+});
+
+// タブ／アプリがバックグラウンドから表示状態に戻った瞬間に発火
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') forceRefreshOnReturn();
+});
+// ===== JSON変更監視（共有フォルダ folders.json） =====
+let lastFoldersHash = null;
+
+async function checkFoldersUpdate() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    // ★ cache: 'no-store' を追加（list_cards側と同様の理由）
+    const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
+
+    if (lastFoldersHash === null) { lastFoldersHash = hash; return; }
+    if (hash === lastFoldersHash) return;
+    lastFoldersHash = hash;
+
+    await fetchAndMergeFolders();
+
+    const activeScreen = document.querySelector('.screen.active')?.id;
+    if (activeScreen === 'screen-list') {
+      renderDeckListUI();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkFoldersUpdate, 10000);
+
+// ===== JSON変更監視（共有の並び順 list_order.json） =====
+let lastOrderHash = null;
+
+async function checkOrderUpdate() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE}list_order`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
+
+    if (lastOrderHash === null) { lastOrderHash = hash; return; }
+    if (hash === lastOrderHash) return;
+    lastOrderHash = hash;
+
+    await fetchAndMergeOrder();
+
+    const activeScreen = document.querySelector('.screen.active')?.id;
+    if (activeScreen === 'screen-list') {
+      renderDeckListUI();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkOrderUpdate, 10000);
