@@ -104,6 +104,34 @@ async function loadTasks() {
 // ── LocalStorage キー（タイマー復元のみ） ──────────────
 const LS_TIMER = "sl_timer_" + STUDENT.id;
 
+// ============================================================
+//  ★ 不正防止（連続記録の制限）
+//   ・タイマー記録：前回の記録から「今回記録しようとしている分数」以上の
+//     実時間が経過していないと保存できない
+//     （タイマーの経過時間を改ざんして即座に長時間記録するのを防ぐ）
+//   ・手入力：同じ教科での連続記録は、前回の記録から1分経過するまで
+//     行えない
+// ============================================================
+const LS_TIMER_LASTLOG  = "sl_timer_lastlog_"  + STUDENT.id; // { at, minutes }
+const LS_MANUAL_LASTLOG = "sl_manual_lastlog_" + STUDENT.id; // { [subject]: at }
+const MANUAL_COOLDOWN_MS = 60 * 1000; // 1分
+
+function getTimerLastLog() {
+  try { return JSON.parse(localStorage.getItem(LS_TIMER_LASTLOG)); } catch(e) { return null; }
+}
+function setTimerLastLog(mins) {
+  try { localStorage.setItem(LS_TIMER_LASTLOG, JSON.stringify({ at: Date.now(), minutes: mins })); } catch(e) {}
+}
+
+function getManualLastLogMap() {
+  try { return JSON.parse(localStorage.getItem(LS_MANUAL_LASTLOG)) || {}; } catch(e) { return {}; }
+}
+function setManualLastLog(subject) {
+  var map = getManualLastLogMap();
+  map[subject] = Date.now();
+  try { localStorage.setItem(LS_MANUAL_LASTLOG, JSON.stringify(map)); } catch(e) {}
+}
+
 // ── グローバル状態 ──────────────────────────────────────
 let logs              = [];   // 全ユーザーのログ
 let allPoints         = {};   // 累計ポイント { "1I001": 12, ... }（ヘッダーバッジ用）
@@ -636,8 +664,25 @@ function saveManual() {
     setTimeout(function() { errEl.style.display = "none"; }, 3500);
     return;
   }
+
+  // ★ 不正防止：同じ教科での連続手入力は、前回の記録から1分経つまで不可
+  var manualMap = getManualLastLogMap();
+  var lastAt    = manualMap[sub];
+  if (lastAt) {
+    var elapsedMs = Date.now() - lastAt;
+    if (elapsedMs < MANUAL_COOLDOWN_MS) {
+      var remainSec = Math.ceil((MANUAL_COOLDOWN_MS - elapsedMs) / 1000);
+      errEl.textContent   = "✕ 同じ教科の記録は、前回から1分経ってから行えます（あと" + remainSec + "秒）";
+      errEl.style.display = "block";
+      setTimeout(function() { errEl.style.display = "none"; }, 3500);
+      return;
+    }
+  }
+
   postLog({ date: todayStr(), subject: sub, minutes: min, memo: memo,
             student_id: STUDENT.id, nickname: STUDENT.nickname });
+  setManualLastLog(sub); // ★ 保存成功後に記録
+
   document.getElementById("m-minutes").value = "";
   document.getElementById("m-memo").value    = "";
   okEl.style.display = "block";
@@ -858,8 +903,25 @@ function saveTimer() {
   var sub  = document.getElementById("conf-subject").value;
   var memo = document.getElementById("conf-memo").value.trim();
   var mins = parseInt(document.getElementById("conf-time").dataset.min);
+
+  // ★ 不正防止：前回のタイマー記録から「今回記録しようとしている分数」以上の
+  //    実時間が経過していない場合は保存させない
+  //    （localStorageの開始時刻を改ざんして即座に長時間記録するのを防止）
+  var last = getTimerLastLog();
+  if (last && last.at) {
+    var elapsedMs  = Date.now() - last.at;
+    var requiredMs = mins * 60 * 1000;
+    if (elapsedMs < requiredMs) {
+      var remainMin = Math.ceil((requiredMs - elapsedMs) / 60000);
+      alert("前回の記録からまだ十分な時間が経過していないため、この記録は保存できません。（あと約" + remainMin + "分待つ必要があります。不正な記録防止のためです）");
+      return;
+    }
+  }
+
   postLog({ date: todayStr(), subject: sub, minutes: mins, memo: memo,
             student_id: STUDENT.id, nickname: STUDENT.nickname });
+  setTimerLastLog(mins); // ★ 保存成功後に記録
+
   var okEl = document.getElementById("timer-ok");
   okEl.style.display = "block";
   setTimeout(function() { okEl.style.display = "none"; timerReset(); showTab("home"); }, 1200);
