@@ -278,29 +278,37 @@ async function loadPoints() {
 }
 
 // ── ログ投稿 ──────────────────────────────────────────
+// ★ 戻り値 { ok: true } / { ok: false, error: "…" }
+//    サーバー側の不正防止チェック（連続記録の制限など）で拒否された場合や
+//    通信エラーの場合は ok:false を返し、呼び出し側でエラー表示を行う。
+//    （以前は通信エラー時もローカルだけ成功扱いにしていたが、サーバー側の
+//      不正防止チェックを無意味にしてしまうため、失敗はきちんと失敗として扱う）
 async function postLog(entry) {
-  var earned = Math.floor(entry.minutes / 5);
+  var data;
   try {
-    await api("/add_study_log", {
+    data = await api("/add_study_log", {
       method: "POST",
       body: JSON.stringify(Object.assign({ guild_id: GUILD_ID }, entry)),
     });
-    if (earned > 0) {
-      allPoints[STUDENT.id] = (allPoints[STUDENT.id] || 0) + earned;
-      myPoints = allPoints[STUDENT.id];
-      floatPoints("+" + earned + "pt");
-      updatePointDisplay();
-    }
   } catch(e) {
-    if (earned > 0) {
-      myPoints += earned;
-      floatPoints("+" + earned + "pt");
-      updatePointDisplay();
-    }
+    return { ok: false, error: "通信エラーが発生しました。もう一度お試しください。" };
+  }
+
+  if (!data || data.ok === false) {
+    return { ok: false, error: (data && data.error) || "記録に失敗しました。" };
+  }
+
+  var earned = (data.earned != null) ? data.earned : Math.floor(entry.minutes / 5);
+  if (earned > 0) {
+    allPoints[STUDENT.id] = (data.total != null) ? data.total : (allPoints[STUDENT.id] || 0) + earned;
+    myPoints = allPoints[STUDENT.id];
+    floatPoints("+" + earned + "pt");
+    updatePointDisplay();
   }
   nicknameMap[STUDENT.id] = STUDENT.nickname;
   logs.push(entry);
   renderAll();
+  return { ok: true };
 }
 
 // ============================================================
@@ -650,7 +658,7 @@ function showTab(name) {
 // ============================================================
 //  手入力 保存
 // ============================================================
-function saveManual() {
+async function saveManual() {
   var sub   = document.getElementById("m-subject").value;
   var min   = parseInt(document.getElementById("m-minutes").value);
   var memo  = document.getElementById("m-memo").value.trim();
@@ -666,6 +674,7 @@ function saveManual() {
   }
 
   // ★ 不正防止：同じ教科での連続手入力は、前回の記録から1分経つまで不可
+  //   （クライアント側の事前チェック。最終的な判定はサーバー側でも行う）
   var manualMap = getManualLastLogMap();
   var lastAt    = manualMap[sub];
   if (lastAt) {
@@ -679,8 +688,17 @@ function saveManual() {
     }
   }
 
-  postLog({ date: todayStr(), subject: sub, minutes: min, memo: memo,
-            student_id: STUDENT.id, nickname: STUDENT.nickname });
+  var result = await postLog({ date: todayStr(), subject: sub, minutes: min, memo: memo,
+            student_id: STUDENT.id, nickname: STUDENT.nickname, method: "manual" });
+
+  if (!result.ok) {
+    // ★ サーバー側の不正防止チェックで拒否された場合など
+    errEl.textContent   = "✕ " + result.error;
+    errEl.style.display = "block";
+    setTimeout(function() { errEl.style.display = "none"; }, 3500);
+    return;
+  }
+
   setManualLastLog(sub); // ★ 保存成功後に記録
 
   document.getElementById("m-minutes").value = "";
@@ -899,14 +917,15 @@ function timerStop() {
   document.getElementById("conf-time").dataset.min       = mins;
 }
 
-function saveTimer() {
+async function saveTimer() {
   var sub  = document.getElementById("conf-subject").value;
   var memo = document.getElementById("conf-memo").value.trim();
   var mins = parseInt(document.getElementById("conf-time").dataset.min);
 
   // ★ 不正防止：前回のタイマー記録から「今回記録しようとしている分数」以上の
   //    実時間が経過していない場合は保存させない
-  //    （localStorageの開始時刻を改ざんして即座に長時間記録するのを防止）
+  //    （localStorageの開始時刻を改ざんして即座に長時間記録するのを防止。
+  //      これはクライアント側の事前チェックで、最終的な判定はサーバー側でも行う）
   var last = getTimerLastLog();
   if (last && last.at) {
     var elapsedMs  = Date.now() - last.at;
@@ -918,8 +937,16 @@ function saveTimer() {
     }
   }
 
-  postLog({ date: todayStr(), subject: sub, minutes: mins, memo: memo,
-            student_id: STUDENT.id, nickname: STUDENT.nickname });
+  var result = await postLog({ date: todayStr(), subject: sub, minutes: mins, memo: memo,
+            student_id: STUDENT.id, nickname: STUDENT.nickname, method: "timer" });
+
+  if (!result.ok) {
+    // ★ サーバー側の不正防止チェックで拒否された場合など。
+    //    確認画面はそのまま残し、ユーザーがもう一度試せるようにする。
+    alert(result.error);
+    return;
+  }
+
   setTimerLastLog(mins); // ★ 保存成功後に記録
 
   var okEl = document.getElementById("timer-ok");
