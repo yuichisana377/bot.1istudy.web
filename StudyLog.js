@@ -1,490 +1,1378 @@
-// ============================================================
-//  Login.js — ログインページ専用スクリプト
+// ============================================================ 754
+//  StudyLog.js — 勉強ログ専用スクリプト
+//  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
+//  → 累計ポイントはヘッダーバッジに表示
+//  → ポイントランキングは「今週獲得分」のみ（毎週リセット）
+//     ・勉強ログ分: floor(minutes/5) pt  ← ログの日付でフィルタ
+//     ・課題達成分: +points pt            ← 達成日でフィルタ（全ユーザー対象）
 //
-//  フロー:
-//    1. localStorage に有効なセッション（session_token付き）があれば自動ログイン
-//    2. 学籍番号 + パスワードを入力 → POST /login
-//       - 成功           → セッション保存 → 遷移先へ
-//       - user_not_found → 新規登録ステップへ（ニックネーム＋パスワード設定）
-//       - password_not_set → 登録ステップへ（既存アカウントのパスワード初回設定。
-//                             ニックネームは既存のものを表示するだけで変更不可）
-//       - wrong_password → エラー表示のみ
-//    3. 登録ステップ完了後、あらためて /login を呼んでセッショントークンを取得する
-//
-//  遷移先:
-//    sessionStorage に 'post_login_redirect' が保存されていれば
-//    ログイン後にそのページへ戻る（例: Cardmaker.htmlから来た場合）。
-//    無ければ通常通り REDIRECT_PATH（StudyLog.html）へ遷移する。
+//  ★ 課題のポイントは Plan.js（予定管理ページ）の追加・編集画面で
+//     設定可能。plans に points フィールドがあればそれを使用し、
+//     無ければデフォルト 5pt にフォールバックする。
 // ============================================================
 
-const API_BASE      = "https://python-bot-1istudy.onrender.com";
-const GUILD_ID      = "1509880344806162544";
-const SESSION_KEY   = "sl_session";
-const REDIRECT_PATH = "/StudyLog.html";
+const API_BASE    = "https://python-bot-1istudy.onrender.com/";
+const GUILD_ID    = "1509880344806162544";
+const SESSION_KEY = "sl_session";
+const DEFAULT_TASK_POINTS = 5;
 
-// アバターカラーパレット（ユーザー数 % 8 で自動割り当て）
-const AVATAR_COLORS = [
-  { color: "#dbeafe", text: "#1e40af" },
-  { color: "#dcfce7", text: "#166534" },
-  { color: "#fce7f3", text: "#9d174d" },
-  { color: "#ffedd5", text: "#9a3412" },
-  { color: "#fef9c3", text: "#854d0e" },
-  { color: "#ede9fe", text: "#6d28d9" },
-  { color: "#fee2e2", text: "#991b1b" },
-  { color: "#f0fdf4", text: "#15803d" },
-];
+// ★ 備考をcontent文字列に埋め込むための区切り文字列（Plan.jsと同じ形式）
+const NOTE_SEP = '\n📝備考：';
 
-// ── 起動 ────────────────────────────────────────────────────
-window.addEventListener("load", () => {
-  // 自動ログイン（localStorage に session_token 付きの保存済みセッションがある場合のみ）
-  const saved = getSession();
-  if (saved && saved.session_token) {
-    autoLogin(saved);
-    return;
-  }
-  localStorage.removeItem(SESSION_KEY); // session_tokenの無い旧形式セッションは破棄
-  showStep("step-id");
+// ★ content から【カテゴリ】タグを除いた「内容」と「備考」を分離する（Plan.jsのparsePlanContentに相当）
+function splitContentNote(raw) {
+  const stripped = String(raw).replace(/【.*?】/, "").trim();
+  const [textPart, notePart] = stripped.split(NOTE_SEP);
+  return { text: (textPart || "").trim(), note: (notePart || "").trim() };
+}
+
+// ── セッション取得・チェック ────────────────────────────
+function getSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch(e) { return null; }
+}
+// ★ session_token が無いセッション（パスワード未対応の古いログイン方式で
+//   作られたもの）はサーバー側で本人確認できないため、ログインし直させる
+(function() {
+  var s = getSession();
+  if (!s || !s.session_token) { location.replace("/Login.html"); }
+})();
+
+const _s = getSession() || {};
+const STUDENT = {
+  id:        _s.student_id,
+  nickname:  _s.nickname,
+  color:     _s.color,
+  textColor: _s.text_color,
+};
+// ★ サーバー側の本人確認に使うセッショントークン。/login で発行され、
+//   ポイントに関わるAPI（勉強ログ追加・課題達成など）を呼ぶたびに
+//   一緒に送る。サーバーはこれを使って student_id を特定するので、
+//   クライアントが送る student_id 自体は（表示用途を除き）信用されない。
+const SESSION_TOKEN = _s.session_token;
+
+
+// ── 課題 JSON（動的に読み込む） ────────────────────────
+let TASKS_JSON = [];
+
+// ── Discord科目一覧 ───────────────────────────────────
+let SUBJECTS = [];
+
+async function loadSubjects() {
+  try {
+    const data = await api("/channels?guild_id=" + GUILD_ID);
+    SUBJECTS = data.ok ? data.channels.map(ch => ch.name) : [];
+  } catch(e) { SUBJECTS = []; }
+}
+
+async function loadTasks() {
+  try {
+    const data = await api("/list_schedule?guild_id=" + GUILD_ID);
+    if (!data.ok) { TASKS_JSON = []; renderTasks(); return; }
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    TASKS_JSON = (data.plans || [])
+      .filter(p => {
+        // ★「提出」「宿題」に加えて、その他カテゴリでも任意でポイントが
+        //   付いている予定は達成一覧の対象に含める
+        const isTarget = p.content.includes("【提出】") || p.content.includes("【宿題】") || (p.points != null);
+        const due = new Date(p.date); due.setHours(0, 0, 0, 0);
+        return isTarget && due >= today;
+      })
+      .map(p => {
+        const { text, note } = splitContentNote(p.content);
+        return {
+          id:      `${p.date}_${p.subject}_${p.content}`,
+          subject: p.subject,
+          title:   text,
+          note:    note, // ★ 備考（タップで表示するため分離）
+          due:     p.date,
+          // ★ サーバー側（予定管理の追加・編集画面）で設定したポイントを優先。
+          //    未設定の予定は従来どおりデフォルト5ptにフォールバック。
+          points:  (p.points != null) ? p.points : DEFAULT_TASK_POINTS,
+        };
+      });
+
+    renderTasks();
+  } catch(e) { TASKS_JSON = []; renderTasks(); }
+}
+
+// ── LocalStorage キー（タイマー復元のみ） ──────────────
+const LS_TIMER = "sl_timer_" + STUDENT.id;
+
+// ============================================================
+//  ★ 連続記録の制限（誤操作・二重送信防止）
+//   ・タイマー記録：前回の記録から「今回記録しようとしている分数」以上の
+//     実時間が経過していないと保存できない
+//     （タイマーの経過時間を改ざんして即座に長時間記録するのを防ぐ）
+//   ・手入力：同じ教科での連続記録は、前回の記録から1分経過するまで
+//     行えない
+// ============================================================
+const LS_TIMER_LASTLOG  = "sl_timer_lastlog_"  + STUDENT.id; // { at, minutes }
+const LS_MANUAL_LASTLOG = "sl_manual_lastlog_" + STUDENT.id; // { [subject]: at }
+const MANUAL_COOLDOWN_MS = 60 * 1000; // 1分
+
+function getTimerLastLog() {
+  try { return JSON.parse(localStorage.getItem(LS_TIMER_LASTLOG)); } catch(e) { return null; }
+}
+function setTimerLastLog(mins) {
+  try { localStorage.setItem(LS_TIMER_LASTLOG, JSON.stringify({ at: Date.now(), minutes: mins })); } catch(e) {}
+}
+
+function getManualLastLogMap() {
+  try { return JSON.parse(localStorage.getItem(LS_MANUAL_LASTLOG)) || {}; } catch(e) { return {}; }
+}
+function setManualLastLog(subject) {
+  var map = getManualLastLogMap();
+  map[subject] = Date.now();
+  try { localStorage.setItem(LS_MANUAL_LASTLOG, JSON.stringify(map)); } catch(e) {}
+}
+
+// ── グローバル状態 ──────────────────────────────────────
+let logs              = [];   // 全ユーザーのログ
+let allPoints         = {};   // 累計ポイント { "1I001": 12, ... }（ヘッダーバッジ用）
+let myPoints          = 0;    // 自分の累計ポイント
+let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points, nickname}, ...]
+let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points,nickname}], ... }
+let nicknameMap       = {};   // { "1I001": "太郎", ... }
+
+// ★ 現在サーバーに送信中のタスクID（二重送信・ポーリング競合防止）
+let pendingTaskIds = new Set();
+
+let timerInterval   = null;
+let timerSec        = 0;
+let timerRunning    = false;
+let timerIsPaused   = false;
+let timerStartEpoch = null;
+let elapsedAtPause  = 0;
+let lastAwardedMin  = 0;
+
+// ============================================================
+//  起動
+// ============================================================
+window.addEventListener("load", function() {
+  applySession();
+  setTodayLabel();
+  restoreTimer();
+  initTaskListEvents(); // ★ 課題リストのクリックをイベント委譲で処理（IDに引用符が含まれても壊れないように）
+
+  Promise.all([
+    loadUsers(),           // ★ 全ユーザーのnicknameMapを最初に構築
+    loadSubjects(),
+    loadLogs(),
+    loadPoints(),
+    loadCompletedTasks(),
+    loadAllCompletedTasks(),
+    loadTasks()
+  ]).then(function() {
+    renderSubjectDropdown();
+    renderAll();
+    renderTasks();
+  });
 });
 
-// ============================================================
-//  セッション
-// ============================================================
-function getSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
-
-// user: {id, nickname}, sessionToken: /loginが返した session_token
-function saveSession(user, sessionToken, colorPalette) {
-  const session = {
-    student_id:    user.id,
-    nickname:      user.nickname,
-    color:         colorPalette.color,
-    text_color:    colorPalette.text,
-    session_token: sessionToken,
-    logged_in_at:  new Date().toISOString(),
-  };
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
-  return session;
-}
-
-// ID（文字列）から常に同じ色を選ぶ（新規登録時のインデックスに依存しないように）
-function paletteFor(id) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-
-// ── 遷移先の決定 ─────────────────────────────────────────────
-// Cardmaker.html など他ページから「未ログイン警告→ログインへ」で来た場合、
-// sessionStorage に戻り先が記憶されているのでそちらを優先する。
-function getRedirectTarget() {
-  const savedRedirect = sessionStorage.getItem('post_login_redirect');
-  if (savedRedirect) {
-    sessionStorage.removeItem('post_login_redirect');
-    return savedRedirect;
+// ── ヘッダーにセッション情報を反映 ─────────────────────
+function applySession() {
+  var avatarEl   = document.getElementById("header-avatar");
+  var nicknameEl = document.getElementById("header-nickname");
+  var idEl       = document.getElementById("header-id");
+  if (avatarEl) {
+    avatarEl.textContent      = STUDENT.nickname.slice(0, 2).toUpperCase();
+    avatarEl.style.background = STUDENT.color;
+    avatarEl.style.color      = STUDENT.textColor;
   }
-  return REDIRECT_PATH;
-}
-
-// ── 自動ログイン ─────────────────────────────────────────────
-// ★ session_token の有効性はサーバー側でしか判定できない（改ざん・期限切れ等）ので、
-//   軽いAPI（get_users）を叩いて通信自体が生きているかだけ確認し、
-//   トークンの正当性チェック自体は StudyLog.html 側の各APIコールに任せる
-//  （そちらで not_logged_in が返ってくれば自動的にログイン画面へ戻される）。
-async function autoLogin(session) {
-  showStep("step-loading");
-  setLoadingMsg("ログイン情報を確認中…");
-  location.href = getRedirectTarget();
+  if (nicknameEl) nicknameEl.textContent = STUDENT.nickname;
+  if (idEl)       idEl.textContent       = STUDENT.id;
+  ensureAccountButton();
 }
 
 // ============================================================
-//  API
+//  ★ アカウント設定（ニックネーム変更・パスワード変更）
+//  ─────────────────────────────
+//  HTML側に専用のボタンが無くても動くよう、無ければ自前でボタンを
+//  1つ差し込む。HTML側に既に id="header-account-btn" のボタンがあれば
+//  それをそのまま使う（二重に差し込まない）。
+//  パスワード変更は、Discordの/id連携が済んでいる本人にDMで確認コードを
+//  送り、それを入力してもらってから初めて反映する（本人確認のため）。
 // ============================================================
-async function fetchUsers() {
-  const res = await fetch(
-    `${API_BASE}/get_users?guild_id=${GUILD_ID}`,
-    { headers: { "Content-Type": "application/json" } }
-  );
-  const data = await res.json();
-  if (!data.ok) throw new Error("fetch_users_failed");
-  return data.users || []; // ★ password_hash等は含まれない（サーバー側で除去済み）
-}
-
-async function loginRequest(id, password) {
-  const res = await fetch(`${API_BASE}/login`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ guild_id: GUILD_ID, id, password }),
-  });
-  return res.json(); // { ok:true, session_token, student:{id,nickname} } または { ok:false, error }
-}
-
-async function addUser(id, nickname, password) {
-  const res = await fetch(`${API_BASE}/add_user`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      guild_id:   GUILD_ID,
-      id,
-      nickname,
-      password,
-      created_at: new Date().toISOString().slice(0, 10),
-    }),
-  });
-  return res.json(); // { ok: true } or { ok: false, error: "already_exists" | ... }
-}
-
-async function setPasswordRequest(id, password) {
-  const res = await fetch(`${API_BASE}/set_password`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ guild_id: GUILD_ID, id, password }),
-  });
-  return res.json(); // { ok: true } or { ok: false, error: "already_set" | ... }
-}
-
-async function requestPasswordResetCode(id) {
-  const res = await fetch(`${API_BASE}/request_password_reset_code`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ guild_id: GUILD_ID, id }),
-  });
-  return res.json(); // { ok: true } or { ok: false, error: "user_not_found" | "not_linked" | "too_soon" | ... }
-}
-
-async function confirmPasswordReset(id, code, newPassword) {
-  const res = await fetch(`${API_BASE}/confirm_password_reset`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ guild_id: GUILD_ID, id, code, new_password: newPassword }),
-  });
-  return res.json(); // { ok: true } or { ok: false, error: "wrong_code" | "code_expired" | ... }
-}
-
-// ============================================================
-//  ステップ切り替え
-// ============================================================
-function showStep(id) {
-  document.querySelectorAll(".login-step").forEach(el => {
-    el.style.display = el.id === id ? "" : "none";
-  });
-  // フォーカス制御
-  if (id === "step-id") {
-    setTimeout(() => document.getElementById("inp-student-id")?.focus(), 60);
+function ensureAccountButton() {
+  if (document.getElementById("header-account-btn")) {
+    document.getElementById("header-account-btn").onclick = openAccountModal;
+    return;
   }
-  if (id === "step-register") {
-    const mode = document.getElementById("reg-mode").value;
-    setTimeout(() => document.getElementById(mode === "new" ? "inp-nickname" : "inp-reg-password")?.focus(), 60);
-  }
-  if (id === "step-forgot") {
-    setTimeout(() => document.getElementById("inp-forgot-id")?.focus(), 60);
-  }
+  if (document.getElementById("sl-acct-fab")) return; // 二重生成防止
+
+  var btn = document.createElement("button");
+  btn.id = "sl-acct-fab";
+  btn.type = "button";
+  btn.textContent = "⚙ アカウント";
+  btn.onclick = openAccountModal;
+  btn.style.cssText =
+    "position:fixed;right:16px;bottom:16px;z-index:9998;" +
+    "padding:10px 16px;border:none;border-radius:999px;" +
+    "background:#1e293b;color:#fff;font-size:14px;font-weight:600;" +
+    "box-shadow:0 4px 12px rgba(0,0,0,.2);cursor:pointer;";
+  document.body.appendChild(btn);
 }
 
-function setLoadingMsg(msg) {
-  const el = document.getElementById("loading-msg");
-  if (el) el.textContent = msg;
+function openAccountModal() {
+  closeAccountModal(); // 二重生成防止
+
+  var overlay = document.createElement("div");
+  overlay.id = "sl-acct-overlay";
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);" +
+    "display:flex;align-items:center;justify-content:center;padding:16px;";
+  overlay.onclick = function(e) { if (e.target === overlay) closeAccountModal(); };
+
+  var box = document.createElement("div");
+  box.style.cssText =
+    "background:#fff;border-radius:16px;max-width:420px;width:100%;" +
+    "max-height:90vh;overflow:auto;padding:24px;font-family:inherit;" +
+    "box-shadow:0 20px 50px rgba(0,0,0,.3);";
+
+  box.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+      '<h2 style="margin:0;font-size:18px;">アカウント設定</h2>' +
+      '<button id="sl-acct-close" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">✕</button>' +
+    '</div>' +
+
+    '<div style="font-size:13px;color:#64748b;margin-bottom:20px;">学籍番号: ' + escapeHtmlSl(STUDENT.id) + '</div>' +
+
+    '<div style="margin-bottom:24px;">' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">ニックネーム</label>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<input id="sl-acct-nickname" maxlength="16" value="' + escapeHtmlSl(STUDENT.nickname) + '" ' +
+          'style="flex:1;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">' +
+        '<button id="sl-acct-nickname-save" style="padding:8px 14px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:13px;cursor:pointer;">保存</button>' +
+      '</div>' +
+      '<div id="sl-acct-nickname-msg" style="font-size:12px;margin-top:6px;"></div>' +
+    '</div>' +
+
+    '<div style="border-top:1px solid #e2e8f0;padding-top:20px;">' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">パスワードの変更</label>' +
+      '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">' +
+        '本人確認のため、Discordに確認コードを送ります。<br>' +
+        '（Discordの /id連携 コマンドを済ませている生徒のみ利用できます）' +
+      '</p>' +
+      '<button id="sl-acct-send-code" style="padding:8px 14px;border:none;border-radius:8px;background:#334155;color:#fff;font-size:13px;cursor:pointer;">Discordに確認コードを送る</button>' +
+      '<div id="sl-acct-code-msg" style="font-size:12px;margin-top:6px;"></div>' +
+
+      '<div id="sl-acct-pw-fields" style="display:none;margin-top:14px;">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">確認コード（6桁）</label>' +
+        '<input id="sl-acct-code" maxlength="6" inputmode="numeric" placeholder="123456" ' +
+          'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">新しいパスワード（4文字以上）</label>' +
+        '<input id="sl-acct-newpw" type="password" maxlength="64" ' +
+          'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">新しいパスワード（確認）</label>' +
+        '<input id="sl-acct-newpw2" type="password" maxlength="64" ' +
+          'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
+        '<button id="sl-acct-confirm-pw" style="width:100%;padding:10px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">パスワードを変更する</button>' +
+        '<div id="sl-acct-pw-msg" style="font-size:12px;margin-top:6px;"></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="border-top:1px solid #e2e8f0;margin-top:24px;padding-top:16px;">' +
+      '<button id="sl-acct-logout" style="width:100%;padding:10px;border:1px solid #dc2626;border-radius:8px;background:#fff;color:#dc2626;font-size:14px;font-weight:600;cursor:pointer;">ログアウト</button>' +
+    '</div>';
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  document.getElementById("sl-acct-close").onclick  = closeAccountModal;
+  document.getElementById("sl-acct-logout").onclick  = function() { closeAccountModal(); doLogout(); };
+  document.getElementById("sl-acct-nickname-save").onclick = submitNicknameChange;
+  document.getElementById("sl-acct-send-code").onclick     = requestPasswordChangeCode;
+  document.getElementById("sl-acct-confirm-pw").onclick    = submitPasswordChange;
 }
 
-// ============================================================
-//  STEP 1 — 学籍番号＋パスワード入力
-// ============================================================
-async function submitId() {
-  const raw      = document.getElementById("inp-student-id").value.trim().toUpperCase();
-  const password = document.getElementById("inp-password").value;
-  const btnEl    = document.getElementById("btn-login");
+function closeAccountModal() {
+  var el = document.getElementById("sl-acct-overlay");
+  if (el) el.remove();
+}
 
-  if (!validateId(raw)) return;
-  if (!password) { showIdErr("パスワードを入力してください"); return; }
+function escapeHtmlSl(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
-  setBtn(btnEl, true, "確認中…");
+function setAcctMsg(id, msg, isError) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? "#dc2626" : "#16a34a";
+}
 
+// ── ニックネーム変更 ────────────────────────────────────
+async function submitNicknameChange() {
+  var input = document.getElementById("sl-acct-nickname");
+  var btn   = document.getElementById("sl-acct-nickname-save");
+  var nickname = (input.value || "").trim();
+
+  if (!nickname)            { setAcctMsg("sl-acct-nickname-msg", "ニックネームを入力してください", true); return; }
+  if (nickname.length > 16) { setAcctMsg("sl-acct-nickname-msg", "16文字以内で入力してください", true); return; }
+
+  btn.disabled = true;
   try {
-    const result = await loginRequest(raw, password);
-
-    if (result.ok) {
-      // ログイン成功
-      const palette = paletteFor(result.student.id);
-      saveSession(result.student, result.session_token, palette);
-      location.href = getRedirectTarget();
-      return;
-    }
-
-    if (result.error === "user_not_found") {
-      // ★ 未登録 → 新規登録ステップへ（パスワードがまだ無い＝登録画面へ）
-      openRegisterStep(raw, "new", password);
-      return;
-    }
-    if (result.error === "password_not_set") {
-      // ★ 既存アカウントだがパスワード未設定 → パスワード設定のため登録画面へ
-      openRegisterStep(raw, "setpw", password);
-      return;
-    }
-    if (result.error === "wrong_password") {
-      showIdErr("パスワードが正しくありません");
-      return;
-    }
-    showIdErr("ログインに失敗しました。時間をおいて再試行してください。");
-  } catch {
-    showIdErr("サーバーに接続できません。時間をおいて再試行してください。");
-  } finally {
-    setBtn(btnEl, false, "ログイン →");
-  }
-}
-
-function validateId(raw) {
-  if (!raw) { showIdErr("学籍番号を入力してください"); return false; }
-  if (!/^[A-Z0-9]{2,20}$/.test(raw)) {
-    showIdErr("半角英数字で入力してください（例: 1I001）");
-    return false;
-  }
-  return true;
-}
-
-// ── 登録ステップを開く（新規登録 or 既存アカウントのパスワード初回設定）──
-async function openRegisterStep(id, mode, prefillPassword) {
-  document.getElementById("inp-student-id-hidden").value = id;
-  document.getElementById("reg-mode").value               = mode;
-  document.getElementById("reg-err").style.display        = "none";
-  document.getElementById("inp-reg-password").value       = prefillPassword || "";
-  document.getElementById("inp-reg-password2").value      = "";
-
-  const nicknameField = document.getElementById("reg-nickname-field");
-
-  if (mode === "new") {
-    document.getElementById("reg-title").textContent = "新規登録 👋";
-    document.getElementById("reg-desc").innerHTML =
-      `<strong id="reg-id-label">${escHtml(id)}</strong> はまだ登録されていません。<br>` +
-      `呼ばれたいニックネームとパスワードを入力して登録してください。<br>` +
-      `<span class="login-reg-note">※ 本名は禁止・公開されます</span>`;
-    nicknameField.style.display    = "";
-    document.getElementById("inp-nickname").value = "";
-  } else {
-    // setpw: 既存アカウントのパスワードが未設定
-    nicknameField.style.display = "none";
-    let nicknameLabel = id;
-    try {
-      const users = await fetchUsers();
-      const user  = users.find(u => u.id === id);
-      if (user) nicknameLabel = user.nickname;
-    } catch {}
-    document.getElementById("reg-title").textContent = "パスワード設定 🔑";
-    document.getElementById("reg-desc").innerHTML =
-      `<strong id="reg-id-label">${escHtml(nicknameLabel)}（${escHtml(id)}）</strong> はまだパスワードが設定されていません。<br>` +
-      `今後ログインに使うパスワードを設定してください。`;
-  }
-
-  showStep("step-register");
-}
-
-// ============================================================
-//  STEP 2 — 新規登録 ／ パスワード設定
-// ============================================================
-async function submitRegister() {
-  const id       = document.getElementById("inp-student-id-hidden").value;
-  const mode     = document.getElementById("reg-mode").value; // "new" | "setpw"
-  const nickname = document.getElementById("inp-nickname").value.trim();
-  const password  = document.getElementById("inp-reg-password").value;
-  const password2 = document.getElementById("inp-reg-password2").value;
-  const btnEl    = document.getElementById("btn-register");
-
-  if (mode === "new" && !validateNickname(nickname)) return;
-  if (!validatePassword(password, password2)) return;
-
-  setBtn(btnEl, true, mode === "new" ? "登録中…" : "設定中…");
-
-  try {
-    let result;
-    if (mode === "new") {
-      result = await addUser(id, nickname, password);
+    var data = await api("/change_nickname", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN, nickname: nickname }),
+    });
+    if (data && data.ok) {
+      // ★ セッション・画面上の表示・nicknameMapを全て更新する
+      STUDENT.nickname = nickname;
+      var s = getSession() || {};
+      s.nickname = nickname;
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch(e) {}
+      nicknameMap[STUDENT.id] = nickname;
+      applySession();
+      renderAll();
+      setAcctMsg("sl-acct-nickname-msg", "✓ 保存しました");
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
     } else {
-      result = await setPasswordRequest(id, password);
+      setAcctMsg("sl-acct-nickname-msg", "保存に失敗しました", true);
     }
+  } catch(e) {
+    setAcctMsg("sl-acct-nickname-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
-    if (!result.ok) {
-      if (result.error === "already_exists") {
-        showRegErr("この学籍番号はすでに登録されています。ログイン画面に戻ってください。");
-      } else if (result.error === "already_set") {
-        showRegErr("このアカウントはすでにパスワードが設定されています。ログイン画面からログインしてください。");
-      } else {
-        showRegErr("処理に失敗しました。時間をおいて再試行してください。");
+// ── パスワード変更：STEP1 確認コード送信 ────────────────
+async function requestPasswordChangeCode() {
+  var btn = document.getElementById("sl-acct-send-code");
+  btn.disabled = true;
+  try {
+    var data = await api("/request_password_change_code", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }),
+    });
+    if (data && data.ok) {
+      document.getElementById("sl-acct-pw-fields").style.display = "";
+      setAcctMsg("sl-acct-code-msg", "✓ Discordに確認コードを送信しました（10分間有効）");
+      document.getElementById("sl-acct-code").focus();
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
+    } else if (data && data.error === "not_linked") {
+      setAcctMsg("sl-acct-code-msg", "Discordと連携されていません。Discordで /id連携 コマンドを実行してから、もう一度お試しください。", true);
+    } else if (data && data.error === "too_soon") {
+      setAcctMsg("sl-acct-code-msg", "少し時間をおいてから再度お試しください（あと約" + (data.retry_after_sec || 60) + "秒）", true);
+    } else {
+      setAcctMsg("sl-acct-code-msg", "送信に失敗しました。時間をおいて再試行してください。", true);
+    }
+  } catch(e) {
+    setAcctMsg("sl-acct-code-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── パスワード変更：STEP2 コード＋新パスワードで確定 ────
+async function submitPasswordChange() {
+  var code     = (document.getElementById("sl-acct-code").value || "").trim();
+  var newPw    = document.getElementById("sl-acct-newpw").value;
+  var newPw2   = document.getElementById("sl-acct-newpw2").value;
+  var btn      = document.getElementById("sl-acct-confirm-pw");
+
+  if (!/^[0-9]{6}$/.test(code)) { setAcctMsg("sl-acct-pw-msg", "確認コード（6桁の数字）を入力してください", true); return; }
+  if (!newPw || newPw.length < 4) { setAcctMsg("sl-acct-pw-msg", "パスワードは4文字以上で入力してください", true); return; }
+  if (newPw !== newPw2) { setAcctMsg("sl-acct-pw-msg", "パスワード（確認）が一致しません", true); return; }
+
+  btn.disabled = true;
+  try {
+    var data = await api("/confirm_password_change", {
+      method: "POST",
+      body: JSON.stringify({
+        guild_id: GUILD_ID, session_token: SESSION_TOKEN,
+        code: code, new_password: newPw,
+      }),
+    });
+    if (data && data.ok) {
+      setAcctMsg("sl-acct-pw-msg", "✓ パスワードを変更しました");
+      document.getElementById("sl-acct-code").value   = "";
+      document.getElementById("sl-acct-newpw").value  = "";
+      document.getElementById("sl-acct-newpw2").value = "";
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
+    } else if (data && data.error === "wrong_code") {
+      setAcctMsg("sl-acct-pw-msg", "確認コードが正しくありません", true);
+    } else if (data && data.error === "code_expired") {
+      setAcctMsg("sl-acct-pw-msg", "確認コードの有効期限が切れました。もう一度送信してください。", true);
+    } else if (data && data.error === "code_not_requested") {
+      setAcctMsg("sl-acct-pw-msg", "先に確認コードを送信してください", true);
+    } else {
+      setAcctMsg("sl-acct-pw-msg", "変更に失敗しました。時間をおいて再試行してください。", true);
+    }
+  } catch(e) {
+    setAcctMsg("sl-acct-pw-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── ログアウト ──────────────────────────────────────────
+function doLogout() {
+  if (!confirm("ログアウトしますか？")) return;
+  localStorage.removeItem(SESSION_KEY);
+  location.replace("/Login.html");
+}
+
+// ★ サーバー側でセッションが無効（期限切れ・別端末でログアウト等）と
+//   判定された場合に、ログイン画面へ強制的に戻す
+function forceReLogin() {
+  localStorage.removeItem(SESSION_KEY);
+  alert("ログインが切れました。もう一度ログインしてください。");
+  location.replace("/Login.html");
+}
+
+// ── 全ユーザー一覧からnicknameMapを構築 ★ ──────────────
+async function loadUsers() {
+  try {
+    var data = await api("/get_users?guild_id=" + GUILD_ID);
+    if (data.ok) {
+      (data.users || []).forEach(function(u) {
+        if (u.id && u.nickname) nicknameMap[u.id] = u.nickname;
+      });
+    }
+  } catch(e) {}
+  // 自分自身は必ずセッションから上書き
+  nicknameMap[STUDENT.id] = STUDENT.nickname;
+}
+
+// ── 達成済み課題（自分のみ・サーバー管理・日付付き） ───
+async function loadCompletedTasks() {
+  try {
+    var data = await api(
+      "/get_completed_tasks?guild_id=" + GUILD_ID + "&student_id=" + STUDENT.id
+    );
+    if (data.ok) {
+      completedTasks = (data.done || []).map(function(e) {
+        return typeof e === "string"
+          ? { id: e, date: null, points: null, nickname: null }
+          : e;
+      });
+    } else {
+      completedTasks = [];
+    }
+  } catch(e) { completedTasks = []; }
+}
+
+// ── 達成済み課題（全ユーザー・週間ランキング集計用） ───
+async function loadAllCompletedTasks() {
+  try {
+    var data = await api("/get_completed_tasks?guild_id=" + GUILD_ID);
+    allCompletedTasks = (data.ok && data.done && typeof data.done === "object" && !Array.isArray(data.done))
+      ? data.done
+      : {};
+  } catch(e) { allCompletedTasks = {}; }
+}
+
+
+// ============================================================
+//  API ヘルパー
+// ============================================================
+async function api(path, opts) {
+  opts = opts || {};
+  var res = await fetch(API_BASE + path, Object.assign(
+    { headers: { "Content-Type": "application/json" } }, opts
+  ));
+  return res.json();
+}
+
+// ── ログ取得（nicknameMap も同時に補完） ───────────────
+async function loadLogs() {
+  try {
+    var data = await api("/list_study_logs?guild_id=" + GUILD_ID);
+    logs = data.ok ? (data.logs || []) : [];
+    logs.forEach(function(l) {
+      // loadUsers() で取得済みの値を優先し、未登録IDのみ補完
+      if (l.student_id && l.nickname && !nicknameMap[l.student_id]) {
+        nicknameMap[l.student_id] = l.nickname;
       }
-      return;
-    }
+    });
+    nicknameMap[STUDENT.id] = STUDENT.nickname;
+  } catch(e) { logs = []; }
+}
 
-    // 登録／パスワード設定に成功 → 続けてログインしてセッショントークンを取得する
-    const loginResult = await loginRequest(id, password);
-    if (!loginResult.ok) {
-      showRegErr("設定は完了しましたが、自動ログインに失敗しました。ログイン画面から入り直してください。");
-      backToId();
-      return;
+// ── ポイント取得（累計・ヘッダーバッジ用） ────────────
+async function loadPoints() {
+  try {
+    var data = await api("/get_points?guild_id=" + GUILD_ID);
+    if (data.ok) {
+      allPoints = data.points || {};
+      myPoints  = allPoints[STUDENT.id] || 0;
+      updatePointDisplay();
     }
-    const palette = paletteFor(loginResult.student.id);
-    saveSession(loginResult.student, loginResult.session_token, palette);
-    location.href = getRedirectTarget();
-  } catch {
-    showRegErr("サーバーに接続できません。時間をおいて再試行してください。");
-  } finally {
-    setBtn(btnEl, false, "登録してログイン ✓");
+  } catch(e) { allPoints = {}; myPoints = 0; }
+}
+
+// ── ログ投稿 ──────────────────────────────────────────
+// ★ 戻り値 { ok: true } / { ok: false, error: "…" }
+//    サーバー側の不正防止チェック（連続記録の制限など）で拒否された場合や
+//    通信エラーの場合は ok:false を返し、呼び出し側でエラー表示を行う。
+//    （以前は通信エラー時もローカルだけ成功扱いにしていたが、サーバー側の
+//      不正防止チェックを無意味にしてしまうため、失敗はきちんと失敗として扱う）
+async function postLog(entry) {
+  var data;
+  try {
+    data = await api("/add_study_log", {
+      method: "POST",
+      body: JSON.stringify(Object.assign({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }, entry)),
+    });
+  } catch(e) {
+    return { ok: false, error: "通信エラーが発生しました。もう一度お試しください。" };
   }
-}
 
-function validateNickname(nickname) {
-  if (!nickname)          { showRegErr("ニックネームを入力してください"); return false; }
-  if (nickname.length > 16) { showRegErr("16文字以内で入力してください"); return false; }
-  return true;
-}
+  if (!data || data.ok === false) {
+    if (data && data.error === "not_logged_in") { forceReLogin(); return { ok: false, error: "ログインが切れました。再度ログインしてください。" }; }
+    return { ok: false, error: (data && data.error) || "記録に失敗しました。" };
+  }
 
-function validatePassword(password, password2) {
-  if (!password || password.length < 4) { showRegErr("パスワードは4文字以上で入力してください"); return false; }
-  if (password !== password2) { showRegErr("パスワード（確認）が一致しません"); return false; }
-  return true;
-}
-
-function backToId() {
-  document.getElementById("reg-err").style.display = "none";
-  showStep("step-id");
+  var earned = (data.earned != null) ? data.earned : Math.floor(entry.minutes / 5);
+  if (earned > 0) {
+    allPoints[STUDENT.id] = (data.total != null) ? data.total : (allPoints[STUDENT.id] || 0) + earned;
+    myPoints = allPoints[STUDENT.id];
+    floatPoints("+" + earned + "pt");
+    updatePointDisplay();
+  }
+  nicknameMap[STUDENT.id] = STUDENT.nickname;
+  logs.push(entry);
+  renderAll();
+  return { ok: true };
 }
 
 // ============================================================
-//  STEP 3 — パスワードを忘れた場合の再設定
+//  日付ユーティリティ
 // ============================================================
-function openForgotStep() {
-  document.getElementById("forgot-err").style.display        = "none";
-  document.getElementById("forgot-pw-fields").style.display   = "none";
-  document.getElementById("btn-forgot-send").disabled         = false;
-  document.getElementById("btn-forgot-send").textContent      = "Discordに確認コードを送る";
-  document.getElementById("inp-forgot-code").value            = "";
-  document.getElementById("inp-forgot-newpw").value           = "";
-  document.getElementById("inp-forgot-newpw2").value          = "";
-  // 既にSTEP1で入力済みの学籍番号があれば引き継ぐ
-  const idAlready = document.getElementById("inp-student-id").value.trim().toUpperCase();
-  document.getElementById("inp-forgot-id").value = idAlready;
-  showStep("step-forgot");
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+function getWeekRange() {
+  var now = new Date(), day = now.getDay();
+  var diff = day === 0 ? -6 : 1 - day;
+  var mon = new Date(now); mon.setDate(now.getDate() + diff); mon.setHours(0,0,0,0);
+  var sun = new Date(mon); sun.setDate(mon.getDate() + 6);   sun.setHours(23,59,59,999);
+  return { mon: mon, sun: sun };
+}
+function getThisWeekLogs() {
+  var r = getWeekRange();
+  return logs.filter(function(l) { var d = new Date(l.date); return d >= r.mon && d <= r.sun; });
+}
+function setTodayLabel() {
+  var d = new Date(), wdays = ["日","月","火","水","木","金","土"];
+  var el = document.getElementById("today-date");
+  if (el) el.textContent =
+    d.getFullYear() + "/" + (d.getMonth()+1) + "/" + d.getDate() +
+    "（" + wdays[d.getDay()] + "）";
 }
 
-async function submitForgotSendCode() {
-  const id    = document.getElementById("inp-forgot-id").value.trim().toUpperCase();
-  const btnEl = document.getElementById("btn-forgot-send");
+// ============================================================
+//  今週の獲得ポイントを計算（ランキング用）
+// ============================================================
+function calcWeeklyPoints(wl) {
+  var r   = getWeekRange();
+  var map = {};
 
-  if (!validateForgotId(id)) return;
+  // ① 勉強ログ分（全ユーザー）
+  wl.forEach(function(l) {
+    if (!map[l.student_id]) map[l.student_id] = 0;
+    map[l.student_id] += Math.floor(l.minutes / 5);
+  });
 
-  setBtn(btnEl, true, "送信中…");
-  try {
-    const result = await requestPasswordResetCode(id);
-    if (result.ok) {
-      document.getElementById("forgot-pw-fields").style.display = "";
-      showForgotOk("✓ Discordに確認コードを送信しました（10分間有効）");
-      setTimeout(() => document.getElementById("inp-forgot-code")?.focus(), 60);
-    } else if (result.error === "user_not_found") {
-      showForgotErr("その学籍番号は登録されていません");
-    } else if (result.error === "not_linked") {
-      showForgotErr("Discordと連携されていません。Discordで /id連携 コマンドを実行してから、もう一度お試しください。");
-    } else if (result.error === "too_soon") {
-      showForgotErr("少し時間をおいてから再度お試しください（あと約" + (result.retry_after_sec || 60) + "秒）");
-    } else {
-      showForgotErr("送信に失敗しました。時間をおいて再試行してください。");
+  // ② 課題達成分（全ユーザー・今週達成したもの）
+  Object.keys(allCompletedTasks).forEach(function(sid) {
+    (allCompletedTasks[sid] || []).forEach(function(e) {
+      if (!e.date) return;
+      var d = new Date(e.date); d.setHours(0, 0, 0, 0);
+      if (d < r.mon || d > r.sun) return;
+
+      var pts;
+      if (e.points != null) {
+        pts = e.points;
+      } else {
+        var task = TASKS_JSON.find(function(t) { return t.id === e.id; });
+        pts = task ? task.points : DEFAULT_TASK_POINTS;
+      }
+
+      if (!map[sid]) map[sid] = 0;
+      map[sid] += pts;
+    });
+  });
+
+  return map;
+}
+
+// ============================================================
+//  ポイント表示・アニメーション
+// ============================================================
+function updatePointDisplay() {
+  var el = document.getElementById("point-display");
+  if (el) el.textContent = myPoints;
+}
+function floatPoints(txt) {
+  var wrap = document.getElementById("point-wrap");
+  if (!wrap) return;
+  var old = wrap.querySelector(".sl-pts-pop");
+  if (old) old.remove();
+  var el = document.createElement("span");
+  el.className   = "sl-pts-pop fly";
+  el.textContent = txt;
+  wrap.appendChild(el);
+  el.addEventListener("animationend", function() { el.remove(); });
+}
+
+// ============================================================
+//  ランキング集計
+// ============================================================
+function topWithTies(arr, key) {
+  if (!arr.length) return [];
+  var sorted = arr.slice().sort(function(a, b) { return b[key] - a[key]; });
+  var result = [];
+  var rank = 0;
+  var prev = null;
+  for (var i = 0; i < sorted.length; i++) {
+    if (sorted[i][key] !== prev) {
+      rank = i + 1;
+      prev = sorted[i][key];
     }
-  } catch {
-    showForgotErr("サーバーに接続できません。時間をおいて再試行してください。");
-  } finally {
-    setBtn(btnEl, false, "Discordに確認コードを送る");
+    if (rank > 3) break;
+    result.push(Object.assign({ rank: rank }, sorted[i]));
   }
+  return result;
 }
 
-async function submitForgotConfirm() {
-  const id     = document.getElementById("inp-forgot-id").value.trim().toUpperCase();
-  const code   = document.getElementById("inp-forgot-code").value.trim();
-  const newPw  = document.getElementById("inp-forgot-newpw").value;
-  const newPw2 = document.getElementById("inp-forgot-newpw2").value;
-  const btnEl  = document.getElementById("btn-forgot-confirm");
+function buildRankData(wl) {
+  nicknameMap[STUDENT.id] = STUDENT.nickname;
 
-  if (!/^[0-9]{6}$/.test(code)) { showForgotErr("確認コード（6桁の数字）を入力してください"); return; }
-  if (!validatePassword(newPw, newPw2, showForgotErr)) return;
+  // ── 勉強時間マップ ──────────────────────────────────
+  var timeMap = {};
+  wl.forEach(function(l) {
+    if (!timeMap[l.student_id]) {
+      timeMap[l.student_id] = {
+        nickname: nicknameMap[l.student_id] || l.nickname,
+        min: 0
+      };
+    }
+    timeMap[l.student_id].min += l.minutes;
+  });
 
-  setBtn(btnEl, true, "再設定中…");
-  try {
-    const result = await confirmPasswordReset(id, code, newPw);
-    if (!result.ok) {
-      if (result.error === "wrong_code")            showForgotErr("確認コードが正しくありません");
-      else if (result.error === "code_expired")     showForgotErr("確認コードの有効期限が切れました。もう一度送信してください。");
-      else if (result.error === "code_not_requested") showForgotErr("先に確認コードを送信してください");
-      else                                            showForgotErr("再設定に失敗しました。時間をおいて再試行してください。");
+  // ── 今週獲得ポイントマップ（全ユーザー） ────────────
+  var weekPtsRaw = calcWeeklyPoints(wl);
+  var ptsMap = {};
+  Object.keys(weekPtsRaw).forEach(function(sid) {
+    ptsMap[sid] = {
+      nickname: nicknameMap[sid] || sid,
+      pts: weekPtsRaw[sid],
+    };
+  });
+
+  return {
+    byTime: topWithTies(Object.values(timeMap), "min"),
+    byPts:  topWithTies(Object.values(ptsMap),  "pts"),
+  };
+}
+
+// ============================================================
+//  描画
+// ============================================================
+function renderAll() {
+  var wl  = getThisWeekLogs();
+  var tot = wl.reduce(function(s,l){ return s+l.minutes; }, 0);
+
+  var myWeekMin = wl.filter(function(l){ return l.student_id === STUDENT.id; })
+                     .reduce(function(s,l){ return s+l.minutes; }, 0);
+  var myWeekPts = calcWeeklyPoints(wl)[STUDENT.id] || 0;
+  var myTotalMin = logs.filter(function(l){ return l.student_id === STUDENT.id; })
+                        .reduce(function(s,l){ return s+l.minutes; }, 0);
+  document.getElementById("my-week-time").textContent  = myWeekMin + "分";
+  document.getElementById("my-week-pts").textContent   = myWeekPts + "pt";
+  document.getElementById("my-total-time").textContent = myTotalMin + "分";
+
+  renderRankings(wl);
+  renderLogs();
+  renderEveryone(wl, tot);
+}
+
+function renderRankings(wl) {
+  var rd = buildRankData(wl);
+  document.getElementById("ranking-time").innerHTML =
+    rankHTML(rd.byTime, function(u){ return u.min + "分"; }, "sl-rank-val-time", "nickname");
+  document.getElementById("ranking-pts").innerHTML  =
+    rankHTML(rd.byPts,  function(u){ return u.pts + "pt"; }, "sl-rank-val-pts",  "nickname");
+}
+
+function rankHTML(sorted, valFn, valClass, nameKey) {
+  if (!sorted.length)
+    return '<div class="sl-rank-empty">データなし</div>';
+  var medals = ["sl-r1","sl-r2","sl-r3"];
+  return sorted.map(function(u) {
+    var rank     = u.rank || 1;
+    var name     = u[nameKey] || u.nickname || "—";
+    var isMe     = name === STUDENT.nickname;
+    var youBadge = isMe ? '<span class="sl-you-badge">あなた</span>' : "";
+    var medalCls = medals[rank - 1] || "sl-rn";
+    return '<div class="sl-rank-row">' +
+      '<div class="sl-rank-num ' + medalCls + '">' + rank + '</div>' +
+      '<div class="sl-rank-name">' + esc(name) + youBadge + '</div>' +
+      '<div class="sl-rank-val ' + valClass + '">' + valFn(u) + '</div>' +
+    '</div>';
+  }).join("");
+}
+
+// ── ログ一覧（自分のみ） ───────────────────────────────
+function renderLogs() {
+  var el     = document.getElementById("log-list");
+  var myLogs = logs.filter(function(l) { return l.student_id === STUDENT.id; });
+  if (!myLogs.length) {
+    el.innerHTML = '<div class="empty-msg">まだ記録がありません</div>'; return;
+  }
+  el.innerHTML = myLogs.slice().reverse().map(function(l) {
+    return '<div class="sl-log-item">' +
+      '<div class="sl-log-header">' +
+        '<span class="sl-log-subject">' + esc(l.subject) + '</span>' +
+        '<span class="sl-log-min">' + l.minutes + '分</span>' +
+      '</div>' +
+      '<div class="sl-log-meta">' + l.date + ' · ' + esc(l.nickname) + '</div>' +
+      (l.memo ? '<div class="sl-log-memo">' + esc(l.memo) + '</div>' : '') +
+    '</div>';
+  }).join("");
+}
+
+// ── みんなの記録 ──────────────────────────────────────
+function renderEveryone(wl, totMin) {
+  var weekPtsRaw = calcWeeklyPoints(wl);
+  var totPts     = Object.values(weekPtsRaw).reduce(function(s, v) { return s + v; }, 0);
+
+  var minEl = document.getElementById("everyone-week-min");
+  var ptsEl = document.getElementById("everyone-week-pts");
+  if (minEl) minEl.textContent = totMin + "分";
+  if (ptsEl) ptsEl.textContent = totPts + "pt";
+
+  var weekMinMap = {};
+  wl.forEach(function(l) {
+    weekMinMap[l.student_id] = (weekMinMap[l.student_id] || 0) + l.minutes;
+  });
+
+  // nicknameMap に存在する全員＋ポイント・課題達成のある全員を対象にする
+  var memberIds = {};
+  Object.keys(nicknameMap).forEach(function(id) { memberIds[id] = true; });
+  Object.keys(allPoints).forEach(function(id) { memberIds[id] = true; });
+  Object.keys(allCompletedTasks).forEach(function(id) { memberIds[id] = true; });
+  memberIds[STUDENT.id] = true;
+
+  var members = Object.keys(memberIds).map(function(id) {
+    return {
+      id:       id,
+      nickname: nicknameMap[id] || id,
+      min:      weekMinMap[id] || 0,
+      pts:      weekPtsRaw[id] || 0,
+    };
+  }).sort(function(a, b) {
+    return (b.min - a.min) || (b.pts - a.pts) || a.nickname.localeCompare(b.nickname, "ja");
+  });
+
+  var memberListEl = document.getElementById("member-week-list");
+  if (memberListEl) {
+    memberListEl.innerHTML = members.length
+      ? members.map(function(m) {
+          var isMe     = m.id === STUDENT.id;
+          var youBadge = isMe ? '<span class="sl-you-badge">あなた</span>' : "";
+          return '<div class="sl-rank-row">' +
+            '<div class="sl-rank-name">' + esc(m.nickname) + youBadge + '</div>' +
+            '<div class="sl-rank-val sl-rank-val-time">' + m.min + '分</div>' +
+            '<div class="sl-rank-val sl-rank-val-pts">' + m.pts + 'pt</div>' +
+          '</div>';
+        }).join("")
+      : '<div class="sl-rank-empty">データなし</div>';
+  }
+
+  var el = document.getElementById("everyone-log-list");
+  if (!el) return;
+  if (!logs.length) {
+    el.innerHTML = '<div class="empty-msg">まだ記録がありません</div>'; return;
+  }
+  el.innerHTML = logs.slice().reverse().map(function(l) {
+    return '<div class="sl-log-item">' +
+      '<div class="sl-log-header">' +
+        '<span class="sl-log-subject">' + esc(l.subject) + '</span>' +
+        '<span class="sl-log-min">' + l.minutes + '分</span>' +
+      '</div>' +
+      '<div class="sl-log-meta">' + l.date + ' · ' + esc(l.nickname) + '</div>' +
+      (l.memo ? '<div class="sl-log-memo">' + esc(l.memo) + '</div>' : '') +
+    '</div>';
+  }).join("");
+}
+
+// ── 課題一覧 ──────────────────────────────────────────
+// ★② 達成済みは下に並ぶようソートする
+// ★① pendingTaskIds に含まれるタスクは「送信中」表示にしてボタンを無効化
+function renderTasks() {
+  var el = document.getElementById("task-list");
+  var doneIds = completedTasks.map(function(e) { return e.id; });
+
+  var sorted = TASKS_JSON.slice().sort(function(a, b) {
+    var aDone = doneIds.includes(a.id) ? 1 : 0;
+    var bDone = doneIds.includes(b.id) ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone; // 未達成が先、達成済みが後ろ
+    // 同じ達成状態同士は締切が近い順
+    return new Date(a.due) - new Date(b.due);
+  });
+
+  el.innerHTML = sorted.map(function(t) {
+    var done    = doneIds.includes(t.id);
+    var pending = pendingTaskIds.has(t.id);
+
+    var btnLabel = pending ? "送信中…" : (done ? "✓ 達成済み" : "達成する");
+    var btnClass = "sl-task-btn" + (done ? " sl-task-btn-done" : "");
+
+    // ★ 備考は普段は隠しておき、タップで表示する（Plan.jsの詳細表示と同じ考え方）
+    var noteDot  = t.note ? '<span class="note-dot" title="備考あり">📝</span>' : '';
+    var noteHtml = t.note ? '<div class="sl-task-note">' + esc(t.note) + '</div>' : '';
+
+    return '<div class="sl-task-row' + (done ? " done-row" : "") + '">' +
+      '<div class="sl-task-body' + (t.note ? " has-note" : "") + '">' +
+        '<div class="sl-task-title' + (done ? " done" : "") + '">' + esc(t.title) + '</div>' +
+        '<div class="sl-task-meta">' +
+          '<span class="sl-subject-badge">' + esc(t.subject) + '</span>' +
+          '<span class="sl-due">締切: ' + t.due + '</span>' +
+          '<span class="sl-pts-badge">⭐ +' + t.points + 'pt</span>' +
+          noteDot +
+        '</div>' +
+        noteHtml +
+      '</div>' +
+      '<button class="' + btnClass + '" data-task-id="' + escAttr(t.id) + '"' +
+        (pending ? ' disabled' : '') + '>' +
+        btnLabel +
+      '</button>' +
+    '</div>';
+  }).join("");
+}
+
+// ★ 課題リストのクリックをイベント委譲で処理する（一度だけ登録すればOK）
+//   ・「達成する／達成済み」ボタン → toggleTask()
+//   ・備考ありの本文（.has-note） → toggleTaskNote()
+//   inline onclick に生のIDや備考文字列を直接埋め込むと、内容に引用符（' や "）が
+//   含まれた場合にHTML/JSが壊れて達成ボタンが反応しなくなるため、この方式に変更。
+function initTaskListEvents() {
+  var el = document.getElementById("task-list");
+  if (!el || el.dataset.boundClick) return;
+  el.dataset.boundClick = "1";
+  el.addEventListener("click", function(e) {
+    var btn = e.target.closest(".sl-task-btn");
+    if (btn) {
+      if (btn.disabled) return;
+      toggleTask(btn.dataset.taskId);
       return;
     }
-    // 再設定成功 → 続けてログインしてセッショントークンを取得する
-    const loginResult = await loginRequest(id, newPw);
-    if (!loginResult.ok) {
-      showForgotOk("✓ パスワードを再設定しました。ログイン画面からお入りください。");
-      setTimeout(backToId, 1500);
+    var body = e.target.closest(".sl-task-body.has-note");
+    if (body) toggleTaskNote(body);
+  });
+}
+
+// ★ 備考のタップ表示切り替え（.sl-task-body をタップすると開閉する）
+function toggleTaskNote(bodyEl) {
+  var noteEl = bodyEl.querySelector(".sl-task-note");
+  if (!noteEl) return;
+  noteEl.classList.toggle("open");
+}
+
+// ============================================================
+//  タブ切り替え
+// ============================================================
+function showTab(name) {
+  ["home","manual","timer","tasks"].forEach(function(t) {
+    document.getElementById("tab-btn-" + t).classList.toggle("active", t === name);
+    document.getElementById("tab-" + t).classList.toggle("active",     t === name);
+  });
+}
+
+// ============================================================
+//  手入力 保存
+// ============================================================
+async function saveManual() {
+  var sub   = document.getElementById("m-subject").value;
+  var min   = parseInt(document.getElementById("m-minutes").value);
+  var memo  = document.getElementById("m-memo").value.trim();
+  var errEl = document.getElementById("manual-err");
+  var okEl  = document.getElementById("manual-ok");
+  errEl.style.display = "none";
+  okEl.style.display  = "none";
+  if (!min || min < 1) {
+    errEl.textContent   = "✕ 1分以上の時間を入力してください";
+    errEl.style.display = "block";
+    setTimeout(function() { errEl.style.display = "none"; }, 3500);
+    return;
+  }
+
+  // ★ 同じ教科での連続手入力は、前回の記録から1分経つまで不可（誤操作・二重送信防止）
+  var manualMap = getManualLastLogMap();
+  var lastAt    = manualMap[sub];
+  if (lastAt) {
+    var elapsedMs = Date.now() - lastAt;
+    if (elapsedMs < MANUAL_COOLDOWN_MS) {
+      var remainSec = Math.ceil((MANUAL_COOLDOWN_MS - elapsedMs) / 1000);
+      errEl.textContent   = "✕ 同じ教科の記録は、前回から1分経ってから行えます（あと" + remainSec + "秒）";
+      errEl.style.display = "block";
+      setTimeout(function() { errEl.style.display = "none"; }, 3500);
       return;
     }
-    const palette = paletteFor(loginResult.student.id);
-    saveSession(loginResult.student, loginResult.session_token, palette);
-    location.href = getRedirectTarget();
-  } catch {
-    showForgotErr("サーバーに接続できません。時間をおいて再試行してください。");
-  } finally {
-    setBtn(btnEl, false, "パスワードを再設定してログイン ✓");
+  }
+
+  var result = await postLog({ date: todayStr(), subject: sub, minutes: min, memo: memo,
+            student_id: STUDENT.id, nickname: STUDENT.nickname, method: "manual" });
+
+  if (!result.ok) {
+    // ★ サーバー側の不正防止チェックで拒否された場合など
+    errEl.textContent   = "✕ " + result.error;
+    errEl.style.display = "block";
+    setTimeout(function() { errEl.style.display = "none"; }, 3500);
+    return;
+  }
+
+  setManualLastLog(sub); // ★ 保存成功後に記録
+
+  document.getElementById("m-minutes").value = "";
+  document.getElementById("m-memo").value    = "";
+  okEl.style.display = "block";
+  setTimeout(function() { okEl.style.display = "none"; showTab("home"); }, 1200);
+}
+
+// ============================================================
+//  課題達成 / 取り消し
+// ============================================================
+// ★①②③ 対応版
+//   ・サーバーへの送信が成功したのを確認してからローカル状態を更新する
+//     （失敗時はローカルを変更しない＝ポーリングで勝手に戻る現象を防止）
+//   ・送信中は多重クリックを防ぐため pendingTaskIds でボタンを無効化
+//   ・達成済みをもう一度押すと /uncomplete_task を呼んで未達成に戻す
+//     （★このエンドポイントはバックエンド側に新規実装が必要）
+async function toggleTask(id) {
+  if (pendingTaskIds.has(id)) return; // 二重送信防止
+
+  var entryIndex = completedTasks.findIndex(function(e) { return e.id === id; });
+  var isDone = entryIndex !== -1;
+
+  pendingTaskIds.add(id);
+  renderTasks();
+
+  if (!isDone) {
+    // ── 達成にする ──────────────────────────────────
+    var t   = TASKS_JSON.find(function(x) { return x.id === id; });
+    var pts = t ? t.points : DEFAULT_TASK_POINTS;
+
+    try {
+      var data = await api("/complete_task", {
+        method: "POST",
+        body: JSON.stringify({
+          guild_id:      GUILD_ID,
+          session_token: SESSION_TOKEN,
+          task_id:       id,
+        }),
+      });
+      if (!data || data.ok === false) {
+        if (data && data.error === "not_logged_in") { forceReLogin(); return; }
+        throw new Error("server rejected complete_task");
+      }
+
+      // ★ サーバーが成功を返してから、初めてローカルに反映する
+      var entry = { id: id, date: todayStr(), points: pts, nickname: STUDENT.nickname };
+      completedTasks.push(entry);
+      if (!allCompletedTasks[STUDENT.id]) allCompletedTasks[STUDENT.id] = [];
+      allCompletedTasks[STUDENT.id].push(entry);
+      nicknameMap[STUDENT.id] = STUDENT.nickname;
+
+      allPoints[STUDENT.id] = (data.total != null) ? data.total : (allPoints[STUDENT.id] || 0) + pts;
+      myPoints = allPoints[STUDENT.id];
+      updatePointDisplay();
+      floatPoints("+" + pts + "pt");
+    } catch (e) {
+      alert("通信エラーのため達成にできませんでした。もう一度お試しください。");
+    }
+  } else {
+    // ── 未達成に戻す ────────────────────────────────
+    var removed = completedTasks[entryIndex];
+
+    try {
+      var data2 = await api("/uncomplete_task", {
+        method: "POST",
+        body: JSON.stringify({
+          guild_id:      GUILD_ID,
+          session_token: SESSION_TOKEN,
+          task_id:       id,
+        }),
+      });
+      if (!data2 || data2.ok === false) {
+        if (data2 && data2.error === "not_logged_in") { forceReLogin(); return; }
+        throw new Error("server rejected uncomplete_task");
+      }
+
+      // ★ サーバーが成功を返してから、初めてローカルに反映する
+      completedTasks.splice(entryIndex, 1);
+      if (allCompletedTasks[STUDENT.id]) {
+        allCompletedTasks[STUDENT.id] = allCompletedTasks[STUDENT.id].filter(function(e) {
+          return e.id !== id;
+        });
+      }
+
+      var revertedTotal = (data2.total != null)
+        ? data2.total
+        : Math.max(0, (allPoints[STUDENT.id] || 0) - (removed ? removed.points : 0));
+      allPoints[STUDENT.id] = revertedTotal;
+      myPoints = revertedTotal;
+      updatePointDisplay();
+    } catch (e) {
+      alert("通信エラーのため未達成に戻せませんでした。もう一度お試しください。\n（サーバー側に /uncomplete_task が実装されていない可能性があります）");
+    }
+  }
+
+  pendingTaskIds.delete(id);
+  renderTasks();
+  renderAll();
+}
+
+// ============================================================
+//  タイマー
+// ============================================================
+function pad(n) { return String(n).padStart(2, "0"); }
+
+function updateTimerUI() {
+  var h = Math.floor(timerSec / 3600);
+  var m = Math.floor((timerSec % 3600) / 60);
+  var s = timerSec % 60;
+  document.getElementById("timer-display").textContent = pad(h)+":"+pad(m)+":"+pad(s);
+  var hint = document.getElementById("timer-pts-hint");
+  if (timerRunning && !timerIsPaused) {
+    var remaining = (lastAwardedMin + 5) * 60 - timerSec;
+    hint.textContent = remaining > 0 ? "次の +1pt まで " + remaining + "秒" : "";
+  } else { hint.textContent = ""; }
+}
+
+function startInterval() {
+  timerInterval = setInterval(function() {
+    timerSec = Math.floor((Date.now() - timerStartEpoch) / 1000);
+    if (timerSec >= 10800) {
+      notifyUser("StudyLog", "3時間が経過したため、タイマーを自動的に停止しました。");
+      timerStop();
+      return;
+    }
+    var curMin = Math.floor(timerSec / 60);
+    if (curMin > 0 && curMin % 5 === 0 && curMin > lastAwardedMin) {
+      lastAwardedMin = curMin;
+      myPoints++;
+      allPoints[STUDENT.id] = (allPoints[STUDENT.id] || 0) + 1;
+      floatPoints("+1pt");
+      updatePointDisplay();
+    }
+    updateTimerUI();
+  }, 500);
+}
+
+// ── ブラウザ通知（他のタブを見ていても気づけるように） ──────
+// 許可されていれば端末通知、未許可・未対応ならalert()にフォールバック。
+// ※ タブそのものを閉じている場合はどちらも動作しません（JSが動いていないため）。
+function ensureNotifyPermission() {
+  if (typeof Notification === "undefined") return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
   }
 }
 
-function validateForgotId(raw) {
-  if (!raw) { showForgotErr("学籍番号を入力してください"); return false; }
-  if (!/^[A-Z0-9]{2,20}$/.test(raw)) {
-    showForgotErr("半角英数字で入力してください（例: 1I001）");
-    return false;
+function notifyUser(title, body) {
+  // ★ Discord連携済みなら本人のDiscordへ直接DM通知を送る（bot.py側で /id連携 済みの場合のみ）。
+  //   これはブラウザのタブを閉じていても、他のサイトを見ていても届く。
+  //   未連携・送信失敗の場合はブラウザ通知（またはalert）にフォールバックする。
+  console.log("[notifyUser] /notify_dm 呼び出し開始", { guild_id: GUILD_ID, title: title, body: body });
+  api("notify_dm", {
+    method: "POST",
+    body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN, title: title, message: body })
+  }).then(function(res) {
+    console.log("[notifyUser] /notify_dm 応答:", res);
+    if (!res || !res.ok) {
+      console.warn("[notifyUser] DM失敗 or 未連携。ブラウザ通知にフォールバック。理由:", res && res.error);
+      notifyUserBrowserOnly(title, body);
+    }
+  }).catch(function(err) {
+    console.error("[notifyUser] /notify_dm 通信エラー。ブラウザ通知にフォールバック。", err);
+    notifyUserBrowserOnly(title, body);
+  });
+}
+
+function notifyUserBrowserOnly(title, body) {
+  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try { new Notification(title, { body: body }); return; } catch(e) {}
   }
-  return true;
+  alert(body);
 }
 
-function showForgotErr(msg) {
-  const el = document.getElementById("forgot-err");
-  el.textContent   = "✕ " + msg;
-  el.style.color   = "";
-  el.style.display = "block";
+function timerStart() {
+  if (timerRunning) return;
+  ensureNotifyPermission(); // ★ ユーザー操作（クリック）のタイミングで許可をリクエスト
+  timerRunning    = true;
+  timerIsPaused   = false;
+  timerStartEpoch = Date.now() - elapsedAtPause * 1000;
+  document.getElementById("btn-start").disabled = true;
+  document.getElementById("btn-pause").disabled = false;
+  document.getElementById("btn-stop").disabled  = false;
+  document.getElementById("timer-status").textContent = "計測中...";
+  startInterval();
+  try { localStorage.setItem(LS_TIMER, timerStartEpoch); } catch(e) {}
 }
 
-function showForgotOk(msg) {
-  const el = document.getElementById("forgot-err");
-  el.textContent   = msg;
-  el.style.color   = "#16a34a";
-  el.style.display = "block";
+function timerPauseResume() {
+  if (!timerRunning && !timerIsPaused) return;
+  if (!timerIsPaused) {
+    clearInterval(timerInterval); timerInterval = null;
+    elapsedAtPause = timerSec; timerRunning = false; timerIsPaused = true;
+    document.getElementById("btn-pause").textContent      = "▶ 再開";
+    document.getElementById("timer-status").textContent   = "休憩中...";
+    document.getElementById("timer-pts-hint").textContent = "";
+    try { localStorage.removeItem(LS_TIMER); } catch(e) {}
+  } else {
+    timerIsPaused   = false; timerRunning = true;
+    timerStartEpoch = Date.now() - elapsedAtPause * 1000;
+    document.getElementById("btn-pause").textContent    = "⏸ 休憩";
+    document.getElementById("timer-status").textContent = "計測中...";
+    startInterval();
+    try { localStorage.setItem(LS_TIMER, timerStartEpoch); } catch(e) {}
+  }
+}
+
+function timerStop() {
+  clearInterval(timerInterval); timerInterval = null;
+  timerRunning = false; timerIsPaused = false;
+  var mins = Math.floor(timerSec / 60);
+  if (mins < 1) {
+    alert("1分未満のため記録できません");
+    timerReset(); return;
+  }
+  document.getElementById("timer-main").style.display    = "none";
+  document.getElementById("timer-confirm").style.display = "block";
+  document.getElementById("conf-time").textContent       = mins + "分 " + pad(timerSec % 60) + "秒";
+  document.getElementById("conf-time").dataset.min       = mins;
+}
+
+async function saveTimer() {
+  var sub  = document.getElementById("conf-subject").value;
+  var memo = document.getElementById("conf-memo").value.trim();
+  var mins = parseInt(document.getElementById("conf-time").dataset.min);
+
+  // ★ 前回のタイマー記録から「今回記録しようとしている分数」以上の
+  //    実時間が経過していない場合は保存させない（誤操作・二重送信防止）
+  var last = getTimerLastLog();
+  if (last && last.at) {
+    var elapsedMs  = Date.now() - last.at;
+    var requiredMs = mins * 60 * 1000;
+    if (elapsedMs < requiredMs) {
+      var remainMin = Math.ceil((requiredMs - elapsedMs) / 60000);
+      alert("前回の記録からまだ十分な時間が経過していないため、この記録は保存できません。（あと約" + remainMin + "分待つ必要があります）");
+      return;
+    }
+  }
+
+  var result = await postLog({ date: todayStr(), subject: sub, minutes: mins, memo: memo,
+            student_id: STUDENT.id, nickname: STUDENT.nickname, method: "timer" });
+
+  if (!result.ok) {
+    // ★ サーバー側の不正防止チェックで拒否された場合など。
+    //    確認画面はそのまま残し、ユーザーがもう一度試せるようにする。
+    alert(result.error);
+    return;
+  }
+
+  setTimerLastLog(mins); // ★ 保存成功後に記録
+
+  var okEl = document.getElementById("timer-ok");
+  okEl.style.display = "block";
+  setTimeout(function() { okEl.style.display = "none"; timerReset(); showTab("home"); }, 1200);
+}
+
+function editTimer() {
+  var el  = document.getElementById("conf-time");
+  var cur = parseInt(el.dataset.min);
+  var v   = prompt("分数を修正してください:", cur);
+  if (v && parseInt(v) >= 1) {
+    el.dataset.min = parseInt(v); el.textContent = parseInt(v) + "分 00秒";
+  }
+}
+function discardTimer() {
+  if (confirm("この計測結果を破棄しますか？")) { timerReset(); showTab("home"); }
+}
+function timerReset() {
+  clearInterval(timerInterval); timerInterval = null;
+  timerSec = 0; timerRunning = false; timerIsPaused = false;
+  elapsedAtPause = 0; timerStartEpoch = null; lastAwardedMin = 0;
+  document.getElementById("timer-display").textContent   = "00:00:00";
+  document.getElementById("timer-status").textContent    = "準備完了";
+  document.getElementById("timer-pts-hint").textContent  = "";
+  document.getElementById("btn-start").disabled  = false;
+  document.getElementById("btn-pause").disabled  = true;
+  document.getElementById("btn-stop").disabled   = true;
+  document.getElementById("btn-pause").textContent = "⏸ 休憩";
+  document.getElementById("timer-main").style.display    = "block";
+  document.getElementById("timer-confirm").style.display = "none";
+  document.getElementById("conf-memo").value = "";
+  try { localStorage.removeItem(LS_TIMER); } catch(e) {}
+}
+
+function restoreTimer() {
+  try {
+    var saved = localStorage.getItem(LS_TIMER);
+    if (!saved) return;
+    var elapsed = Math.floor((Date.now() - parseInt(saved)) / 1000);
+    if (elapsed <= 0) { localStorage.removeItem(LS_TIMER); return; }
+    if (elapsed >= 10800) {
+      localStorage.removeItem(LS_TIMER);
+      notifyUser("StudyLog", "前回の計測から3時間以上経過していたため、計測を破棄しました。");
+      return;
+    }
+
+    // ★ サイトを離れていた／タブを閉じていた間も計測は続いていた扱いにし、
+    //   「再開」クリックを待たず自動的に計測中の状態へ復帰させる。
+    //   （LS_TIMERは休憩中は削除される仕様なので、ここに値が残っている
+    //     ＝ユーザーが自分で止めたのではなく、ページを離れただけと判定できる）
+    timerSec        = elapsed;
+    elapsedAtPause  = elapsed;
+    timerRunning    = true;
+    timerIsPaused   = false;
+    timerStartEpoch = parseInt(saved); // 開始時刻は変えずそのまま維持
+
+    // 離れていた間の5分区切りポイントを二重付与しないよう、
+    // 経過分数から「本来もう付与されているはずの区切り」まで進めておく
+    lastAwardedMin = Math.floor(elapsed / 60 / 5) * 5;
+
+    updateTimerUI();
+    document.getElementById("btn-start").disabled       = true;
+    document.getElementById("btn-pause").disabled       = false;
+    document.getElementById("btn-stop").disabled        = false;
+    document.getElementById("btn-pause").textContent    = "⏸ 休憩";
+    document.getElementById("timer-status").textContent = "計測中...（離れていた間も継続していました）";
+
+    startInterval();
+  } catch(e) {}
+}
+
+// ============================================================
+//  ドロワー
+// ============================================================
+function openDrawer() {
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("drawer-overlay").classList.add("open");
+}
+function closeDrawer() {
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("drawer-overlay").classList.remove("open");
+}
+
+// ── 科目プルダウン描画 ───────────────────────────────
+function renderSubjectDropdown() {
+  const mSel = document.getElementById("m-subject");
+  const cSel = document.getElementById("conf-subject");
+  if (mSel) {
+    mSel.innerHTML = SUBJECTS.map(sub =>
+      `<option value="${sub}">${sub}</option>`
+    ).join("");
+  }
+  if (cSel) {
+    cSel.innerHTML = SUBJECTS.map(sub =>
+      `<option value="${sub}">${sub}</option>`
+    ).join("");
+  }
 }
 
 // ============================================================
 //  ユーティリティ
 // ============================================================
-function setBtn(el, disabled, label) {
-  if (!el) return;
-  el.disabled     = disabled;
-  el.textContent  = label;
-}
-
-function escHtml(s) {
+function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
-
-function showIdErr(msg) {
-  const el = document.getElementById("id-err");
-  el.textContent   = "✕ " + msg;
-  el.style.display = "block";
-  setTimeout(() => { el.style.display = "none"; }, 5000);
+// ★ 属性値用（esc()に加えて引用符もエスケープする。備考等の自由入力にクォートが
+//   含まれていても onclick 属性やHTML構造が壊れないようにするため）
+function escAttr(s) {
+  return esc(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function showRegErr(msg) {
-  const el = document.getElementById("reg-err");
-  el.textContent   = "✕ " + msg;
-  el.style.display = "block";
-  setTimeout(() => { el.style.display = "none"; }, 5000);
+// ============================================================
+//  ★ JSON変更監視（予定・ログ・ポイント・達成状況）
+//     いずれかに変化があったら、タイマーを止めずにデータだけ
+//     再取得してランキング等を再描画する（ソフトリフレッシュ）
+// ============================================================
+
+// SHA-256 ハッシュ計算
+async function digestMessage(message) {
+  const msgUint8 = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Enter キー
-document.addEventListener("keydown", e => {
-  if (e.key !== "Enter") return;
-  const active = [...document.querySelectorAll(".login-step")]
-    .find(el => el.style.display !== "none");
-  if (!active) return;
-  if (active.id === "step-id")       submitId();
-  if (active.id === "step-register") submitRegister();
-});
+// 指定パスのレスポンス本文からハッシュを計算
+async function hashOfEndpoint(path) {
+  const res = await fetch(API_BASE + path);
+  const txt = await res.text();
+  return digestMessage(txt);
+}
+
+// 監視対象4種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
+let watchHashes = {
+  schedule:  null, // 予定・課題（list_schedule）
+  logs:      null, // 勉強ログ（list_study_logs）
+  points:    null, // 累計ポイント（get_points）
+  completed: null, // 課題達成状況（get_completed_tasks・全ユーザー）
+};
+
+// 監視対象データをまとめて再取得＆再描画（タイマーには触れない）
+async function refreshWatchedData() {
+  // ★ 送信中のタスクがある間はポーリングでの上書きを避ける
+  //   （送信完了後にtoggleTask内でrenderAll()するので取りこぼしは無い）
+  if (pendingTaskIds.size > 0) return;
+
+  await Promise.all([
+    loadUsers(),
+    loadSubjects(),
+    loadLogs(),
+    loadPoints(),
+    loadCompletedTasks(),
+    loadAllCompletedTasks(),
+    loadTasks()
+  ]);
+  renderSubjectDropdown();
+  renderAll();
+  renderTasks();
+}
+
+// 変更チェック本体
+async function checkForUpdates() {
+  try {
+    const [scheduleHash, logsHash, pointsHash, completedHash] = await Promise.all([
+      hashOfEndpoint("/list_schedule?guild_id=" + GUILD_ID),
+      hashOfEndpoint("/list_study_logs?guild_id=" + GUILD_ID),
+      hashOfEndpoint("/get_points?guild_id=" + GUILD_ID),
+      hashOfEndpoint("/get_completed_tasks?guild_id=" + GUILD_ID),
+    ]);
+
+    const isFirstCheck = watchHashes.schedule === null;
+
+    const changed = !isFirstCheck && (
+      scheduleHash  !== watchHashes.schedule  ||
+      logsHash      !== watchHashes.logs      ||
+      pointsHash    !== watchHashes.points    ||
+      completedHash !== watchHashes.completed
+    );
+
+    watchHashes = {
+      schedule:  scheduleHash,
+      logs:      logsHash,
+      points:    pointsHash,
+      completed: completedHash,
+    };
+
+    if (changed) {
+      await refreshWatchedData();
+    }
+  } catch(e) {}
+}
+
+// 10秒ごとにチェック
+setInterval(checkForUpdates, 10000);
