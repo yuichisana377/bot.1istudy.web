@@ -246,7 +246,9 @@ async function openRegisterStep(id, mode, prefillPassword) {
   document.getElementById("inp-student-id-hidden").value = id;
   document.getElementById("reg-mode").value               = mode;
   document.getElementById("reg-err").style.display        = "none";
-  document.getElementById("inp-reg-password").value       = prefillPassword || "";
+  // ★ 新規登録・既存アカウントのパスワード初回設定、どちらの場合も
+  //   STEP1で入力したパスワードは引き継がず空欄にする。
+  document.getElementById("inp-reg-password").value       = "";
   document.getElementById("inp-reg-password2").value      = "";
 
   const nicknameField = document.getElementById("reg-nickname-field");
