@@ -7,6 +7,53 @@ const API_BASE = "https://python-bot-1istudy.onrender.com/";
 const GUILD_ID = "1509880344806162544";
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 
+// ── ログインセッション（Login.js と共通） ──────
+const SESSION_KEY = 'sl_session';
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
+// ★ StudyLog.jsと同様、開いた瞬間に未ログイン（またはsession_tokenの無い
+//   パスワード未対応の古い形式のセッション）ならログイン画面へ誘導する。
+//   ログイン後にこの画面へ戻ってこられるよう、遷移先をsessionStorageに記憶しておく
+//  （Login.js側の getRedirectTarget() が post_login_redirect を見て使う）。
+(function() {
+  var s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.replace(LOGIN_PATH);
+  }
+})();
+
+// ── ヘッダーのアカウント情報表示 ──────────────
+// StudyLog.jsのapplySession()と同じ考え方。ログイン時にLogin.jsが保存した
+// nickname / color / text_color をそのまま使う（新たに問い合わせない）。
+const STUDENT = (function() {
+  var s = getLoginSession() || {};
+  return {
+    id:        s.student_id,
+    nickname:  s.nickname,
+    color:     s.color,
+    textColor: s.text_color,
+  };
+})();
+
+function applyAccountHeader() {
+  var avatarEl   = document.getElementById("header-avatar");
+  var nicknameEl = document.getElementById("header-nickname");
+  var idEl       = document.getElementById("header-id");
+  if (!STUDENT.nickname) return; // ★ 通常はここに来る前にログイン画面へ飛んでいるはずだが念のため
+
+  if (avatarEl) {
+    avatarEl.textContent      = STUDENT.nickname.slice(0, 2).toUpperCase();
+    avatarEl.style.background = STUDENT.color;
+    avatarEl.style.color      = STUDENT.textColor;
+  }
+  if (nicknameEl) nicknameEl.textContent = STUDENT.nickname;
+  if (idEl)       idEl.textContent       = STUDENT.id;
+}
+applyAccountHeader();
+
 const STORE_KEY = 'cardmaker_decks_v1';
 function loadDecks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
 function saveDecks(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
@@ -231,11 +278,9 @@ function isFolderInFolderScope(fid, folderId) {
   return folderDescendants(folderId).some(f => f.id === fid);
 }
 
-// ── ログインセッション（Login.js と共通） ──────
-const SESSION_KEY = 'sl_session';
-function getLoginSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
+// ── ログインセッション ─────────────────────
+//   SESSION_KEY / getLoginSession はファイル冒頭（強制ログインチェックの
+//   ところ）に定義済みなのでここでは何もしない。
 
 let decks = loadDecks();
 let currentDeckId  = null;
