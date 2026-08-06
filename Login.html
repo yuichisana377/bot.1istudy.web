@@ -55,6 +55,10 @@
       ログイン →
     </button>
 
+    <p class="login-hint" style="text-align:center">
+      <a href="javascript:void(0)" onclick="openForgotStep()">パスワードを忘れた場合はこちら</a>
+    </p>
+
     <p class="login-hint">
       初めての方・パスワード未設定の方は登録画面へ自動で案内します。
     </p>
@@ -102,6 +106,66 @@
     <button class="btn-primary login-btn" id="btn-register" onclick="submitRegister()">
       登録してログイン ✓
     </button>
+
+    <button class="login-back-btn" onclick="backToId()">
+      ← 学籍番号の入力に戻る
+    </button>
+  </div>
+
+  <!-- ══ STEP 3: パスワードを忘れた場合 ══ -->
+  <div class="login-step login-card" id="step-forgot" style="display:none">
+    <h1 class="login-title">パスワードの再設定 🔑</h1>
+
+    <p class="login-reg-desc">
+      学籍番号を入力すると、Discordに確認コードを送信します。<br>
+      <span class="login-reg-note">※ Discordで /id連携 が済んでいる本人にのみ届きます</span>
+    </p>
+
+    <div class="error-bar" id="forgot-err" style="display:none"></div>
+
+    <div class="field">
+      <label for="inp-forgot-id">学籍番号</label>
+      <input type="text" id="inp-forgot-id"
+             placeholder="例: 32600"
+             autocomplete="username"
+             autocapitalize="characters"
+             maxlength="20">
+    </div>
+
+    <button class="btn-primary login-btn" id="btn-forgot-send" onclick="submitForgotSendCode()">
+      Discordに確認コードを送る
+    </button>
+
+    <div id="forgot-pw-fields" style="display:none">
+      <div class="field">
+        <label for="inp-forgot-code">確認コード（6桁）</label>
+        <input type="text" id="inp-forgot-code"
+               inputmode="numeric"
+               placeholder="123456"
+               maxlength="6"
+               autocomplete="one-time-code">
+      </div>
+
+      <div class="field">
+        <label for="inp-forgot-newpw">新しいパスワード（4文字以上）</label>
+        <input type="password" id="inp-forgot-newpw"
+               placeholder="パスワード"
+               autocomplete="new-password"
+               maxlength="64">
+      </div>
+
+      <div class="field">
+        <label for="inp-forgot-newpw2">新しいパスワード（確認）</label>
+        <input type="password" id="inp-forgot-newpw2"
+               placeholder="もう一度入力"
+               autocomplete="new-password"
+               maxlength="64">
+      </div>
+
+      <button class="btn-primary login-btn" id="btn-forgot-confirm" onclick="submitForgotConfirm()">
+        パスワードを再設定してログイン ✓
+      </button>
+    </div>
 
     <button class="login-back-btn" onclick="backToId()">
       ← 学籍番号の入力に戻る
