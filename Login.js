@@ -143,6 +143,24 @@ async function setPasswordRequest(id, password) {
   return res.json(); // { ok: true } or { ok: false, error: "already_set" | ... }
 }
 
+async function requestPasswordResetCode(id) {
+  const res = await fetch(`${API_BASE}/request_password_reset_code`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guild_id: GUILD_ID, id }),
+  });
+  return res.json(); // { ok: true } or { ok: false, error: "user_not_found" | "not_linked" | "too_soon" | ... }
+}
+
+async function confirmPasswordReset(id, code, newPassword) {
+  const res = await fetch(`${API_BASE}/confirm_password_reset`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guild_id: GUILD_ID, id, code, new_password: newPassword }),
+  });
+  return res.json(); // { ok: true } or { ok: false, error: "wrong_code" | "code_expired" | ... }
+}
+
 // ============================================================
 //  ステップ切り替え
 // ============================================================
@@ -157,6 +175,9 @@ function showStep(id) {
   if (id === "step-register") {
     const mode = document.getElementById("reg-mode").value;
     setTimeout(() => document.getElementById(mode === "new" ? "inp-nickname" : "inp-reg-password")?.focus(), 60);
+  }
+  if (id === "step-forgot") {
+    setTimeout(() => document.getElementById("inp-forgot-id")?.focus(), 60);
   }
 }
 
@@ -323,6 +344,112 @@ function validatePassword(password, password2) {
 function backToId() {
   document.getElementById("reg-err").style.display = "none";
   showStep("step-id");
+}
+
+// ============================================================
+//  STEP 3 — パスワードを忘れた場合の再設定
+// ============================================================
+function openForgotStep() {
+  document.getElementById("forgot-err").style.display        = "none";
+  document.getElementById("forgot-pw-fields").style.display   = "none";
+  document.getElementById("btn-forgot-send").disabled         = false;
+  document.getElementById("btn-forgot-send").textContent      = "Discordに確認コードを送る";
+  document.getElementById("inp-forgot-code").value            = "";
+  document.getElementById("inp-forgot-newpw").value           = "";
+  document.getElementById("inp-forgot-newpw2").value          = "";
+  // 既にSTEP1で入力済みの学籍番号があれば引き継ぐ
+  const idAlready = document.getElementById("inp-student-id").value.trim().toUpperCase();
+  document.getElementById("inp-forgot-id").value = idAlready;
+  showStep("step-forgot");
+}
+
+async function submitForgotSendCode() {
+  const id    = document.getElementById("inp-forgot-id").value.trim().toUpperCase();
+  const btnEl = document.getElementById("btn-forgot-send");
+
+  if (!validateForgotId(id)) return;
+
+  setBtn(btnEl, true, "送信中…");
+  try {
+    const result = await requestPasswordResetCode(id);
+    if (result.ok) {
+      document.getElementById("forgot-pw-fields").style.display = "";
+      showForgotOk("✓ Discordに確認コードを送信しました（10分間有効）");
+      setTimeout(() => document.getElementById("inp-forgot-code")?.focus(), 60);
+    } else if (result.error === "user_not_found") {
+      showForgotErr("その学籍番号は登録されていません");
+    } else if (result.error === "not_linked") {
+      showForgotErr("Discordと連携されていません。Discordで /id連携 コマンドを実行してから、もう一度お試しください。");
+    } else if (result.error === "too_soon") {
+      showForgotErr("少し時間をおいてから再度お試しください（あと約" + (result.retry_after_sec || 60) + "秒）");
+    } else {
+      showForgotErr("送信に失敗しました。時間をおいて再試行してください。");
+    }
+  } catch {
+    showForgotErr("サーバーに接続できません。時間をおいて再試行してください。");
+  } finally {
+    setBtn(btnEl, false, "Discordに確認コードを送る");
+  }
+}
+
+async function submitForgotConfirm() {
+  const id     = document.getElementById("inp-forgot-id").value.trim().toUpperCase();
+  const code   = document.getElementById("inp-forgot-code").value.trim();
+  const newPw  = document.getElementById("inp-forgot-newpw").value;
+  const newPw2 = document.getElementById("inp-forgot-newpw2").value;
+  const btnEl  = document.getElementById("btn-forgot-confirm");
+
+  if (!/^[0-9]{6}$/.test(code)) { showForgotErr("確認コード（6桁の数字）を入力してください"); return; }
+  if (!validatePassword(newPw, newPw2, showForgotErr)) return;
+
+  setBtn(btnEl, true, "再設定中…");
+  try {
+    const result = await confirmPasswordReset(id, code, newPw);
+    if (!result.ok) {
+      if (result.error === "wrong_code")            showForgotErr("確認コードが正しくありません");
+      else if (result.error === "code_expired")     showForgotErr("確認コードの有効期限が切れました。もう一度送信してください。");
+      else if (result.error === "code_not_requested") showForgotErr("先に確認コードを送信してください");
+      else                                            showForgotErr("再設定に失敗しました。時間をおいて再試行してください。");
+      return;
+    }
+    // 再設定成功 → 続けてログインしてセッショントークンを取得する
+    const loginResult = await loginRequest(id, newPw);
+    if (!loginResult.ok) {
+      showForgotOk("✓ パスワードを再設定しました。ログイン画面からお入りください。");
+      setTimeout(backToId, 1500);
+      return;
+    }
+    const palette = paletteFor(loginResult.student.id);
+    saveSession(loginResult.student, loginResult.session_token, palette);
+    location.href = getRedirectTarget();
+  } catch {
+    showForgotErr("サーバーに接続できません。時間をおいて再試行してください。");
+  } finally {
+    setBtn(btnEl, false, "パスワードを再設定してログイン ✓");
+  }
+}
+
+function validateForgotId(raw) {
+  if (!raw) { showForgotErr("学籍番号を入力してください"); return false; }
+  if (!/^[A-Z0-9]{2,20}$/.test(raw)) {
+    showForgotErr("半角英数字で入力してください（例: 1I001）");
+    return false;
+  }
+  return true;
+}
+
+function showForgotErr(msg) {
+  const el = document.getElementById("forgot-err");
+  el.textContent   = "✕ " + msg;
+  el.style.color   = "";
+  el.style.display = "block";
+}
+
+function showForgotOk(msg) {
+  const el = document.getElementById("forgot-err");
+  el.textContent   = msg;
+  el.style.color   = "#16a34a";
+  el.style.display = "block";
 }
 
 // ============================================================
