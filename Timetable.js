@@ -79,6 +79,10 @@ const TERM_API = {
 // ============================================================
 let weekOffset  = 0;
 let ttActiveDay = 0;
+
+// ★ 月間カレンダー用の状態
+let monthOffset       = 0;    // 0=今月, +1=来月, -1=先月 ...
+let monthDetailTarget = null; // 月間カレンダーで日付をタップしたときの対象日 (YYYY-MM-DD)
 let ttHomeworks = [];
 let ttOverrides = {};
 let ttEditMode  = 'change'; // 'change' | 'period-holiday' | 'day-change' | 'holiday'
@@ -344,7 +348,167 @@ function renderTimetable() {
       <div class="tt-card-header-date">${dayDate.getMonth()+1}月${dayDate.getDate()}日</div>
     </div>
     ${periodsHtml}
-  </div>`;
+  </div>` + buildMonthCalendarHtml();
+}
+
+// ============================================================
+//  ★ 月間カレンダー
+// ============================================================
+
+// ★ 指定日の「予定」を、予定管理（plans）と課題JSON（ttHomeworks）
+//   の両方から集めて返す。同じ内容が両方にある場合は重複させない。
+function getDatePlanItems(dateStr) {
+  const items = [];
+  const seen  = new Set();
+
+  const pushItem = (subject, raw) => {
+    const { cat, text, note } = parsePlanContent(raw);
+    const key = `${subject}|${cat}|${text}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push({ subject, cat, text, note });
+  };
+
+  plans.filter(p => p.date === dateStr).forEach(p => pushItem(p.subject, p.content));
+  ttHomeworks.filter(h => h.date === dateStr).forEach(h => pushItem(h.subject, h.content));
+
+  return items;
+}
+
+function buildMonthCalendarHtml() {
+  const now   = new Date();
+  const base  = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year  = base.getFullYear();
+  const month = base.getMonth(); // 0-indexed
+  const todayStr  = getDateStr(now);
+  const firstDow  = new Date(year, month, 1).getDay(); // 0=日
+  const daysInMon = new Date(year, month + 1, 0).getDate();
+
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="mc-day mc-empty"></div>`;
+
+  for (let d = 1; d <= daysInMon; d++) {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow     = new Date(year, month, d).getDay();
+    const holidayOv = ttOverrides[`holiday:${dateStr}`];
+    const hasItems  = getDatePlanItems(dateStr).length > 0;
+
+    let cls = 'mc-day';
+    if (dow === 0) cls += ' mc-sun-col';
+    if (dow === 6) cls += ' mc-sat-col';
+    if (dateStr === todayStr) cls += ' mc-today';
+    if (holidayOv) cls += ' mc-holiday';
+
+    const dotsHtml = (holidayOv || hasItems)
+      ? `<div class="mc-dots"><span class="mc-dot"></span></div>` : `<div class="mc-dots"></div>`;
+
+    cells += `<div class="${cls}" onclick="onMonthDayClick('${dateStr}')">
+      <span class="mc-num">${d}</span>
+      ${dotsHtml}
+    </div>`;
+  }
+
+  const totalCells = firstDow + daysInMon;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let i = 0; i < trailing; i++) cells += `<div class="mc-day mc-empty"></div>`;
+
+  return `<section class="month-cal-card">
+    <div class="month-cal-header">
+      <button class="month-nav-btn" onclick="moveMonth(-1)">‹</button>
+      <span class="month-cal-label">${year}年 ${month+1}月</span>
+      <button class="month-nav-btn" onclick="moveMonth(1)">›</button>
+      <button class="month-cal-today-btn" onclick="monthGoToday()">今月</button>
+    </div>
+    <div class="month-cal-dow">
+      <span class="mc-sun">日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span class="mc-sat">土</span>
+    </div>
+    <div class="month-cal-grid">${cells}</div>
+    <div class="month-cal-legend">
+      <span class="mcl-item"><span class="mcl-dot mcl-dot-plan"></span>予定あり</span>
+      <span class="mcl-item"><span class="mcl-dot mcl-dot-holiday"></span>終日休み</span>
+    </div>
+  </section>`;
+}
+
+function moveMonth(dir) {
+  monthOffset += dir;
+  renderTimetable();
+}
+function monthGoToday() {
+  monthOffset = 0;
+  renderTimetable();
+}
+
+// ★ 月間カレンダーで日付をタップしたときに、その日の予定・休み情報を表示する
+function onMonthDayClick(dateStr) {
+  monthDetailTarget = dateStr;
+
+  const d = new Date(dateStr + 'T00:00:00');
+  const dowLabel  = ['日','月','火','水','木','金','土'][d.getDay()];
+  const holidayOv = ttOverrides[`holiday:${dateStr}`];
+  const items     = getDatePlanItems(dateStr);
+
+  document.getElementById('month-detail-title').textContent =
+    `${d.getMonth()+1}月${d.getDate()}日（${dowLabel}）`;
+
+  let html = '';
+  if (holidayOv) {
+    const reason = holidayOv.reason || '休校';
+    const note   = holidayOv.note   ? `（${holidayOv.note}）` : '';
+    html += `<div style="text-align:center;padding:1rem 0">
+      <div style="font-size:22px;margin-bottom:6px">🏫</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text)">${reason}${note}</div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">この日は終日お休みです</div>
+    </div>`;
+  }
+
+  if (items.length) {
+    html += `<div class="detail-list" style="margin-top:${holidayOv ? '10px' : '0'}">` + items.map(it => `
+      <div class="detail-item">
+        <div class="dl-label">${it.subject || '予定'}</div>
+        <div class="dl-value">
+          <span class="tt-badge tt-badge-${it.cat}">${it.cat}</span> ${it.text}
+          ${it.note ? `<div class="dl-value dl-note" style="margin-top:6px">${it.note}</div>` : ''}
+        </div>
+      </div>`).join('') + `</div>`;
+  }
+
+  if (!holidayOv && !items.length) {
+    html = `<div style="text-align:center;padding:1.5rem;color:var(--text-tertiary);font-size:13px">この日の予定はありません</div>`;
+  }
+
+  document.getElementById('month-detail-content').innerHTML = html;
+
+  const dayKey  = dateToDayKey(dateStr);
+  const jumpBtn = document.getElementById('month-detail-jump-btn');
+  jumpBtn.style.display = dayKey ? 'block' : 'none';
+
+  document.getElementById('modal-month-detail').classList.add('open');
+}
+
+// ★ 月間カレンダーの詳細から「この日の時間割を見る」→ 週表示の該当曜日へジャンプ
+function jumpToDayFromMonth() {
+  if (!monthDetailTarget) return;
+  const dayKey = dateToDayKey(monthDetailTarget);
+  if (!dayKey) return;
+
+  const now = new Date();
+  const day = now.getDay();
+  const thisMon = new Date(now);
+  thisMon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+
+  const target = new Date(monthDetailTarget + 'T00:00:00');
+  const tDow = target.getDay();
+  const targetMon = new Date(target);
+  targetMon.setDate(target.getDate() - (tDow === 0 ? 6 : tDow - 1));
+
+  weekOffset  = Math.round((targetMon - thisMon) / (1000*60*60*24*7));
+  ttActiveDay = DAY_KEYS.indexOf(dayKey);
+
+  closeModal('month-detail');
+  renderTimetable();
+  const sb = document.querySelector('.scroll-body');
+  if (sb) sb.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // ============================================================
@@ -1066,6 +1230,7 @@ async function loadPlans() {
     const data = await api(`/list_schedule?guild_id=${GUILD_ID}`);
     plans = data.ok ? data.plans : [];
   } catch(e) { plans = []; }
+  renderTimetable(); // ★ 月間カレンダーの「予定あり」表示に反映させる
 }
 function renderChannelOptions() {
   const opts = channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
