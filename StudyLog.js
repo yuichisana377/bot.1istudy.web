@@ -183,36 +183,42 @@ function applySession() {
   }
   if (nicknameEl) nicknameEl.textContent = STUDENT.nickname;
   if (idEl)       idEl.textContent       = STUDENT.id;
-  ensureAccountButton();
+  attachAccountClickHandlers();
+}
+
+// ★ 「⚙ アカウント」ボタンの代わりに、ヘッダーのニックネーム／学籍番号を
+//   クリックするとアカウント設定モーダルが開くようにする
+function attachAccountClickHandlers() {
+  hideLegacyAccountButton();
+
+  var nicknameEl = document.getElementById("header-nickname");
+  var idEl       = document.getElementById("header-id");
+  var avatarEl   = document.getElementById("header-avatar");
+
+  [nicknameEl, idEl, avatarEl].forEach(function(el) {
+    if (!el) return;
+    el.style.cursor = "pointer";
+    el.title = "タップしてアカウント設定を開く";
+    el.onclick = openAccountModal;
+  });
 }
 
 // ============================================================
 //  ★ アカウント設定（ニックネーム変更・パスワード変更）
 //  ─────────────────────────────
-//  HTML側に専用のボタンが無くても動くよう、無ければ自前でボタンを
-//  1つ差し込む。HTML側に既に id="header-account-btn" のボタンがあれば
-//  それをそのまま使う（二重に差し込まない）。
+//  以前は専用の「⚙ アカウント」ボタン（フローティング or
+//  id="header-account-btn"）から開いていたが、現在はヘッダーの
+//  ニックネーム／学籍番号（attachAccountClickHandlers参照）を
+//  タップすることで開く方式に変更。HTML側に古いボタンが残っている
+//  場合は誤動作防止のため非表示にしておく。
 //  パスワード変更は、Discordの/id連携が済んでいる本人にDMで確認コードを
 //  送り、それを入力してもらってから初めて反映する（本人確認のため）。
 // ============================================================
-function ensureAccountButton() {
-  if (document.getElementById("header-account-btn")) {
-    document.getElementById("header-account-btn").onclick = openAccountModal;
-    return;
-  }
-  if (document.getElementById("sl-acct-fab")) return; // 二重生成防止
-
-  var btn = document.createElement("button");
-  btn.id = "sl-acct-fab";
-  btn.type = "button";
-  btn.textContent = "⚙ アカウント";
-  btn.onclick = openAccountModal;
-  btn.style.cssText =
-    "position:fixed;right:16px;bottom:16px;z-index:9998;" +
-    "padding:10px 16px;border:none;border-radius:999px;" +
-    "background:#1e293b;color:#fff;font-size:14px;font-weight:600;" +
-    "box-shadow:0 4px 12px rgba(0,0,0,.2);cursor:pointer;";
-  document.body.appendChild(btn);
+function hideLegacyAccountButton() {
+  var legacyBtn = document.getElementById("header-account-btn");
+  if (legacyBtn) legacyBtn.style.display = "none";
+  var fab = document.getElementById("sl-acct-fab");
+  if (fab) fab.remove();
 }
 
 function openAccountModal() {
