@@ -311,17 +311,12 @@ function openAccountModal() {
         '<button id="sl-acct-confirm-pw" style="width:100%;padding:10px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">パスワードを変更する</button>' +
         '<div id="sl-acct-pw-msg" style="font-size:12px;margin-top:6px;"></div>' +
       '</div>' +
-    '</div>' +
-
-    '<div style="border-top:1px solid #e2e8f0;margin-top:24px;padding-top:16px;">' +
-      '<button id="sl-acct-logout" style="width:100%;padding:10px;border:1px solid #dc2626;border-radius:8px;background:#fff;color:#dc2626;font-size:14px;font-weight:600;cursor:pointer;">ログアウト</button>' +
     '</div>';
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
   document.getElementById("sl-acct-close").onclick  = closeAccountModal;
-  document.getElementById("sl-acct-logout").onclick  = function() { closeAccountModal(); doLogout(); };
   document.getElementById("sl-acct-nickname-save").onclick = submitNicknameChange;
   document.getElementById("sl-acct-send-code").onclick     = requestPasswordChangeCode;
   document.getElementById("sl-acct-confirm-pw").onclick    = submitPasswordChange;
