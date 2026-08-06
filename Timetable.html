@@ -204,6 +204,21 @@
 </div>
 <!-- ★scroll-body ここまで -->
 
+<!-- ★ 月間カレンダー 詳細モーダル（日付タップで表示） -->
+<div class="modal-bg" id="modal-month-detail" onclick="onBgClick(event,'month-detail')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3 id="month-detail-title">この日の予定</h3>
+      <button class="modal-close" onclick="closeModal('month-detail')">✕</button>
+    </div>
+    <div id="month-detail-content"></div>
+    <div class="detail-actions">
+      <button class="btn-primary" id="month-detail-jump-btn" onclick="jumpToDayFromMonth()" style="display:none">この日の時間割を見る</button>
+    </div>
+  </div>
+</div>
+
 <!-- FAB -->
 <div class="fab-overlay" id="tt-fab-overlay" onclick="closeTTFab()"></div>
 <div class="fab-wrap" id="tt-fab-wrap">
