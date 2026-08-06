@@ -42,8 +42,11 @@ function splitContentNote(raw) {
 function getSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch(e) { return null; }
 }
+// ★ session_token が無いセッション（パスワード未対応の古いログイン方式で
+//   作られたもの）はサーバー側で本人確認できないため、ログインし直させる
 (function() {
-  if (!getSession()) { location.replace("/Login.html"); }
+  var s = getSession();
+  if (!s || !s.session_token) { location.replace("/Login.html"); }
 })();
 
 const _s = getSession() || {};
@@ -53,6 +56,11 @@ const STUDENT = {
   color:     _s.color,
   textColor: _s.text_color,
 };
+// ★ サーバー側の本人確認に使うセッショントークン。/login で発行され、
+//   ポイントに関わるAPI（勉強ログ追加・課題達成など）を呼ぶたびに
+//   一緒に送る。サーバーはこれを使って student_id を特定するので、
+//   クライアントが送る student_id 自体は（表示用途を除き）信用されない。
+const SESSION_TOKEN = _s.session_token;
 
 
 // ── 課題 JSON（動的に読み込む） ────────────────────────
@@ -105,7 +113,7 @@ async function loadTasks() {
 const LS_TIMER = "sl_timer_" + STUDENT.id;
 
 // ============================================================
-//  ★ 不正防止（連続記録の制限）
+//  ★ 連続記録の制限（誤操作・二重送信防止）
 //   ・タイマー記録：前回の記録から「今回記録しようとしている分数」以上の
 //     実時間が経過していないと保存できない
 //     （タイマーの経過時間を改ざんして即座に長時間記録するのを防ぐ）
@@ -193,6 +201,14 @@ function applySession() {
 function doLogout() {
   if (!confirm("ログアウトしますか？")) return;
   localStorage.removeItem(SESSION_KEY);
+  location.replace("/Login.html");
+}
+
+// ★ サーバー側でセッションが無効（期限切れ・別端末でログアウト等）と
+//   判定された場合に、ログイン画面へ強制的に戻す
+function forceReLogin() {
+  localStorage.removeItem(SESSION_KEY);
+  alert("ログインが切れました。もう一度ログインしてください。");
   location.replace("/Login.html");
 }
 
@@ -288,13 +304,14 @@ async function postLog(entry) {
   try {
     data = await api("/add_study_log", {
       method: "POST",
-      body: JSON.stringify(Object.assign({ guild_id: GUILD_ID }, entry)),
+      body: JSON.stringify(Object.assign({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }, entry)),
     });
   } catch(e) {
     return { ok: false, error: "通信エラーが発生しました。もう一度お試しください。" };
   }
 
   if (!data || data.ok === false) {
+    if (data && data.error === "not_logged_in") { forceReLogin(); return { ok: false, error: "ログインが切れました。再度ログインしてください。" }; }
     return { ok: false, error: (data && data.error) || "記録に失敗しました。" };
   }
 
@@ -673,8 +690,7 @@ async function saveManual() {
     return;
   }
 
-  // ★ 不正防止：同じ教科での連続手入力は、前回の記録から1分経つまで不可
-  //   （クライアント側の事前チェック。最終的な判定はサーバー側でも行う）
+  // ★ 同じ教科での連続手入力は、前回の記録から1分経つまで不可（誤操作・二重送信防止）
   var manualMap = getManualLastLogMap();
   var lastAt    = manualMap[sub];
   if (lastAt) {
@@ -734,14 +750,15 @@ async function toggleTask(id) {
       var data = await api("/complete_task", {
         method: "POST",
         body: JSON.stringify({
-          guild_id:   GUILD_ID,
-          student_id: STUDENT.id,
-          nickname:   STUDENT.nickname,
-          task_id:    id,
-          points:     pts,
+          guild_id:      GUILD_ID,
+          session_token: SESSION_TOKEN,
+          task_id:       id,
         }),
       });
-      if (!data || data.ok === false) throw new Error("server rejected complete_task");
+      if (!data || data.ok === false) {
+        if (data && data.error === "not_logged_in") { forceReLogin(); return; }
+        throw new Error("server rejected complete_task");
+      }
 
       // ★ サーバーが成功を返してから、初めてローカルに反映する
       var entry = { id: id, date: todayStr(), points: pts, nickname: STUDENT.nickname };
@@ -765,12 +782,15 @@ async function toggleTask(id) {
       var data2 = await api("/uncomplete_task", {
         method: "POST",
         body: JSON.stringify({
-          guild_id:   GUILD_ID,
-          student_id: STUDENT.id,
-          task_id:    id,
+          guild_id:      GUILD_ID,
+          session_token: SESSION_TOKEN,
+          task_id:       id,
         }),
       });
-      if (!data2 || data2.ok === false) throw new Error("server rejected uncomplete_task");
+      if (!data2 || data2.ok === false) {
+        if (data2 && data2.error === "not_logged_in") { forceReLogin(); return; }
+        throw new Error("server rejected uncomplete_task");
+      }
 
       // ★ サーバーが成功を返してから、初めてローカルに反映する
       completedTasks.splice(entryIndex, 1);
@@ -847,10 +867,10 @@ function notifyUser(title, body) {
   // ★ Discord連携済みなら本人のDiscordへ直接DM通知を送る（bot.py側で /id連携 済みの場合のみ）。
   //   これはブラウザのタブを閉じていても、他のサイトを見ていても届く。
   //   未連携・送信失敗の場合はブラウザ通知（またはalert）にフォールバックする。
-  console.log("[notifyUser] /notify_dm 呼び出し開始", { guild_id: GUILD_ID, student_id: STUDENT.id, title: title, body: body });
+  console.log("[notifyUser] /notify_dm 呼び出し開始", { guild_id: GUILD_ID, title: title, body: body });
   api("notify_dm", {
     method: "POST",
-    body: JSON.stringify({ guild_id: GUILD_ID, student_id: STUDENT.id, title: title, message: body })
+    body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN, title: title, message: body })
   }).then(function(res) {
     console.log("[notifyUser] /notify_dm 応答:", res);
     if (!res || !res.ok) {
@@ -922,17 +942,15 @@ async function saveTimer() {
   var memo = document.getElementById("conf-memo").value.trim();
   var mins = parseInt(document.getElementById("conf-time").dataset.min);
 
-  // ★ 不正防止：前回のタイマー記録から「今回記録しようとしている分数」以上の
-  //    実時間が経過していない場合は保存させない
-  //    （localStorageの開始時刻を改ざんして即座に長時間記録するのを防止。
-  //      これはクライアント側の事前チェックで、最終的な判定はサーバー側でも行う）
+  // ★ 前回のタイマー記録から「今回記録しようとしている分数」以上の
+  //    実時間が経過していない場合は保存させない（誤操作・二重送信防止）
   var last = getTimerLastLog();
   if (last && last.at) {
     var elapsedMs  = Date.now() - last.at;
     var requiredMs = mins * 60 * 1000;
     if (elapsedMs < requiredMs) {
       var remainMin = Math.ceil((requiredMs - elapsedMs) / 60000);
-      alert("前回の記録からまだ十分な時間が経過していないため、この記録は保存できません。（あと約" + remainMin + "分待つ必要があります。不正な記録防止のためです）");
+      alert("前回の記録からまだ十分な時間が経過していないため、この記録は保存できません。（あと約" + remainMin + "分待つ必要があります）");
       return;
     }
   }
