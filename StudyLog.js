@@ -11,6 +11,40 @@
 //     無ければデフォルト 5pt にフォールバックする。
 // ============================================================
 
+// ============================================================
+//  ★ 連打対策：保存系ボタン共通のローディング表示（ぐるぐる＋「保存中…」）
+//   HTML/CSS側の変更なしで動くよう、スピナー用CSSはJSから自前で挿入する。
+// ============================================================
+(function injectSpinnerStyle() {
+  if (document.getElementById("sl-spinner-style")) return;
+  var style = document.createElement("style");
+  style.id = "sl-spinner-style";
+  style.textContent =
+    "@keyframes sl-spin{to{transform:rotate(360deg);}}" +
+    ".sl-spinner{display:inline-block;width:14px;height:14px;margin-right:6px;" +
+    "vertical-align:-2px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;" +
+    "border-radius:50%;animation:sl-spin .7s linear infinite;}" +
+    "button.sl-btn-loading{opacity:.85;cursor:default;}";
+  document.head.appendChild(style);
+})();
+
+// ボタンを「送信中」状態にする／元に戻す共通ヘルパー
+// btn: 対象のbutton要素, loading: true=送信中にする / false=元に戻す, label: 送信中に表示する文言
+function setButtonLoading(btn, loading, label) {
+  if (!btn) return;
+  if (loading) {
+    if (btn.dataset.origLabel === undefined) btn.dataset.origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add("sl-btn-loading");
+    btn.innerHTML = '<span class="sl-spinner"></span>' + (label || "保存中…");
+  } else {
+    btn.disabled = false;
+    btn.classList.remove("sl-btn-loading");
+    btn.textContent = (btn.dataset.origLabel !== undefined) ? btn.dataset.origLabel : btn.textContent;
+    delete btn.dataset.origLabel;
+  }
+}
+
 const API_BASE    = "https://python-bot-1istudy.onrender.com/";
 const GUILD_ID    = "1509880344806162544";
 const SESSION_KEY = "sl_session";
@@ -830,7 +864,7 @@ function renderTasks() {
     var done    = doneIds.includes(t.id);
     var pending = pendingTaskIds.has(t.id);
 
-    var btnLabel = pending ? "送信中…" : (done ? "✓ 達成済み" : "達成する");
+    var btnLabel = pending ? '<span class="sl-spinner" style="border-color:rgba(0,0,0,.25);border-top-color:#334155;"></span>送信中…' : (done ? "✓ 達成済み" : "達成する");
     var btnClass = "sl-task-btn" + (done ? " sl-task-btn-done" : "");
 
     // ★ 備考は普段は隠しておき、タップで表示する（Plan.jsの詳細表示と同じ考え方）
@@ -903,8 +937,12 @@ async function saveManual() {
   var memo  = document.getElementById("m-memo").value.trim();
   var errEl = document.getElementById("manual-err");
   var okEl  = document.getElementById("manual-ok");
+  var btnEl = document.querySelector('button[onclick*="saveManual"]');
   errEl.style.display = "none";
   okEl.style.display  = "none";
+
+  if (btnEl && btnEl.disabled) return; // ★ 連打防止：送信中は何もしない
+
   if (!min || min < 1) {
     errEl.textContent   = "✕ 1分以上の時間を入力してください";
     errEl.style.display = "block";
@@ -926,11 +964,14 @@ async function saveManual() {
     }
   }
 
+  setButtonLoading(btnEl, true, "保存中…");
+
   var result = await postLog({ date: todayStr(), subject: sub, minutes: min, memo: memo,
             student_id: STUDENT.id, nickname: STUDENT.nickname, method: "manual" });
 
   if (!result.ok) {
     // ★ サーバー側の不正防止チェックで拒否された場合など
+    setButtonLoading(btnEl, false);
     errEl.textContent   = "✕ " + result.error;
     errEl.style.display = "block";
     setTimeout(function() { errEl.style.display = "none"; }, 3500);
@@ -941,6 +982,7 @@ async function saveManual() {
 
   document.getElementById("m-minutes").value = "";
   document.getElementById("m-memo").value    = "";
+  setButtonLoading(btnEl, false);
   okEl.style.display = "block";
   setTimeout(function() { okEl.style.display = "none"; showTab("home"); }, 1200);
 }
@@ -1163,6 +1205,11 @@ async function saveTimer() {
   var sub  = document.getElementById("conf-subject").value;
   var memo = document.getElementById("conf-memo").value.trim();
   var mins = parseInt(document.getElementById("conf-time").dataset.min);
+  var btnEl    = document.querySelector('button[onclick*="saveTimer"]');
+  var editBtn  = document.querySelector('button[onclick*="editTimer"]');
+  var discBtn  = document.querySelector('button[onclick*="discardTimer"]');
+
+  if (btnEl && btnEl.disabled) return; // ★ 連打防止：送信中は何もしない
 
   // ★ 前回のタイマー記録から「今回記録しようとしている分数」以上の
   //    実時間が経過していない場合は保存させない（誤操作・二重送信防止）
@@ -1177,12 +1224,19 @@ async function saveTimer() {
     }
   }
 
+  setButtonLoading(btnEl, true, "保存中…");
+  if (editBtn) editBtn.disabled = true;
+  if (discBtn) discBtn.disabled = true;
+
   var result = await postLog({ date: todayStr(), subject: sub, minutes: mins, memo: memo,
             student_id: STUDENT.id, nickname: STUDENT.nickname, method: "timer" });
 
   if (!result.ok) {
     // ★ サーバー側の不正防止チェックで拒否された場合など。
     //    確認画面はそのまま残し、ユーザーがもう一度試せるようにする。
+    setButtonLoading(btnEl, false);
+    if (editBtn) editBtn.disabled = false;
+    if (discBtn) discBtn.disabled = false;
     alert(result.error);
     return;
   }
@@ -1191,7 +1245,13 @@ async function saveTimer() {
 
   var okEl = document.getElementById("timer-ok");
   okEl.style.display = "block";
-  setTimeout(function() { okEl.style.display = "none"; timerReset(); showTab("home"); }, 1200);
+  setTimeout(function() {
+    okEl.style.display = "none";
+    setButtonLoading(btnEl, false);
+    if (editBtn) editBtn.disabled = false;
+    if (discBtn) discBtn.disabled = false;
+    timerReset(); showTab("home");
+  }, 1200);
 }
 
 function editTimer() {
