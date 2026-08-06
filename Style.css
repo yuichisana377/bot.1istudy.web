@@ -289,6 +289,48 @@ body {
 .tt-badge-持ち物 { background: #dcfce7; color: #166534; }
 .tt-badge-その他 { background: #f3f4f6; color: #374151; }
 .tt-badge-連絡  { background: #dbeafe; color: #1e40af; }
+
+/* ============================
+   月間カレンダー
+============================ */
+.month-cal-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px; }
+.month-cal-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.month-cal-label { flex: 1; text-align: center; font-size: 14px; font-weight: 700; }
+.month-nav-btn {
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text-secondary); font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+}
+.month-nav-btn:active { background: var(--border); }
+.month-cal-today-btn {
+  font-size: 12px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: var(--r-md); background: var(--bg); color: var(--text-secondary); cursor: pointer; flex: 0 0 auto; white-space: nowrap;
+}
+.month-cal-today-btn:active { background: var(--border); }
+.month-cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11px; font-weight: 700; color: var(--text-tertiary); margin-bottom: 5px; }
+.month-cal-dow .mc-sun { color: #dc2626; }
+.month-cal-dow .mc-sat { color: #2563eb; }
+.month-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.mc-day {
+  position: relative; aspect-ratio: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: var(--r-md); font-size: 12px; cursor: pointer; color: var(--text); background: var(--bg);
+  border: 1.5px solid transparent; transition: background .12s ease;
+}
+.mc-day:active { background: var(--border-light); }
+.mc-day.mc-empty { visibility: hidden; cursor: default; }
+.mc-day.mc-sun-col { color: #dc2626; }
+.mc-day.mc-sat-col { color: #2563eb; }
+.mc-day.mc-today { border-color: var(--text); font-weight: 700; }
+.mc-day.mc-holiday { background: #fee2e2; color: #991b1b; }
+.mc-day .mc-num { line-height: 1; }
+.mc-day .mc-dots { display: flex; gap: 2px; margin-top: 3px; height: 6px; align-items: center; }
+.mc-dot { width: 5px; height: 5px; border-radius: 50%; background: #2563eb; }
+.mc-day.mc-holiday .mc-dot { background: #991b1b; }
+.month-cal-legend { display: flex; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--text-secondary); }
+.mcl-item { display: flex; align-items: center; gap: 5px; }
+.mcl-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.mcl-dot-plan { background: #2563eb; }
+.mcl-dot-holiday { background: #991b1b; }
 .homework-row { display: flex; align-items: flex-start; gap: 5px; }
 .homework-text { font-size: 12px; color: var(--text-secondary); flex: 1; line-height: 1.5; }
 
