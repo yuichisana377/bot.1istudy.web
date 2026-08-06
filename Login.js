@@ -2,12 +2,14 @@
 //  Login.js — ログインページ専用スクリプト
 //
 //  フロー:
-//    1. localStorage に student_id があれば自動ログイン
-//    2. 学籍番号を入力 → GET /get_users で照合
-//       - 存在する → セッション保存 → 遷移先へ
-//       - 存在しない → 新規登録ステップへ
-//    3. 新規登録: 学籍番号 + ニックネーム → POST /add_user
-//       → セッション保存 → 遷移先へ
+//    1. localStorage に有効なセッション（session_token付き）があれば自動ログイン
+//    2. 学籍番号 + パスワードを入力 → POST /login
+//       - 成功           → セッション保存 → 遷移先へ
+//       - user_not_found → 新規登録ステップへ（ニックネーム＋パスワード設定）
+//       - password_not_set → 登録ステップへ（既存アカウントのパスワード初回設定。
+//                             ニックネームは既存のものを表示するだけで変更不可）
+//       - wrong_password → エラー表示のみ
+//    3. 登録ステップ完了後、あらためて /login を呼んでセッショントークンを取得する
 //
 //  遷移先:
 //    sessionStorage に 'post_login_redirect' が保存されていれば
@@ -34,12 +36,13 @@ const AVATAR_COLORS = [
 
 // ── 起動 ────────────────────────────────────────────────────
 window.addEventListener("load", () => {
-  // 自動ログイン（localStorage に保存済みセッションがある場合）
+  // 自動ログイン（localStorage に session_token 付きの保存済みセッションがある場合のみ）
   const saved = getSession();
-  if (saved) {
+  if (saved && saved.session_token) {
     autoLogin(saved);
     return;
   }
+  localStorage.removeItem(SESSION_KEY); // session_tokenの無い旧形式セッションは破棄
   showStep("step-id");
 });
 
@@ -50,16 +53,25 @@ function getSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
 
-function saveSession(user, colorPalette) {
+// user: {id, nickname}, sessionToken: /loginが返した session_token
+function saveSession(user, sessionToken, colorPalette) {
   const session = {
-    student_id:   user.id,
-    nickname:     user.nickname,
-    color:        colorPalette.color,
-    text_color:   colorPalette.text,
-    logged_in_at: new Date().toISOString(),
+    student_id:    user.id,
+    nickname:      user.nickname,
+    color:         colorPalette.color,
+    text_color:    colorPalette.text,
+    session_token: sessionToken,
+    logged_in_at:  new Date().toISOString(),
   };
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
   return session;
+}
+
+// ID（文字列）から常に同じ色を選ぶ（新規登録時のインデックスに依存しないように）
+function paletteFor(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
 // ── 遷移先の決定 ─────────────────────────────────────────────
@@ -75,26 +87,14 @@ function getRedirectTarget() {
 }
 
 // ── 自動ログイン ─────────────────────────────────────────────
+// ★ session_token の有効性はサーバー側でしか判定できない（改ざん・期限切れ等）ので、
+//   軽いAPI（get_users）を叩いて通信自体が生きているかだけ確認し、
+//   トークンの正当性チェック自体は StudyLog.html 側の各APIコールに任せる
+//  （そちらで not_logged_in が返ってくれば自動的にログイン画面へ戻される）。
 async function autoLogin(session) {
   showStep("step-loading");
   setLoadingMsg("ログイン情報を確認中…");
-
-  try {
-    const users = await fetchUsers();
-    const user  = users.find(u => u.id === session.student_id);
-    if (user) {
-      // ユーザーが引き続き users.json に存在 → そのまま遷移
-      location.href = getRedirectTarget();
-    } else {
-      // users.json から削除されていた場合はセッションをクリア
-      localStorage.removeItem(SESSION_KEY);
-      showStep("step-id");
-      showIdErr("セッションが無効になりました。再度ログインしてください。");
-    }
-  } catch {
-    // サーバーエラーでも、既存セッションを信頼してそのまま遷移
-    location.href = getRedirectTarget();
-  }
+  location.href = getRedirectTarget();
 }
 
 // ============================================================
@@ -107,10 +107,19 @@ async function fetchUsers() {
   );
   const data = await res.json();
   if (!data.ok) throw new Error("fetch_users_failed");
-  return data.users || [];
+  return data.users || []; // ★ password_hash等は含まれない（サーバー側で除去済み）
 }
 
-async function addUser(id, nickname) {
+async function loginRequest(id, password) {
+  const res = await fetch(`${API_BASE}/login`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guild_id: GUILD_ID, id, password }),
+  });
+  return res.json(); // { ok:true, session_token, student:{id,nickname} } または { ok:false, error }
+}
+
+async function addUser(id, nickname, password) {
   const res = await fetch(`${API_BASE}/add_user`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
@@ -118,10 +127,20 @@ async function addUser(id, nickname) {
       guild_id:   GUILD_ID,
       id,
       nickname,
+      password,
       created_at: new Date().toISOString().slice(0, 10),
     }),
   });
-  return res.json(); // { ok: true } or { ok: false, error: "already_exists" }
+  return res.json(); // { ok: true } or { ok: false, error: "already_exists" | ... }
+}
+
+async function setPasswordRequest(id, password) {
+  const res = await fetch(`${API_BASE}/set_password`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guild_id: GUILD_ID, id, password }),
+  });
+  return res.json(); // { ok: true } or { ok: false, error: "already_set" | ... }
 }
 
 // ============================================================
@@ -136,7 +155,8 @@ function showStep(id) {
     setTimeout(() => document.getElementById("inp-student-id")?.focus(), 60);
   }
   if (id === "step-register") {
-    setTimeout(() => document.getElementById("inp-nickname")?.focus(), 60);
+    const mode = document.getElementById("reg-mode").value;
+    setTimeout(() => document.getElementById(mode === "new" ? "inp-nickname" : "inp-reg-password")?.focus(), 60);
   }
 }
 
@@ -146,33 +166,44 @@ function setLoadingMsg(msg) {
 }
 
 // ============================================================
-//  STEP 1 — 学籍番号入力
+//  STEP 1 — 学籍番号＋パスワード入力
 // ============================================================
 async function submitId() {
-  const raw   = document.getElementById("inp-student-id").value.trim().toUpperCase();
-  const btnEl = document.getElementById("btn-login");
+  const raw      = document.getElementById("inp-student-id").value.trim().toUpperCase();
+  const password = document.getElementById("inp-password").value;
+  const btnEl    = document.getElementById("btn-login");
 
   if (!validateId(raw)) return;
+  if (!password) { showIdErr("パスワードを入力してください"); return; }
 
   setBtn(btnEl, true, "確認中…");
 
   try {
-    const users = await fetchUsers();
-    const user  = users.find(u => u.id === raw);
+    const result = await loginRequest(raw, password);
 
-    if (user) {
-      // 既存ユーザー → ログイン
-      const palette = AVATAR_COLORS[users.indexOf(user) % AVATAR_COLORS.length];
-      saveSession(user, palette);
+    if (result.ok) {
+      // ログイン成功
+      const palette = paletteFor(result.student.id);
+      saveSession(result.student, result.session_token, palette);
       location.href = getRedirectTarget();
-    } else {
-      // 未登録 → 新規登録ステップへ
-      document.getElementById("reg-id-label").textContent    = raw;
-      document.getElementById("inp-student-id-hidden").value = raw;
-      document.getElementById("inp-nickname").value          = "";
-      document.getElementById("reg-err").style.display       = "none";
-      showStep("step-register");
+      return;
     }
+
+    if (result.error === "user_not_found") {
+      // ★ 未登録 → 新規登録ステップへ（パスワードがまだ無い＝登録画面へ）
+      openRegisterStep(raw, "new", password);
+      return;
+    }
+    if (result.error === "password_not_set") {
+      // ★ 既存アカウントだがパスワード未設定 → パスワード設定のため登録画面へ
+      openRegisterStep(raw, "setpw", password);
+      return;
+    }
+    if (result.error === "wrong_password") {
+      showIdErr("パスワードが正しくありません");
+      return;
+    }
+    showIdErr("ログインに失敗しました。時間をおいて再試行してください。");
   } catch {
     showIdErr("サーバーに接続できません。時間をおいて再試行してください。");
   } finally {
@@ -189,44 +220,87 @@ function validateId(raw) {
   return true;
 }
 
+// ── 登録ステップを開く（新規登録 or 既存アカウントのパスワード初回設定）──
+async function openRegisterStep(id, mode, prefillPassword) {
+  document.getElementById("inp-student-id-hidden").value = id;
+  document.getElementById("reg-mode").value               = mode;
+  document.getElementById("reg-err").style.display        = "none";
+  document.getElementById("inp-reg-password").value       = prefillPassword || "";
+  document.getElementById("inp-reg-password2").value      = "";
+
+  const nicknameField = document.getElementById("reg-nickname-field");
+
+  if (mode === "new") {
+    document.getElementById("reg-title").textContent = "新規登録 👋";
+    document.getElementById("reg-desc").innerHTML =
+      `<strong id="reg-id-label">${escHtml(id)}</strong> はまだ登録されていません。<br>` +
+      `呼ばれたいニックネームとパスワードを入力して登録してください。<br>` +
+      `<span class="login-reg-note">※ 本名は禁止・公開されます</span>`;
+    nicknameField.style.display    = "";
+    document.getElementById("inp-nickname").value = "";
+  } else {
+    // setpw: 既存アカウントのパスワードが未設定
+    nicknameField.style.display = "none";
+    let nicknameLabel = id;
+    try {
+      const users = await fetchUsers();
+      const user  = users.find(u => u.id === id);
+      if (user) nicknameLabel = user.nickname;
+    } catch {}
+    document.getElementById("reg-title").textContent = "パスワード設定 🔑";
+    document.getElementById("reg-desc").innerHTML =
+      `<strong id="reg-id-label">${escHtml(nicknameLabel)}（${escHtml(id)}）</strong> はまだパスワードが設定されていません。<br>` +
+      `今後ログインに使うパスワードを設定してください。`;
+  }
+
+  showStep("step-register");
+}
+
 // ============================================================
-//  STEP 2 — 新規登録
+//  STEP 2 — 新規登録 ／ パスワード設定
 // ============================================================
 async function submitRegister() {
   const id       = document.getElementById("inp-student-id-hidden").value;
+  const mode     = document.getElementById("reg-mode").value; // "new" | "setpw"
   const nickname = document.getElementById("inp-nickname").value.trim();
+  const password  = document.getElementById("inp-reg-password").value;
+  const password2 = document.getElementById("inp-reg-password2").value;
   const btnEl    = document.getElementById("btn-register");
 
-  if (!validateNickname(nickname)) return;
+  if (mode === "new" && !validateNickname(nickname)) return;
+  if (!validatePassword(password, password2)) return;
 
-  setBtn(btnEl, true, "登録中…");
+  setBtn(btnEl, true, mode === "new" ? "登録中…" : "設定中…");
 
   try {
-    // 直前に重複チェック（二重登録防止）
-    const users   = await fetchUsers();
-    if (users.find(u => u.id === id)) {
-      // 同じ端末の別タブなどで既に登録された場合
-      const user    = users.find(u => u.id === id);
-      const palette = AVATAR_COLORS[users.indexOf(user) % AVATAR_COLORS.length];
-      saveSession(user, palette);
-      location.href = getRedirectTarget();
+    let result;
+    if (mode === "new") {
+      result = await addUser(id, nickname, password);
+    } else {
+      result = await setPasswordRequest(id, password);
+    }
+
+    if (!result.ok) {
+      if (result.error === "already_exists") {
+        showRegErr("この学籍番号はすでに登録されています。ログイン画面に戻ってください。");
+      } else if (result.error === "already_set") {
+        showRegErr("このアカウントはすでにパスワードが設定されています。ログイン画面からログインしてください。");
+      } else {
+        showRegErr("処理に失敗しました。時間をおいて再試行してください。");
+      }
       return;
     }
 
-    const result = await addUser(id, nickname);
-
-    if (result.ok) {
-      // 登録成功 → 再取得してセッション作成
-      const updated = await fetchUsers();
-      const user    = updated.find(u => u.id === id) || { id, nickname };
-      const palette = AVATAR_COLORS[(updated.length - 1) % AVATAR_COLORS.length];
-      saveSession(user, palette);
-      location.href = getRedirectTarget();
-    } else if (result.error === "already_exists") {
-      showRegErr("この学籍番号はすでに登録されています。ログイン画面に戻ってください。");
-    } else {
-      showRegErr("登録に失敗しました。時間をおいて再試行してください。");
+    // 登録／パスワード設定に成功 → 続けてログインしてセッショントークンを取得する
+    const loginResult = await loginRequest(id, password);
+    if (!loginResult.ok) {
+      showRegErr("設定は完了しましたが、自動ログインに失敗しました。ログイン画面から入り直してください。");
+      backToId();
+      return;
     }
+    const palette = paletteFor(loginResult.student.id);
+    saveSession(loginResult.student, loginResult.session_token, palette);
+    location.href = getRedirectTarget();
   } catch {
     showRegErr("サーバーに接続できません。時間をおいて再試行してください。");
   } finally {
@@ -237,6 +311,12 @@ async function submitRegister() {
 function validateNickname(nickname) {
   if (!nickname)          { showRegErr("ニックネームを入力してください"); return false; }
   if (nickname.length > 16) { showRegErr("16文字以内で入力してください"); return false; }
+  return true;
+}
+
+function validatePassword(password, password2) {
+  if (!password || password.length < 4) { showRegErr("パスワードは4文字以上で入力してください"); return false; }
+  if (password !== password2) { showRegErr("パスワード（確認）が一致しません"); return false; }
   return true;
 }
 
@@ -252,6 +332,10 @@ function setBtn(el, disabled, label) {
   if (!el) return;
   el.disabled     = disabled;
   el.textContent  = label;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
 function showIdErr(msg) {
