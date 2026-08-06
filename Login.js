@@ -335,9 +335,10 @@ function validateNickname(nickname) {
   return true;
 }
 
-function validatePassword(password, password2) {
-  if (!password || password.length < 4) { showRegErr("パスワードは4文字以上で入力してください"); return false; }
-  if (password !== password2) { showRegErr("パスワード（確認）が一致しません"); return false; }
+function validatePassword(password, password2, errFn) {
+  const show = errFn || showRegErr;
+  if (!password || password.length < 4) { show("パスワードは4文字以上で入力してください"); return false; }
+  if (password !== password2) { show("パスワード（確認）が一致しません"); return false; }
   return true;
 }
 
