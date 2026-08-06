@@ -195,6 +195,234 @@ function applySession() {
   }
   if (nicknameEl) nicknameEl.textContent = STUDENT.nickname;
   if (idEl)       idEl.textContent       = STUDENT.id;
+  ensureAccountButton();
+}
+
+// ============================================================
+//  ★ アカウント設定（ニックネーム変更・パスワード変更）
+//  ─────────────────────────────
+//  HTML側に専用のボタンが無くても動くよう、無ければ自前でボタンを
+//  1つ差し込む。HTML側に既に id="header-account-btn" のボタンがあれば
+//  それをそのまま使う（二重に差し込まない）。
+//  パスワード変更は、Discordの/id連携が済んでいる本人にDMで確認コードを
+//  送り、それを入力してもらってから初めて反映する（本人確認のため）。
+// ============================================================
+function ensureAccountButton() {
+  if (document.getElementById("header-account-btn")) {
+    document.getElementById("header-account-btn").onclick = openAccountModal;
+    return;
+  }
+  if (document.getElementById("sl-acct-fab")) return; // 二重生成防止
+
+  var btn = document.createElement("button");
+  btn.id = "sl-acct-fab";
+  btn.type = "button";
+  btn.textContent = "⚙ アカウント";
+  btn.onclick = openAccountModal;
+  btn.style.cssText =
+    "position:fixed;right:16px;bottom:16px;z-index:9998;" +
+    "padding:10px 16px;border:none;border-radius:999px;" +
+    "background:#1e293b;color:#fff;font-size:14px;font-weight:600;" +
+    "box-shadow:0 4px 12px rgba(0,0,0,.2);cursor:pointer;";
+  document.body.appendChild(btn);
+}
+
+function openAccountModal() {
+  closeAccountModal(); // 二重生成防止
+
+  var overlay = document.createElement("div");
+  overlay.id = "sl-acct-overlay";
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);" +
+    "display:flex;align-items:center;justify-content:center;padding:16px;";
+  overlay.onclick = function(e) { if (e.target === overlay) closeAccountModal(); };
+
+  var box = document.createElement("div");
+  box.style.cssText =
+    "background:#fff;border-radius:16px;max-width:420px;width:100%;" +
+    "max-height:90vh;overflow:auto;padding:24px;font-family:inherit;" +
+    "box-shadow:0 20px 50px rgba(0,0,0,.3);";
+
+  box.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+      '<h2 style="margin:0;font-size:18px;">アカウント設定</h2>' +
+      '<button id="sl-acct-close" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">✕</button>' +
+    '</div>' +
+
+    '<div style="font-size:13px;color:#64748b;margin-bottom:20px;">学籍番号: ' + escapeHtmlSl(STUDENT.id) + '</div>' +
+
+    '<div style="margin-bottom:24px;">' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">ニックネーム</label>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<input id="sl-acct-nickname" maxlength="16" value="' + escapeHtmlSl(STUDENT.nickname) + '" ' +
+          'style="flex:1;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">' +
+        '<button id="sl-acct-nickname-save" style="padding:8px 14px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:13px;cursor:pointer;">保存</button>' +
+      '</div>' +
+      '<div id="sl-acct-nickname-msg" style="font-size:12px;margin-top:6px;"></div>' +
+    '</div>' +
+
+    '<div style="border-top:1px solid #e2e8f0;padding-top:20px;">' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">パスワードの変更</label>' +
+      '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">' +
+        '本人確認のため、Discordに確認コードを送ります。<br>' +
+        '（Discordの /id連携 コマンドを済ませている生徒のみ利用できます）' +
+      '</p>' +
+      '<button id="sl-acct-send-code" style="padding:8px 14px;border:none;border-radius:8px;background:#334155;color:#fff;font-size:13px;cursor:pointer;">Discordに確認コードを送る</button>' +
+      '<div id="sl-acct-code-msg" style="font-size:12px;margin-top:6px;"></div>' +
+
+      '<div id="sl-acct-pw-fields" style="display:none;margin-top:14px;">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">確認コード（6桁）</label>' +
+        '<input id="sl-acct-code" maxlength="6" inputmode="numeric" placeholder="123456" ' +
+          'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">新しいパスワード（4文字以上）</label>' +
+        '<input id="sl-acct-newpw" type="password" maxlength="64" ' +
+          'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">新しいパスワード（確認）</label>' +
+        '<input id="sl-acct-newpw2" type="password" maxlength="64" ' +
+          'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
+        '<button id="sl-acct-confirm-pw" style="width:100%;padding:10px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">パスワードを変更する</button>' +
+        '<div id="sl-acct-pw-msg" style="font-size:12px;margin-top:6px;"></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="border-top:1px solid #e2e8f0;margin-top:24px;padding-top:16px;">' +
+      '<button id="sl-acct-logout" style="width:100%;padding:10px;border:1px solid #dc2626;border-radius:8px;background:#fff;color:#dc2626;font-size:14px;font-weight:600;cursor:pointer;">ログアウト</button>' +
+    '</div>';
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  document.getElementById("sl-acct-close").onclick  = closeAccountModal;
+  document.getElementById("sl-acct-logout").onclick  = function() { closeAccountModal(); doLogout(); };
+  document.getElementById("sl-acct-nickname-save").onclick = submitNicknameChange;
+  document.getElementById("sl-acct-send-code").onclick     = requestPasswordChangeCode;
+  document.getElementById("sl-acct-confirm-pw").onclick    = submitPasswordChange;
+}
+
+function closeAccountModal() {
+  var el = document.getElementById("sl-acct-overlay");
+  if (el) el.remove();
+}
+
+function escapeHtmlSl(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function setAcctMsg(id, msg, isError) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? "#dc2626" : "#16a34a";
+}
+
+// ── ニックネーム変更 ────────────────────────────────────
+async function submitNicknameChange() {
+  var input = document.getElementById("sl-acct-nickname");
+  var btn   = document.getElementById("sl-acct-nickname-save");
+  var nickname = (input.value || "").trim();
+
+  if (!nickname)            { setAcctMsg("sl-acct-nickname-msg", "ニックネームを入力してください", true); return; }
+  if (nickname.length > 16) { setAcctMsg("sl-acct-nickname-msg", "16文字以内で入力してください", true); return; }
+
+  btn.disabled = true;
+  try {
+    var data = await api("/change_nickname", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN, nickname: nickname }),
+    });
+    if (data && data.ok) {
+      // ★ セッション・画面上の表示・nicknameMapを全て更新する
+      STUDENT.nickname = nickname;
+      var s = getSession() || {};
+      s.nickname = nickname;
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch(e) {}
+      nicknameMap[STUDENT.id] = nickname;
+      applySession();
+      renderAll();
+      setAcctMsg("sl-acct-nickname-msg", "✓ 保存しました");
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
+    } else {
+      setAcctMsg("sl-acct-nickname-msg", "保存に失敗しました", true);
+    }
+  } catch(e) {
+    setAcctMsg("sl-acct-nickname-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── パスワード変更：STEP1 確認コード送信 ────────────────
+async function requestPasswordChangeCode() {
+  var btn = document.getElementById("sl-acct-send-code");
+  btn.disabled = true;
+  try {
+    var data = await api("/request_password_change_code", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }),
+    });
+    if (data && data.ok) {
+      document.getElementById("sl-acct-pw-fields").style.display = "";
+      setAcctMsg("sl-acct-code-msg", "✓ Discordに確認コードを送信しました（10分間有効）");
+      document.getElementById("sl-acct-code").focus();
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
+    } else if (data && data.error === "not_linked") {
+      setAcctMsg("sl-acct-code-msg", "Discordと連携されていません。Discordで /id連携 コマンドを実行してから、もう一度お試しください。", true);
+    } else if (data && data.error === "too_soon") {
+      setAcctMsg("sl-acct-code-msg", "少し時間をおいてから再度お試しください（あと約" + (data.retry_after_sec || 60) + "秒）", true);
+    } else {
+      setAcctMsg("sl-acct-code-msg", "送信に失敗しました。時間をおいて再試行してください。", true);
+    }
+  } catch(e) {
+    setAcctMsg("sl-acct-code-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── パスワード変更：STEP2 コード＋新パスワードで確定 ────
+async function submitPasswordChange() {
+  var code     = (document.getElementById("sl-acct-code").value || "").trim();
+  var newPw    = document.getElementById("sl-acct-newpw").value;
+  var newPw2   = document.getElementById("sl-acct-newpw2").value;
+  var btn      = document.getElementById("sl-acct-confirm-pw");
+
+  if (!/^[0-9]{6}$/.test(code)) { setAcctMsg("sl-acct-pw-msg", "確認コード（6桁の数字）を入力してください", true); return; }
+  if (!newPw || newPw.length < 4) { setAcctMsg("sl-acct-pw-msg", "パスワードは4文字以上で入力してください", true); return; }
+  if (newPw !== newPw2) { setAcctMsg("sl-acct-pw-msg", "パスワード（確認）が一致しません", true); return; }
+
+  btn.disabled = true;
+  try {
+    var data = await api("/confirm_password_change", {
+      method: "POST",
+      body: JSON.stringify({
+        guild_id: GUILD_ID, session_token: SESSION_TOKEN,
+        code: code, new_password: newPw,
+      }),
+    });
+    if (data && data.ok) {
+      setAcctMsg("sl-acct-pw-msg", "✓ パスワードを変更しました");
+      document.getElementById("sl-acct-code").value   = "";
+      document.getElementById("sl-acct-newpw").value  = "";
+      document.getElementById("sl-acct-newpw2").value = "";
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
+    } else if (data && data.error === "wrong_code") {
+      setAcctMsg("sl-acct-pw-msg", "確認コードが正しくありません", true);
+    } else if (data && data.error === "code_expired") {
+      setAcctMsg("sl-acct-pw-msg", "確認コードの有効期限が切れました。もう一度送信してください。", true);
+    } else if (data && data.error === "code_not_requested") {
+      setAcctMsg("sl-acct-pw-msg", "先に確認コードを送信してください", true);
+    } else {
+      setAcctMsg("sl-acct-pw-msg", "変更に失敗しました。時間をおいて再試行してください。", true);
+    }
+  } catch(e) {
+    setAcctMsg("sl-acct-pw-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── ログアウト ──────────────────────────────────────────
