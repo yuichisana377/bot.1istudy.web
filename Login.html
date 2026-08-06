@@ -43,35 +43,60 @@
              maxlength="20">
     </div>
 
+    <div class="field">
+      <label for="inp-password">パスワード</label>
+      <input type="password" id="inp-password"
+             placeholder="パスワード"
+             autocomplete="current-password"
+             maxlength="64">
+    </div>
+
     <button class="btn-primary login-btn" id="btn-login" onclick="submitId()">
       ログイン →
     </button>
 
     <p class="login-hint">
-      初めての方は登録画面へ自動で案内します。
+      初めての方・パスワード未設定の方は登録画面へ自動で案内します。
     </p>
   </div>
 
-  <!-- ══ STEP 2: 新規登録（初回のみ） ══ -->
+  <!-- ══ STEP 2: 新規登録 ／ パスワード設定（初回のみ） ══ -->
   <div class="login-step login-card" id="step-register" style="display:none">
-    <h1 class="login-title">新規登録 👋</h1>
+    <h1 class="login-title" id="reg-title">新規登録 👋</h1>
 
-    <p class="login-reg-desc">
+    <p class="login-reg-desc" id="reg-desc">
       <strong id="reg-id-label"></strong> はまだ登録されていません。<br>
       呼ばれたいニックネームを入力して登録してください。<br>
       <span class="login-reg-note">※ 本名は禁止・公開されます</span>
     </p>
 
     <input type="hidden" id="inp-student-id-hidden">
+    <input type="hidden" id="reg-mode"><!-- "new" or "setpw" -->
 
     <div class="error-bar" id="reg-err" style="display:none"></div>
 
-    <div class="field">
+    <div class="field" id="reg-nickname-field">
       <label for="inp-nickname">ニックネーム</label>
       <input type="text" id="inp-nickname"
              placeholder="例: Taro・太郎（16文字以内）"
              maxlength="16"
              autocomplete="nickname">
+    </div>
+
+    <div class="field">
+      <label for="inp-reg-password">パスワード（4文字以上）</label>
+      <input type="password" id="inp-reg-password"
+             placeholder="パスワード"
+             autocomplete="new-password"
+             maxlength="64">
+    </div>
+
+    <div class="field">
+      <label for="inp-reg-password2">パスワード（確認）</label>
+      <input type="password" id="inp-reg-password2"
+             placeholder="もう一度入力"
+             autocomplete="new-password"
+             maxlength="64">
     </div>
 
     <button class="btn-primary login-btn" id="btn-register" onclick="submitRegister()">
