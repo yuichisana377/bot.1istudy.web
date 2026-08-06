@@ -195,7 +195,27 @@ async function submitId() {
   const btnEl    = document.getElementById("btn-login");
 
   if (!validateId(raw)) return;
-  if (!password) { showIdErr("パスワードを入力してください"); return; }
+
+  if (!password) {
+    // ★ パスワード未入力でも、まだ登録されていない学籍番号（＝初めての場合）なら
+    //   登録前でパスワードを持っていないのは当然なので、そのまま新規登録画面へ進める。
+    //   既に登録済みの学籍番号の場合は、これまで通りパスワード入力を求める。
+    setBtn(btnEl, true, "確認中…");
+    try {
+      const users  = await fetchUsers();
+      const exists = users.some(u => u.id === raw);
+      if (!exists) {
+        openRegisterStep(raw, "new");
+        return;
+      }
+    } catch {
+      // ユーザー一覧の取得に失敗した場合は、判定できないので通常通りエラーにする
+    } finally {
+      setBtn(btnEl, false, "ログイン →");
+    }
+    showIdErr("パスワードを入力してください");
+    return;
+  }
 
   setBtn(btnEl, true, "確認中…");
 
