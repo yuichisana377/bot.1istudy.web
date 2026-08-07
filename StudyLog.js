@@ -131,9 +131,6 @@ async function loadTasks() {
   } catch(e) { TASKS_JSON = []; renderTasks(); }
 }
 
-// ── LocalStorage キー（タイマー復元のみ） ──────────────
-const LS_TIMER = "sl_timer_" + STUDENT.id;
-
 // ============================================================
 //  ★ 連続記録の制限（誤操作・二重送信防止）
 //   ・タイマー記録：前回の記録から「今回記録しようとしている分数」以上の
@@ -173,13 +170,15 @@ let nicknameMap       = {};   // { "1I001": "太郎", ... }
 // ★ 現在サーバーに送信中のタスクID（二重送信・ポーリング競合防止）
 let pendingTaskIds = new Set();
 
-let timerInterval   = null;
-let timerSec        = 0;
-let timerRunning    = false;
-let timerIsPaused   = false;
-let timerStartEpoch = null;
-let elapsedAtPause  = 0;
-let lastAwardedMin  = 0;
+let timerInterval     = null;  // 表示更新用（500ms）
+let timerSyncInterval = null;  // ★ サーバーとの定期同期用（複数端末対応・自動停止/破棄の検知）
+let timerSec          = 0;
+let timerRunning      = false;
+let timerIsPaused     = false;
+let awaitingConfirm   = false; // ★ サーバー側で3時間経過により自動停止され、保存待ちになっている状態
+let accumulatedSec    = 0;     // ★ 直近の計測区間を含まない、これまでの累計秒（サーバーのaccumulated_secと同期）
+let runStartClientEpoch = null; // ★ 現在の計測区間の開始時刻（この端末のDate.now()換算）
+let lastAwardedMin    = 0;
 
 // ============================================================
 //  起動
@@ -1092,12 +1091,166 @@ function updateTimerUI() {
   } else { hint.textContent = ""; }
 }
 
+// ============================================================
+//  ★ タイマー状態のサーバー同期（複数端末対応）
+//  ─────────────────────────────
+//  以前はタイマーの開始時刻をブラウザのlocalStorageだけに保存していたため
+//  ①別端末・別ブラウザからは状態が見えず、二重に計測を始められる
+//  ②タブを閉じる／バックグラウンドに置くとJSが止まり、「3時間経過」の
+//    検知が遅れる（＝精度が低い。時には全く違う経過時間で「破棄」と
+//    誤判定されてしまう）
+//  という問題があった。
+//  → 開始・一時停止・再開の「時刻」はサーバー（bot.py）で管理し、
+//    どの端末で開いても同じ状態が見えるようにする。3時間経過の判定・
+//    DM通知も、タブが開いているかに関係なくサーバー側が正確に行う
+//    （StudyLog.js側はその結果を表示に反映するだけ）。
+// ============================================================
+async function timerApiState() {
+  try {
+    return await api("/timer_state?guild_id=" + GUILD_ID + "&session_token=" + encodeURIComponent(SESSION_TOKEN));
+  } catch(e) { return null; }
+}
+async function timerApiStart() {
+  try {
+    return await api("/timer_start", { method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }) });
+  } catch(e) { return null; }
+}
+async function timerApiPause() {
+  try {
+    return await api("/timer_pause", { method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }) });
+  } catch(e) { return null; }
+}
+async function timerApiResume() {
+  try {
+    return await api("/timer_resume", { method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }) });
+  } catch(e) { return null; }
+}
+async function timerApiStop() {
+  try {
+    return await api("/timer_stop", { method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }) });
+  } catch(e) { return null; }
+}
+
+// 現在の実行中区間を含めた経過秒（表示用）
+function computeElapsedSec() {
+  if (timerRunning && runStartClientEpoch != null) {
+    return accumulatedSec + Math.floor((Date.now() - runStartClientEpoch) / 1000);
+  }
+  return accumulatedSec;
+}
+
+// サーバーから受け取ったタイマー状態(state/elapsed_sec/run_start_epoch/
+// accumulated_sec/server_now)をローカルの表示用変数へ反映する。
+// ★ server_now とこの端末のDate.now()の差（時計のズレ）を吸収してから
+//   run_start_epoch をこの端末の時計に換算するので、端末の時計が多少
+//   ズレていても表示上の経過時間は正確になる。
+function applyServerTimerState(resp) {
+  var clockOffset = (resp.server_now != null) ? (resp.server_now - Date.now()) : 0;
+  accumulatedSec  = resp.accumulated_sec || 0;
+  runStartClientEpoch = (resp.state === "running" && resp.run_start_epoch != null)
+    ? (resp.run_start_epoch - clockOffset)
+    : null;
+  timerRunning    = (resp.state === "running");
+  timerIsPaused   = (resp.state === "paused");
+  awaitingConfirm = (resp.state === "awaiting_confirm");
+  timerSec = computeElapsedSec();
+  // 離れていた間の5分区切りポイントを二重付与しないよう、経過分数から
+  // 「本来もう付与されているはずの区切り」まで進めておく
+  lastAwardedMin = Math.floor(timerSec / 60 / 5) * 5;
+}
+
+// ★ 定期的にサーバーの本当の状態と同期する（他端末での一時停止／再開、
+//   3時間経過による自動停止、30分放置による自動破棄などを検知するため）
+function startSyncPolling() {
+  if (timerSyncInterval) clearInterval(timerSyncInterval);
+  timerSyncInterval = setInterval(syncTimerFromServer, 20000);
+}
+
+async function syncTimerFromServer() {
+  var res = await timerApiState();
+  if (!res || !res.ok) return;
+
+  if (res.state === "idle") {
+    // 保存・破棄が別端末で済んだ、または30分放置による自動破棄
+    var wasAwaiting = awaitingConfirm;
+    clearInterval(timerInterval);     timerInterval     = null;
+    clearInterval(timerSyncInterval); timerSyncInterval = null;
+    var onTimerScreen =
+      document.getElementById("timer-main").style.display === "block" ||
+      document.getElementById("timer-confirm").style.display === "block";
+    if (wasAwaiting) {
+      notifyUserBrowserOnly("StudyLog", "保存されないまま30分以上経過したため、計測を破棄しました。");
+    }
+    if (onTimerScreen) timerReset();
+    return;
+  }
+
+  if (res.state === "awaiting_confirm" && !awaitingConfirm) {
+    // ★ サーバー側で3時間経過と判定され、自動的に停止された
+    clearInterval(timerInterval); timerInterval = null;
+    applyServerTimerState(res);
+    showAutoStoppedConfirm();
+    return;
+  }
+
+  if (res.state === "paused" && timerRunning) {
+    clearInterval(timerInterval); timerInterval = null;
+    applyServerTimerState(res);
+    document.getElementById("btn-pause").textContent    = "▶ 再開";
+    document.getElementById("timer-status").textContent = "休憩中...（他の端末で一時停止されました）";
+    updateTimerUI();
+    return;
+  }
+
+  if (res.state === "running" && timerIsPaused) {
+    applyServerTimerState(res);
+    document.getElementById("btn-pause").textContent    = "⏸ 休憩";
+    document.getElementById("timer-status").textContent = "計測中...（他の端末で再開されました）";
+    startInterval();
+    return;
+  }
+
+  if (res.state === "running") {
+    applyServerTimerState(res); // ズレ補正
+  }
+}
+
+// ★ サーバー側で3時間経過により自動停止された場合の確認画面表示。
+//   手動停止と同じ「保存確認画面」を出し、教科を選んで保存できるように
+//   する（以前は問答無用で破棄していたが、記録が消えてしまうのは
+//   不親切なため、30分の猶予を設けて保存できるようにした）。
+function showAutoStoppedConfirm() {
+  awaitingConfirm = true;
+  timerRunning = false; timerIsPaused = false;
+  var mins = 180;
+  document.getElementById("timer-main").style.display    = "none";
+  document.getElementById("timer-confirm").style.display = "block";
+  document.getElementById("conf-time").textContent       = mins + "分 00秒";
+  document.getElementById("conf-time").dataset.min       = mins;
+  document.getElementById("timer-pts-hint").textContent  = "";
+  // ★ Discordの連携済みDM通知はサーバー側から既に送信済みなので、ここでは
+  //   「いまこの画面を見ている場合だけ気づける」ブラウザ内通知だけを出す
+  notifyUserBrowserOnly("StudyLog",
+    "3時間が経過したため、タイマーを自動的に停止しました。内容を確認して保存してください。（30分以内に保存されないと破棄されます）");
+  startSyncPolling();
+}
+
 function startInterval() {
+  if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(function() {
-    timerSec = Math.floor((Date.now() - timerStartEpoch) / 1000);
+    timerSec = computeElapsedSec();
     if (timerSec >= 10800) {
-      notifyUser("StudyLog", "3時間が経過したため、タイマーを自動的に停止しました。");
-      timerStop();
+      // ★ 表示上は3時間に達しているので、いったんここで頭打ちにしつつ、
+      //   サーバー側の正式な自動停止判定（check_study_timers、または
+      //   次のsyncTimerFromServer）を待つ。実際の停止・通知はサーバーが
+      //   タブの状態に関わらず正確に行うので、ここでは表示のみ止める。
+      timerSec = 10800;
+      updateTimerUI();
+      syncTimerFromServer();
       return;
     }
     var curMin = Math.floor(timerSec / 60);
@@ -1110,6 +1263,7 @@ function startInterval() {
     }
     updateTimerUI();
   }, 500);
+  startSyncPolling();
 }
 
 // ── ブラウザ通知（他のタブを見ていても気づけるように） ──────
@@ -1149,42 +1303,93 @@ function notifyUserBrowserOnly(title, body) {
   alert(body);
 }
 
-function timerStart() {
-  if (timerRunning) return;
+async function timerStart() {
+  if (timerRunning || timerIsPaused || awaitingConfirm) return;
   ensureNotifyPermission(); // ★ ユーザー操作（クリック）のタイミングで許可をリクエスト
-  timerRunning    = true;
-  timerIsPaused   = false;
-  timerStartEpoch = Date.now() - elapsedAtPause * 1000;
+  var btn = document.getElementById("btn-start");
+  if (btn) btn.disabled = true; // ★ 連打防止（応答が返るまで）
+
+  var res = await timerApiStart();
+
+  if (!res || res.ok === false) {
+    if (res && res.error === "not_logged_in") { forceReLogin(); return; }
+    if (res && res.error === "already_paused") {
+      // ★ 他の端末で既に一時停止中 → こちらもその状態に合わせる
+      applyServerTimerState(res);
+      document.getElementById("btn-start").disabled = true;
+      document.getElementById("btn-pause").disabled  = false;
+      document.getElementById("btn-stop").disabled   = false;
+      document.getElementById("btn-pause").textContent    = "▶ 再開";
+      document.getElementById("timer-status").textContent = "休憩中...（他の端末で開始された記録に接続しました）";
+      updateTimerUI();
+      startSyncPolling();
+      return;
+    }
+    if (res && res.error === "already_awaiting_confirm") {
+      // ★ 他の端末で計測していたものが、既に3時間経過で自動停止済み
+      applyServerTimerState(res);
+      showAutoStoppedConfirm();
+      return;
+    }
+    if (btn) btn.disabled = false;
+    alert("通信エラーのためタイマーを開始できませんでした。もう一度お試しください。");
+    return;
+  }
+
+  applyServerTimerState(res);
   document.getElementById("btn-start").disabled = true;
   document.getElementById("btn-pause").disabled = false;
   document.getElementById("btn-stop").disabled  = false;
-  document.getElementById("timer-status").textContent = "計測中...";
+  document.getElementById("btn-pause").textContent = "⏸ 休憩";
+  document.getElementById("timer-status").textContent =
+    res.joined ? "計測中...（他の端末で開始された記録に接続しました）" : "計測中...";
   startInterval();
-  try { localStorage.setItem(LS_TIMER, timerStartEpoch); } catch(e) {}
 }
 
-function timerPauseResume() {
+async function timerPauseResume() {
   if (!timerRunning && !timerIsPaused) return;
+  var btn = document.getElementById("btn-pause");
+  if (btn) btn.disabled = true; // ★ 連打防止（応答が返るまで）
+
   if (!timerIsPaused) {
+    // 休憩する
     clearInterval(timerInterval); timerInterval = null;
-    elapsedAtPause = timerSec; timerRunning = false; timerIsPaused = true;
+    var res = await timerApiPause();
+    if (!res || res.ok === false) {
+      if (res && res.error === "not_logged_in") { forceReLogin(); return; }
+      // サーバーとの同期に失敗した場合は最新状態を取り直して表示だけ合わせる
+      var st = await timerApiState();
+      if (st && st.ok) applyServerTimerState(st);
+      startInterval();
+      if (btn) btn.disabled = false;
+      return;
+    }
+    applyServerTimerState(res);
     document.getElementById("btn-pause").textContent      = "▶ 再開";
     document.getElementById("timer-status").textContent   = "休憩中...";
     document.getElementById("timer-pts-hint").textContent = "";
-    try { localStorage.removeItem(LS_TIMER); } catch(e) {}
   } else {
-    timerIsPaused   = false; timerRunning = true;
-    timerStartEpoch = Date.now() - elapsedAtPause * 1000;
+    // 再開する
+    var res2 = await timerApiResume();
+    if (!res2 || res2.ok === false) {
+      if (res2 && res2.error === "not_logged_in") { forceReLogin(); return; }
+      alert("通信エラーのため再開できませんでした。もう一度お試しください。");
+      if (btn) btn.disabled = false;
+      return;
+    }
+    applyServerTimerState(res2);
     document.getElementById("btn-pause").textContent    = "⏸ 休憩";
     document.getElementById("timer-status").textContent = "計測中...";
     startInterval();
-    try { localStorage.setItem(LS_TIMER, timerStartEpoch); } catch(e) {}
   }
+  if (btn) btn.disabled = false;
 }
 
-function timerStop() {
-  clearInterval(timerInterval); timerInterval = null;
+async function timerStop() {
+  clearInterval(timerInterval);     timerInterval     = null;
+  clearInterval(timerSyncInterval); timerSyncInterval = null;
   timerRunning = false; timerIsPaused = false;
+  timerApiStop(); // ★ サーバー側の状態もクリアする（後片付け。結果は待たない）
   var mins = Math.floor(timerSec / 60);
   if (mins < 1) {
     alert("1分未満のため記録できません");
@@ -1237,6 +1442,7 @@ async function saveTimer() {
   }
 
   setTimerLastLog(mins); // ★ 保存成功後に記録
+  timerApiStop(); // ★ サーバー側のタイマー状態も後片付け（自動停止からの保存の場合など。結果は待たない）
 
   var okEl = document.getElementById("timer-ok");
   okEl.style.display = "block";
@@ -1258,12 +1464,16 @@ function editTimer() {
   }
 }
 function discardTimer() {
-  if (confirm("この計測結果を破棄しますか？")) { timerReset(); showTab("home"); }
+  if (confirm("この計測結果を破棄しますか？")) {
+    timerApiStop(); // ★ サーバー側のタイマー状態も後片付け（結果は待たない）
+    timerReset(); showTab("home");
+  }
 }
 function timerReset() {
-  clearInterval(timerInterval); timerInterval = null;
-  timerSec = 0; timerRunning = false; timerIsPaused = false;
-  elapsedAtPause = 0; timerStartEpoch = null; lastAwardedMin = 0;
+  clearInterval(timerInterval);     timerInterval     = null;
+  clearInterval(timerSyncInterval); timerSyncInterval = null;
+  timerSec = 0; timerRunning = false; timerIsPaused = false; awaitingConfirm = false;
+  accumulatedSec = 0; runStartClientEpoch = null; lastAwardedMin = 0;
   document.getElementById("timer-display").textContent   = "00:00:00";
   document.getElementById("timer-status").textContent    = "準備完了";
   document.getElementById("timer-pts-hint").textContent  = "";
@@ -1274,44 +1484,40 @@ function timerReset() {
   document.getElementById("timer-main").style.display    = "block";
   document.getElementById("timer-confirm").style.display = "none";
   document.getElementById("conf-memo").value = "";
-  try { localStorage.removeItem(LS_TIMER); } catch(e) {}
 }
 
-function restoreTimer() {
-  try {
-    var saved = localStorage.getItem(LS_TIMER);
-    if (!saved) return;
-    var elapsed = Math.floor((Date.now() - parseInt(saved)) / 1000);
-    if (elapsed <= 0) { localStorage.removeItem(LS_TIMER); return; }
-    if (elapsed >= 10800) {
-      localStorage.removeItem(LS_TIMER);
-      notifyUser("StudyLog", "前回の計測から3時間以上経過していたため、計測を破棄しました。");
-      return;
-    }
+// ★ ページを開いた直後に、サーバー側のタイマー状態を取得して画面に反映する。
+//   これにより「別端末で計測中/休憩中の記録」もそのまま復元でき、また
+//   3時間経過による自動停止・30分放置による自動破棄もサーバー基準の
+//   正確な状態としてすぐに分かるようになる（以前のlocalStorageベースの
+//   判定はタブが開いていない間はズレる／進まないことがあった）。
+async function restoreTimer() {
+  var res = await timerApiState();
+  if (!res || !res.ok) return;
 
-    // ★ サイトを離れていた／タブを閉じていた間も計測は続いていた扱いにし、
-    //   「再開」クリックを待たず自動的に計測中の状態へ復帰させる。
-    //   （LS_TIMERは休憩中は削除される仕様なので、ここに値が残っている
-    //     ＝ユーザーが自分で止めたのではなく、ページを離れただけと判定できる）
-    timerSec        = elapsed;
-    elapsedAtPause  = elapsed;
-    timerRunning    = true;
-    timerIsPaused   = false;
-    timerStartEpoch = parseInt(saved); // 開始時刻は変えずそのまま維持
+  if (res.state === "awaiting_confirm") {
+    applyServerTimerState(res);
+    showAutoStoppedConfirm();
+    return;
+  }
 
-    // 離れていた間の5分区切りポイントを二重付与しないよう、
-    // 経過分数から「本来もう付与されているはずの区切り」まで進めておく
-    lastAwardedMin = Math.floor(elapsed / 60 / 5) * 5;
+  if (res.state !== "running" && res.state !== "paused") return; // idle：何もしない
 
-    updateTimerUI();
-    document.getElementById("btn-start").disabled       = true;
-    document.getElementById("btn-pause").disabled       = false;
-    document.getElementById("btn-stop").disabled        = false;
+  applyServerTimerState(res);
+  document.getElementById("btn-start").disabled = true;
+  document.getElementById("btn-pause").disabled = false;
+  document.getElementById("btn-stop").disabled  = false;
+  updateTimerUI();
+
+  if (res.state === "paused") {
+    document.getElementById("btn-pause").textContent    = "▶ 再開";
+    document.getElementById("timer-status").textContent = "休憩中...（離れていた間も保持されていました）";
+    startSyncPolling();
+  } else {
     document.getElementById("btn-pause").textContent    = "⏸ 休憩";
     document.getElementById("timer-status").textContent = "計測中...（離れていた間も継続していました）";
-
     startInterval();
-  } catch(e) {}
+  }
 }
 
 // ============================================================
