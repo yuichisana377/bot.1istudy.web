@@ -1386,13 +1386,25 @@ async function timerPauseResume() {
 }
 
 async function timerStop() {
-  clearInterval(timerInterval);     timerInterval     = null;
-  clearInterval(timerSyncInterval); timerSyncInterval = null;
-  timerRunning = false; timerIsPaused = false;
-  timerApiStop(); // ★ サーバー側の状態もクリアする（後片付け。結果は待たない）
+  clearInterval(timerInterval); timerInterval = null;
+  var wasRunning = timerRunning;
+  timerRunning = false; timerIsPaused = true;
+
+  // ★ ここではまだ保存/破棄が決まっていないため、サーバー側の記録は
+  //   すぐに消さず「一時停止」扱いで経過時間だけ確定させておく。
+  //   これにより他の端末には「一時停止しました」と正しく伝わり、
+  //   計測中の表示が理由もなく途中でリセットされるのを防げる。
+  //   （実際にサーバー側の記録を消すのは、保存 or 破棄が確定した時）
+  if (wasRunning) {
+    var res = await timerApiPause();
+    if (res && res.ok) applyServerTimerState(res);
+  }
+  startSyncPolling(); // ★ 確認画面を見ている間も、他端末での保存/破棄を検知できるようにする
+
   var mins = Math.floor(timerSec / 60);
   if (mins < 1) {
     alert("1分未満のため記録できません");
+    timerApiStop(); // 記録として残す価値が無いので、ここでサーバー側もクリアする
     timerReset(); return;
   }
   document.getElementById("timer-main").style.display    = "none";
