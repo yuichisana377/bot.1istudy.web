@@ -1080,9 +1080,10 @@ async function toggleTask(id) {
 function pad(n) { return String(n).padStart(2, "0"); }
 
 function updateTimerUI() {
-  var h = Math.floor(timerSec / 3600);
-  var m = Math.floor((timerSec % 3600) / 60);
-  var s = timerSec % 60;
+  var t = Math.floor(timerSec); // ★ サーバー由来の値に端数が混ざっていても表示が壊れないようにする
+  var h = Math.floor(t / 3600);
+  var m = Math.floor((t % 3600) / 60);
+  var s = t % 60;
   document.getElementById("timer-display").textContent = pad(h)+":"+pad(m)+":"+pad(s);
   var hint = document.getElementById("timer-pts-hint");
   if (timerRunning && !timerIsPaused) {
