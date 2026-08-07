@@ -311,6 +311,21 @@ function openAccountModal() {
         '<button id="sl-acct-confirm-pw" style="width:100%;padding:10px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">パスワードを変更する</button>' +
         '<div id="sl-acct-pw-msg" style="font-size:12px;margin-top:6px;"></div>' +
       '</div>' +
+    '</div>' +
+
+    '<div style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:20px;">' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">🔗 Discord連携</label>' +
+      '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">' +
+        '連携すると、タイマーの3時間経過通知などをDiscordのDMで直接受け取れます。<br>' +
+        '下のボタンで連携コードを発行し、Discordで <b>「/id連携 コード」</b> を実行してください。' +
+      '</p>' +
+      '<button id="sl-acct-linkcode-btn" style="padding:8px 14px;border:none;border-radius:8px;background:#334155;color:#fff;font-size:13px;cursor:pointer;">連携コードを発行する</button>' +
+      '<div id="sl-acct-linkcode-msg" style="font-size:12px;margin-top:6px;"></div>' +
+      '<div id="sl-acct-linkcode-box" style="display:none;margin-top:12px;text-align:center;background:#f1f5f9;border-radius:10px;padding:14px;">' +
+        '<div style="font-size:12px;color:#64748b;margin-bottom:6px;">Discordで下のコマンドを実行してください：</div>' +
+        '<div style="font-size:14px;color:#334155;margin-bottom:8px;">/id連携 <span id="sl-acct-linkcode-value" style="font-family:monospace;font-weight:700;font-size:22px;letter-spacing:3px;color:#0f172a;"></span></div>' +
+        '<div id="sl-acct-linkcode-timer" style="font-size:12px;color:#dc2626;"></div>' +
+      '</div>' +
     '</div>';
 
   overlay.appendChild(box);
@@ -320,9 +335,15 @@ function openAccountModal() {
   document.getElementById("sl-acct-nickname-save").onclick = submitNicknameChange;
   document.getElementById("sl-acct-send-code").onclick     = requestPasswordChangeCode;
   document.getElementById("sl-acct-confirm-pw").onclick    = submitPasswordChange;
+  document.getElementById("sl-acct-linkcode-btn").onclick  = requestLinkCode;
 }
 
+// ★ 連携コードの有効期限カウントダウン用タイマー（モーダルを閉じたら止める）
+let linkCodeCountdownInterval = null;
+
 function closeAccountModal() {
+  clearInterval(linkCodeCountdownInterval);
+  linkCodeCountdownInterval = null;
   var el = document.getElementById("sl-acct-overlay");
   if (el) el.remove();
 }
@@ -457,6 +478,59 @@ function doLogout() {
 
 // ★ サーバー側でセッションが無効（期限切れ・別端末でログアウト等）と
 //   判定された場合に、ログイン画面へ強制的に戻す
+// ── Discord連携コードの発行 ──────────────────────────────
+// ★ ログイン済み（session_token検証済み）の本人だけが呼べるAPI。
+//   発行されたコードをDiscordで「/id連携 コード」に入力すると連携が完了する
+//   （5分間だけ有効・1回使い切り。生徒IDを知っているだけでは連携できない）。
+async function requestLinkCode() {
+  var btn = document.getElementById("sl-acct-linkcode-btn");
+  btn.disabled = true;
+  try {
+    var data = await api("/generate_link_code", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }),
+    });
+    if (data && data.ok) {
+      document.getElementById("sl-acct-linkcode-box").style.display = "";
+      document.getElementById("sl-acct-linkcode-value").textContent = data.code;
+      setAcctMsg("sl-acct-linkcode-msg", "");
+      startLinkCodeCountdown(data.expires_in_sec || 300);
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
+    } else if (data && data.error === "too_soon") {
+      setAcctMsg("sl-acct-linkcode-msg", "少し時間をおいてから再度お試しください（あと約" + (data.retry_after_sec || 30) + "秒）", true);
+    } else {
+      setAcctMsg("sl-acct-linkcode-msg", "コードの発行に失敗しました。時間をおいて再試行してください。", true);
+    }
+  } catch(e) {
+    setAcctMsg("sl-acct-linkcode-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// コードの有効期限（秒）を1秒ごとにカウントダウン表示する
+function startLinkCodeCountdown(sec) {
+  clearInterval(linkCodeCountdownInterval);
+  var remain  = sec;
+  var timerEl = document.getElementById("sl-acct-linkcode-timer");
+
+  function tick() {
+    timerEl = document.getElementById("sl-acct-linkcode-timer"); // モーダルが閉じられていたら null
+    if (!timerEl) { clearInterval(linkCodeCountdownInterval); return; }
+    if (remain <= 0) {
+      timerEl.textContent = "有効期限が切れました。もう一度発行してください。";
+      clearInterval(linkCodeCountdownInterval);
+      return;
+    }
+    var m = Math.floor(remain / 60), s = remain % 60;
+    timerEl.textContent = "有効期限: あと " + m + "分" + (s < 10 ? "0" : "") + s + "秒";
+    remain--;
+  }
+  tick();
+  linkCodeCountdownInterval = setInterval(tick, 1000);
+}
+
 function forceReLogin() {
   localStorage.removeItem(SESSION_KEY);
   alert("ログインが切れました。もう一度ログインしてください。");
