@@ -171,14 +171,15 @@ let nicknameMap       = {};   // { "1I001": "太郎", ... }
 let pendingTaskIds = new Set();
 
 let timerInterval     = null;  // 表示更新用（500ms）
-let timerSyncInterval = null;  // ★ サーバーとの定期同期用（複数端末対応・自動停止/破棄の検知）
+let timerSyncInterval = null;  // ★ サーバーとの定期同期用（複数端末対応・自動休憩の検知）
 let timerSec          = 0;
 let timerRunning      = false;
 let timerIsPaused     = false;
-let awaitingConfirm   = false; // ★ サーバー側で3時間経過により自動停止され、保存待ちになっている状態
+let pauseReason       = null;  // ★ 一時停止の理由 "manual"（自分で休憩） / "checkpoint"（3時間経過での自動休憩）
 let accumulatedSec    = 0;     // ★ 直近の計測区間を含まない、これまでの累計秒（サーバーのaccumulated_secと同期）
 let runStartClientEpoch = null; // ★ 現在の計測区間の開始時刻（この端末のDate.now()換算）
 let lastAwardedMin    = 0;
+let lastCheckpointMin = 0;     // ★ 3時間（180分）区切りのチェックを二重に走らせないための直近チェック済み分数
 
 // ============================================================
 //  起動
@@ -1145,7 +1146,7 @@ function computeElapsedSec() {
 }
 
 // サーバーから受け取ったタイマー状態(state/elapsed_sec/run_start_epoch/
-// accumulated_sec/server_now)をローカルの表示用変数へ反映する。
+// accumulated_sec/pause_reason/server_now)をローカルの表示用変数へ反映する。
 // ★ server_now とこの端末のDate.now()の差（時計のズレ）を吸収してから
 //   run_start_epoch をこの端末の時計に換算するので、端末の時計が多少
 //   ズレていても表示上の経過時間は正確になる。
@@ -1155,9 +1156,9 @@ function applyServerTimerState(resp) {
   runStartClientEpoch = (resp.state === "running" && resp.run_start_epoch != null)
     ? (resp.run_start_epoch - clockOffset)
     : null;
-  timerRunning    = (resp.state === "running");
-  timerIsPaused   = (resp.state === "paused");
-  awaitingConfirm = (resp.state === "awaiting_confirm");
+  timerRunning  = (resp.state === "running");
+  timerIsPaused = (resp.state === "paused");
+  pauseReason   = resp.pause_reason || null; // "manual" | "checkpoint" | null
   timerSec = computeElapsedSec();
   // 離れていた間の5分区切りポイントを二重付与しないよう、経過分数から
   // 「本来もう付与されているはずの区切り」まで進めておく
@@ -1165,7 +1166,7 @@ function applyServerTimerState(resp) {
 }
 
 // ★ 定期的にサーバーの本当の状態と同期する（他端末での一時停止／再開、
-//   3時間経過による自動停止、30分放置による自動破棄などを検知するため）
+//   3時間ごとの自動休憩などを検知するため）
 function startSyncPolling() {
   if (timerSyncInterval) clearInterval(timerSyncInterval);
   timerSyncInterval = setInterval(syncTimerFromServer, 20000);
@@ -1176,34 +1177,29 @@ async function syncTimerFromServer() {
   if (!res || !res.ok) return;
 
   if (res.state === "idle") {
-    // 保存・破棄が別端末で済んだ、または30分放置による自動破棄
-    var wasAwaiting = awaitingConfirm;
+    // 保存・破棄が別端末で済んだ
     clearInterval(timerInterval);     timerInterval     = null;
     clearInterval(timerSyncInterval); timerSyncInterval = null;
     var onTimerScreen =
       document.getElementById("timer-main").style.display === "block" ||
       document.getElementById("timer-confirm").style.display === "block";
-    if (wasAwaiting) {
-      notifyUserBrowserOnly("StudyLog", "保存されないまま30分以上経過したため、計測を破棄しました。");
-    }
     if (onTimerScreen) timerReset();
     return;
   }
 
-  if (res.state === "awaiting_confirm" && !awaitingConfirm) {
-    // ★ サーバー側で3時間経過と判定され、自動的に停止された
-    clearInterval(timerInterval); timerInterval = null;
-    applyServerTimerState(res);
-    showAutoStoppedConfirm();
-    return;
-  }
-
   if (res.state === "paused" && timerRunning) {
+    // ★ 3時間経過による自動休憩、または他端末での一時停止
     clearInterval(timerInterval); timerInterval = null;
     applyServerTimerState(res);
-    document.getElementById("btn-pause").textContent    = "▶ 再開";
-    document.getElementById("timer-status").textContent = "休憩中...（他の端末で一時停止されました）";
     updateTimerUI();
+    document.getElementById("btn-pause").textContent = "▶ 再開";
+    if (pauseReason === "checkpoint") {
+      document.getElementById("timer-status").textContent = "休憩中...（3時間経過したため自動的に休憩にしました。再開すると続きから計測できます）";
+      notifyUserBrowserOnly("StudyLog", "3時間が経過したため、自動的に休憩（一時停止）にしました。「再開」から続きを計測できます。");
+    } else {
+      document.getElementById("timer-status").textContent = "休憩中...（他の端末で一時停止されました）";
+    }
+    startSyncPolling();
     return;
   }
 
@@ -1220,41 +1216,24 @@ async function syncTimerFromServer() {
   }
 }
 
-// ★ サーバー側で3時間経過により自動停止された場合の確認画面表示。
-//   手動停止と同じ「保存確認画面」を出し、教科を選んで保存できるように
-//   する（以前は問答無用で破棄していたが、記録が消えてしまうのは
-//   不親切なため、30分の猶予を設けて保存できるようにした）。
-function showAutoStoppedConfirm() {
-  awaitingConfirm = true;
-  timerRunning = false; timerIsPaused = false;
-  var mins = 180;
-  document.getElementById("timer-main").style.display    = "none";
-  document.getElementById("timer-confirm").style.display = "block";
-  document.getElementById("conf-time").textContent       = mins + "分 00秒";
-  document.getElementById("conf-time").dataset.min       = mins;
-  document.getElementById("timer-pts-hint").textContent  = "";
-  // ★ Discordの連携済みDM通知はサーバー側から既に送信済みなので、ここでは
-  //   「いまこの画面を見ている場合だけ気づける」ブラウザ内通知だけを出す
-  notifyUserBrowserOnly("StudyLog",
-    "3時間が経過したため、タイマーを自動的に停止しました。内容を確認して保存してください。（30分以内に保存されないと破棄されます）");
-  startSyncPolling();
-}
-
 function startInterval() {
   if (timerInterval) clearInterval(timerInterval);
+  // ★ 直前に何分まで自動休憩チェック済みだったかを、現在の経過時間から
+  //   合わせ直しておく（再開直後などに余計なチェックが走らないように）
+  lastCheckpointMin = Math.floor(timerSec / 60 / 180) * 180;
   timerInterval = setInterval(function() {
     timerSec = computeElapsedSec();
-    if (timerSec >= 10800) {
-      // ★ 表示上は3時間に達しているので、いったんここで頭打ちにしつつ、
-      //   サーバー側の正式な自動停止判定（check_study_timers、または
-      //   次のsyncTimerFromServer）を待つ。実際の停止・通知はサーバーが
-      //   タブの状態に関わらず正確に行うので、ここでは表示のみ止める。
-      timerSec = 10800;
-      updateTimerUI();
-      syncTimerFromServer();
-      return;
-    }
     var curMin = Math.floor(timerSec / 60);
+
+    // ★ 3時間（180分）ごとに、サーバー側の自動休憩判定を早めに取りに行く。
+    //   タブが開いている間は最大20秒のポーリング待ちを避け、素早く休憩へ
+    //   切り替わったことを反映できるようにする。実際の判定・DM通知は
+    //   タブの状態に関わらずサーバー側（check_study_timers）が正確に行う。
+    if (curMin > 0 && curMin % 180 === 0 && curMin > lastCheckpointMin) {
+      lastCheckpointMin = curMin;
+      syncTimerFromServer();
+    }
+
     if (curMin > 0 && curMin % 5 === 0 && curMin > lastAwardedMin) {
       lastAwardedMin = curMin;
       myPoints++;
@@ -1305,7 +1284,7 @@ function notifyUserBrowserOnly(title, body) {
 }
 
 async function timerStart() {
-  if (timerRunning || timerIsPaused || awaitingConfirm) return;
+  if (timerRunning || timerIsPaused) return;
   ensureNotifyPermission(); // ★ ユーザー操作（クリック）のタイミングで許可をリクエスト
   var btn = document.getElementById("btn-start");
   if (btn) btn.disabled = true; // ★ 連打防止（応答が返るまで）
@@ -1315,21 +1294,18 @@ async function timerStart() {
   if (!res || res.ok === false) {
     if (res && res.error === "not_logged_in") { forceReLogin(); return; }
     if (res && res.error === "already_paused") {
-      // ★ 他の端末で既に一時停止中 → こちらもその状態に合わせる
+      // ★ 他の端末で既に一時停止中（3時間経過での自動休憩を含む） → こちらもその状態に合わせる
       applyServerTimerState(res);
       document.getElementById("btn-start").disabled = true;
       document.getElementById("btn-pause").disabled  = false;
       document.getElementById("btn-stop").disabled   = false;
       document.getElementById("btn-pause").textContent    = "▶ 再開";
-      document.getElementById("timer-status").textContent = "休憩中...（他の端末で開始された記録に接続しました）";
+      document.getElementById("timer-status").textContent =
+        res.pause_reason === "checkpoint"
+          ? "休憩中...（3時間経過したため自動的に休憩にしました。再開すると続きから計測できます）"
+          : "休憩中...（他の端末で開始された記録に接続しました）";
       updateTimerUI();
       startSyncPolling();
-      return;
-    }
-    if (res && res.error === "already_awaiting_confirm") {
-      // ★ 他の端末で計測していたものが、既に3時間経過で自動停止済み
-      applyServerTimerState(res);
-      showAutoStoppedConfirm();
       return;
     }
     if (btn) btn.disabled = false;
@@ -1485,8 +1461,8 @@ function discardTimer() {
 function timerReset() {
   clearInterval(timerInterval);     timerInterval     = null;
   clearInterval(timerSyncInterval); timerSyncInterval = null;
-  timerSec = 0; timerRunning = false; timerIsPaused = false; awaitingConfirm = false;
-  accumulatedSec = 0; runStartClientEpoch = null; lastAwardedMin = 0;
+  timerSec = 0; timerRunning = false; timerIsPaused = false; pauseReason = null;
+  accumulatedSec = 0; runStartClientEpoch = null; lastAwardedMin = 0; lastCheckpointMin = 0;
   document.getElementById("timer-display").textContent   = "00:00:00";
   document.getElementById("timer-status").textContent    = "準備完了";
   document.getElementById("timer-pts-hint").textContent  = "";
@@ -1501,18 +1477,12 @@ function timerReset() {
 
 // ★ ページを開いた直後に、サーバー側のタイマー状態を取得して画面に反映する。
 //   これにより「別端末で計測中/休憩中の記録」もそのまま復元でき、また
-//   3時間経過による自動停止・30分放置による自動破棄もサーバー基準の
-//   正確な状態としてすぐに分かるようになる（以前のlocalStorageベースの
-//   判定はタブが開いていない間はズレる／進まないことがあった）。
+//   3時間ごとの自動休憩もサーバー基準の正確な状態としてすぐに分かる
+//   ようになる（以前のlocalStorageベースの判定はタブが開いていない間は
+//   ズレる／進まないことがあった）。
 async function restoreTimer() {
   var res = await timerApiState();
   if (!res || !res.ok) return;
-
-  if (res.state === "awaiting_confirm") {
-    applyServerTimerState(res);
-    showAutoStoppedConfirm();
-    return;
-  }
 
   if (res.state !== "running" && res.state !== "paused") return; // idle：何もしない
 
@@ -1524,7 +1494,10 @@ async function restoreTimer() {
 
   if (res.state === "paused") {
     document.getElementById("btn-pause").textContent    = "▶ 再開";
-    document.getElementById("timer-status").textContent = "休憩中...（離れていた間も保持されていました）";
+    document.getElementById("timer-status").textContent =
+      res.pause_reason === "checkpoint"
+        ? "休憩中...（3時間経過したため自動的に休憩にしました。再開すると続きから計測できます）"
+        : "休憩中...（離れていた間も保持されていました）";
     startSyncPolling();
   } else {
     document.getElementById("btn-pause").textContent    = "⏸ 休憩";
