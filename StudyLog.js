@@ -1151,7 +1151,7 @@ function computeElapsedSec() {
 //   ズレていても表示上の経過時間は正確になる。
 function applyServerTimerState(resp) {
   var clockOffset = (resp.server_now != null) ? (resp.server_now - Date.now()) : 0;
-  accumulatedSec  = resp.accumulated_sec || 0;
+  accumulatedSec  = Math.round(resp.accumulated_sec || 0); // ★ サーバー側で丸め済みのはずだが念のため防御的に丸める
   runStartClientEpoch = (resp.state === "running" && resp.run_start_epoch != null)
     ? (resp.run_start_epoch - clockOffset)
     : null;
