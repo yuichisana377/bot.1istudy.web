@@ -326,6 +326,9 @@ function openAccountModal() {
         '<div style="font-size:14px;color:#334155;margin-bottom:8px;">/id連携 <span id="sl-acct-linkcode-value" style="font-family:monospace;font-weight:700;font-size:22px;letter-spacing:3px;color:#0f172a;"></span></div>' +
         '<div id="sl-acct-linkcode-timer" style="font-size:12px;color:#dc2626;"></div>' +
       '</div>' +
+      '<div style="text-align:center;font-size:12px;color:#94a3b8;margin:12px 0;">— または —</div>' +
+      '<button id="sl-acct-oauth-btn" style="width:100%;padding:10px;border:none;border-radius:8px;background:#5865F2;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">🔗 Discordで連携する</button>' +
+      '<div id="sl-acct-oauth-msg" style="font-size:12px;margin-top:6px;text-align:center;"></div>' +
     '</div>';
 
   overlay.appendChild(box);
@@ -336,6 +339,7 @@ function openAccountModal() {
   document.getElementById("sl-acct-send-code").onclick     = requestPasswordChangeCode;
   document.getElementById("sl-acct-confirm-pw").onclick    = submitPasswordChange;
   document.getElementById("sl-acct-linkcode-btn").onclick  = requestLinkCode;
+  document.getElementById("sl-acct-oauth-btn").onclick     = startDiscordOAuth;
 }
 
 // ★ 連携コードの有効期限カウントダウン用タイマー（モーダルを閉じたら止める）
@@ -535,6 +539,36 @@ function forceReLogin() {
   localStorage.removeItem(SESSION_KEY);
   alert("ログインが切れました。もう一度ログインしてください。");
   location.replace("/Login.html");
+}
+
+// ── Discord OAuth連携（「Discordでログイン」ボタン方式） ──
+// ★ ログイン済み（session_token検証済み）の本人だけが呼べるAPIで
+//   一時stateを発行してもらい、そのstate付きでDiscordの認可画面に
+//   ブラウザごと移動する。認可後はサーバー側(/discord_oauth_callback)が
+//   stateを検証してから連携するので、他人になりすまして連携される
+//   心配はない（state自体が「ログイン済みの本人」に対してのみ発行される）。
+async function startDiscordOAuth() {
+  var btn = document.getElementById("sl-acct-oauth-btn");
+  btn.disabled = true;
+  try {
+    var data = await api("/discord_oauth_start", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }),
+    });
+    if (data && data.ok && data.authorize_url) {
+      location.href = data.authorize_url; // Discordの認可画面へ移動
+    } else if (data && data.error === "not_logged_in") {
+      forceReLogin();
+    } else if (data && data.error === "oauth_not_configured") {
+      setAcctMsg("sl-acct-oauth-msg", "現在Discord連携（OAuth）は準備中です。上のコード方式をご利用ください。", true);
+    } else {
+      setAcctMsg("sl-acct-oauth-msg", "連携の開始に失敗しました。時間をおいて再試行してください。", true);
+    }
+  } catch(e) {
+    setAcctMsg("sl-acct-oauth-msg", "サーバーに接続できません", true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── 全ユーザー一覧からnicknameMapを構築 ★ ──────────────
