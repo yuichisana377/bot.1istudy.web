@@ -36,6 +36,16 @@ const AVATAR_COLORS = [
 
 // ── 起動 ────────────────────────────────────────────────────
 window.addEventListener("load", () => {
+  // ★ Discordログインで初回登録が必要な場合、/discord_login_start →
+  //   Discord認可 → コールバック経由で ?discord_reg=<dtoken> 付きで
+  //   このページに戻ってくる。最優先でそちらを処理する。
+  const params = new URLSearchParams(location.search);
+  const dtoken = params.get("discord_reg");
+  if (dtoken) {
+    openDiscordRegisterStep(dtoken);
+    return;
+  }
+
   // 自動ログイン（localStorage に session_token 付きの保存済みセッションがある場合のみ）
   const saved = getSession();
   if (saved && saved.session_token) {
@@ -161,6 +171,27 @@ async function confirmPasswordReset(id, code, newPassword) {
   return res.json(); // { ok: true } or { ok: false, error: "wrong_code" | "code_expired" | ... }
 }
 
+// ── Discordログイン関連 ──────────────────────────────────
+async function fetchDiscordRegInfo(dtoken) {
+  const res = await fetch(
+    `${API_BASE}/discord_reg_info?dtoken=${encodeURIComponent(dtoken)}`,
+    { headers: { "Content-Type": "application/json" } }
+  );
+  return res.json(); // { ok:true, discord_username } or { ok:false, error:"reg_token_invalid" }
+}
+
+async function completeDiscordRegistration(dtoken, studentId, nickname, password) {
+  const res = await fetch(`${API_BASE}/discord_complete_registration`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      guild_id: GUILD_ID, dtoken,
+      student_id: studentId, nickname, password,
+    }),
+  });
+  return res.json(); // { ok:true, session_token, student:{id,nickname} } or { ok:false, error }
+}
+
 // ============================================================
 //  ステップ切り替え
 // ============================================================
@@ -178,6 +209,9 @@ function showStep(id) {
   }
   if (id === "step-forgot") {
     setTimeout(() => document.getElementById("inp-forgot-id")?.focus(), 60);
+  }
+  if (id === "step-discord-reg") {
+    setTimeout(() => document.getElementById("inp-discord-student-id")?.focus(), 60);
   }
 }
 
@@ -476,6 +510,114 @@ function showForgotOk(msg) {
 }
 
 // ============================================================
+//  STEP 4 — Discordログイン
+//  ─────────────────────────────
+//  1. loginWithDiscord() でDiscordの認可画面へ移動
+//  2. 認可後、サーバー側で以下のいずれかに分岐する：
+//     ・既にDiscordログイン登録済み → そのままセッションが発行され、
+//       StudyLog.htmlへ自動遷移する（このページには戻ってこない）
+//     ・初めて／未登録 → ?discord_reg=<dtoken> 付きでこのページに戻り、
+//       openDiscordRegisterStep() が呼ばれる
+// ============================================================
+function loginWithDiscord() {
+  location.href = `${API_BASE}/discord_login_start?guild_id=${GUILD_ID}`;
+}
+
+async function openDiscordRegisterStep(dtoken) {
+  document.getElementById("inp-dtoken").value = dtoken;
+  document.getElementById("discord-reg-err").style.display = "none";
+  document.getElementById("discord-reg-password-field").style.display = "none";
+  document.getElementById("discord-reg-existing-note").style.display  = "";
+  document.getElementById("inp-discord-password").value = "";
+
+  showStep("step-discord-reg");
+
+  try {
+    const info = await fetchDiscordRegInfo(dtoken);
+    if (info.ok && info.discord_username) {
+      // Discordの表示名をニックネームの初期値として提案する（そのまま使うかは本人の自由）
+      const nickEl = document.getElementById("inp-discord-nickname");
+      if (nickEl && !nickEl.value) nickEl.value = info.discord_username.slice(0, 16);
+    } else if (!info.ok) {
+      showDiscordRegErr("このリンクの有効期限が切れています。もう一度「Discordでログイン」からやり直してください。");
+    }
+  } catch {
+    // 参考情報の取得に失敗しても、登録フォーム自体は使えるので致命的ではない
+  }
+
+  // URLに残った ?discord_reg=... を消しておく（再読み込みで壊れないように）
+  history.replaceState(null, "", location.pathname);
+}
+
+async function submitDiscordRegister() {
+  const dtoken   = document.getElementById("inp-dtoken").value;
+  const id       = document.getElementById("inp-discord-student-id").value.trim().toUpperCase();
+  const nickname = document.getElementById("inp-discord-nickname").value.trim();
+  const password = document.getElementById("inp-discord-password").value;
+  const btnEl    = document.getElementById("btn-discord-reg-submit");
+
+  if (!validateDiscordId(id)) return;
+
+  setBtn(btnEl, true, "登録中…");
+
+  try {
+    const result = await completeDiscordRegistration(dtoken, id, nickname, password);
+
+    if (result.ok) {
+      const palette = paletteFor(result.student.id);
+      saveSession(result.student, result.session_token, palette);
+      location.href = getRedirectTarget();
+      return;
+    }
+
+    if (result.error === "password_required" || result.error === "wrong_password") {
+      // ★ 既存の学籍番号 → パスワード入力欄を表示して本人確認を求める
+      document.getElementById("discord-reg-password-field").style.display = "";
+      document.getElementById("inp-discord-password").focus();
+      showDiscordRegErr(
+        result.error === "wrong_password"
+          ? "パスワードが正しくありません"
+          : "この学籍番号は登録済みです。パスワードを入力してください。"
+      );
+      return;
+    }
+    if (result.error === "password_not_set") {
+      showDiscordRegErr("この学籍番号はまだパスワードが設定されていません。先にログイン画面から学籍番号でログインし、パスワードを設定してください。");
+      return;
+    }
+    if (result.error === "nickname_required") {
+      showDiscordRegErr("ニックネームを入力してください");
+      return;
+    }
+    if (result.error === "reg_token_invalid") {
+      showDiscordRegErr("このリンクの有効期限が切れています。もう一度「Discordでログイン」からやり直してください。");
+      return;
+    }
+    showDiscordRegErr("登録に失敗しました。時間をおいて再試行してください。");
+  } catch {
+    showDiscordRegErr("サーバーに接続できません。時間をおいて再試行してください。");
+  } finally {
+    setBtn(btnEl, false, "登録してログイン ✓");
+  }
+}
+
+// 学籍番号の形式チェック（既存の validateId は id-err 側に出すため、ここでは discord-reg-err 用に別途用意）
+function validateDiscordId(raw) {
+  if (!raw) { showDiscordRegErr("学籍番号を入力してください"); return false; }
+  if (!/^[A-Z0-9]{2,20}$/.test(raw)) {
+    showDiscordRegErr("半角英数字で入力してください（例: 1I001）");
+    return false;
+  }
+  return true;
+}
+
+function showDiscordRegErr(msg) {
+  const el = document.getElementById("discord-reg-err");
+  el.textContent   = "✕ " + msg;
+  el.style.display = "block";
+}
+
+// ============================================================
 //  ユーティリティ
 // ============================================================
 function setBtn(el, disabled, label) {
@@ -510,4 +652,5 @@ document.addEventListener("keydown", e => {
   if (!active) return;
   if (active.id === "step-id")       submitId();
   if (active.id === "step-register") submitRegister();
+  if (active.id === "step-discord-reg") submitDiscordRegister();
 });
