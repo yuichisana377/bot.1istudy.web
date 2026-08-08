@@ -55,6 +55,15 @@
       ログイン →
     </button>
 
+    <div class="login-divider" style="text-align:center;font-size:12px;color:#94a3b8;margin:14px 0;">— または —</div>
+
+    <button class="login-btn" id="btn-discord-login" onclick="loginWithDiscord()"
+            style="width:100%;padding:10px;border:none;border-radius:8px;background:#5865F2;color:#fff;
+                   font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;
+                   justify-content:center;gap:8px;">
+      🔗 Discordでログイン
+    </button>
+
     <p class="login-hint" style="text-align:center">
       <a href="javascript:void(0)" onclick="openForgotStep()">パスワードを忘れた場合はこちら</a>
     </p>
@@ -62,6 +71,56 @@
     <p class="login-hint">
       初めての方・パスワード未設定の方は登録画面へ自動で案内します。
     </p>
+  </div>
+
+  <!-- ══ STEP 4: Discordログイン → 初回のみ学籍番号の登録 ══ -->
+  <div class="login-step login-card" id="step-discord-reg" style="display:none">
+    <h1 class="login-title">学籍番号の登録 👋</h1>
+
+    <p class="login-reg-desc">
+      Discordでの認証が完了しました。<br>
+      初めての方は、学籍番号とニックネームを入力してください。<br>
+      <span id="discord-reg-existing-note" style="display:none">
+        すでに登録済みの学籍番号の場合は、現在のパスワードも入力してください（本人確認のため）。
+      </span>
+    </p>
+
+    <input type="hidden" id="inp-dtoken">
+
+    <div class="error-bar" id="discord-reg-err" style="display:none"></div>
+
+    <div class="field">
+      <label for="inp-discord-student-id">学籍番号</label>
+      <input type="text" id="inp-discord-student-id"
+             placeholder="例: 32600"
+             autocomplete="username"
+             autocapitalize="characters"
+             maxlength="20">
+    </div>
+
+    <div class="field" id="discord-reg-nickname-field">
+      <label for="inp-discord-nickname">ニックネーム（新規登録の場合のみ）</label>
+      <input type="text" id="inp-discord-nickname"
+             placeholder="例: Taro・太郎（16文字以内）"
+             maxlength="16"
+             autocomplete="nickname">
+    </div>
+
+    <div class="field" id="discord-reg-password-field" style="display:none">
+      <label for="inp-discord-password">パスワード（既存アカウントの本人確認用）</label>
+      <input type="password" id="inp-discord-password"
+             placeholder="現在のパスワード"
+             autocomplete="current-password"
+             maxlength="64">
+    </div>
+
+    <button class="btn-primary login-btn" id="btn-discord-reg-submit" onclick="submitDiscordRegister()">
+      登録してログイン ✓
+    </button>
+
+    <button class="login-back-btn" onclick="backToId()">
+      ← 学籍番号の入力に戻る
+    </button>
   </div>
 
   <!-- ══ STEP 2: 新規登録 ／ パスワード設定（初回のみ） ══ -->
