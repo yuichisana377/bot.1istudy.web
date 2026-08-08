@@ -36,10 +36,25 @@ const AVATAR_COLORS = [
 
 // ── 起動 ────────────────────────────────────────────────────
 window.addEventListener("load", () => {
+  const params = new URLSearchParams(location.search);
+
+  // ★ 既にDiscordログイン登録済みの場合：APIサーバー（別ドメイン）側では
+  //   localStorageを共有できないため、session_tokenをURLのクエリパラメータで
+  //   受け取り、ここ（フロントエンドのドメイン上）でlocalStorageに保存する。
+  const discordToken = params.get("discord_session_token");
+  if (discordToken) {
+    const studentId = params.get("student_id") || "";
+    const nickname  = params.get("nickname") || studentId;
+    const palette   = paletteFor(studentId);
+    saveSession({ id: studentId, nickname }, discordToken, palette);
+    history.replaceState(null, "", location.pathname); // URLからトークンを消す
+    location.href = getRedirectTarget();
+    return;
+  }
+
   // ★ Discordログインで初回登録が必要な場合、/discord_login_start →
   //   Discord認可 → コールバック経由で ?discord_reg=<dtoken> 付きで
   //   このページに戻ってくる。最優先でそちらを処理する。
-  const params = new URLSearchParams(location.search);
   const dtoken = params.get("discord_reg");
   if (dtoken) {
     openDiscordRegisterStep(dtoken);
@@ -180,13 +195,13 @@ async function fetchDiscordRegInfo(dtoken) {
   return res.json(); // { ok:true, discord_username } or { ok:false, error:"reg_token_invalid" }
 }
 
-async function completeDiscordRegistration(dtoken, studentId, nickname, password) {
+async function completeDiscordRegistration(dtoken, studentId, nickname) {
   const res = await fetch(`${API_BASE}/discord_complete_registration`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       guild_id: GUILD_ID, dtoken,
-      student_id: studentId, nickname, password,
+      student_id: studentId, nickname,
     }),
   });
   return res.json(); // { ok:true, session_token, student:{id,nickname} } or { ok:false, error }
@@ -526,9 +541,6 @@ function loginWithDiscord() {
 async function openDiscordRegisterStep(dtoken) {
   document.getElementById("inp-dtoken").value = dtoken;
   document.getElementById("discord-reg-err").style.display = "none";
-  document.getElementById("discord-reg-password-field").style.display = "none";
-  document.getElementById("discord-reg-existing-note").style.display  = "";
-  document.getElementById("inp-discord-password").value = "";
 
   showStep("step-discord-reg");
 
@@ -553,7 +565,6 @@ async function submitDiscordRegister() {
   const dtoken   = document.getElementById("inp-dtoken").value;
   const id       = document.getElementById("inp-discord-student-id").value.trim().toUpperCase();
   const nickname = document.getElementById("inp-discord-nickname").value.trim();
-  const password = document.getElementById("inp-discord-password").value;
   const btnEl    = document.getElementById("btn-discord-reg-submit");
 
   if (!validateDiscordId(id)) return;
@@ -561,7 +572,7 @@ async function submitDiscordRegister() {
   setBtn(btnEl, true, "登録中…");
 
   try {
-    const result = await completeDiscordRegistration(dtoken, id, nickname, password);
+    const result = await completeDiscordRegistration(dtoken, id, nickname);
 
     if (result.ok) {
       const palette = paletteFor(result.student.id);
@@ -570,21 +581,6 @@ async function submitDiscordRegister() {
       return;
     }
 
-    if (result.error === "password_required" || result.error === "wrong_password") {
-      // ★ 既存の学籍番号 → パスワード入力欄を表示して本人確認を求める
-      document.getElementById("discord-reg-password-field").style.display = "";
-      document.getElementById("inp-discord-password").focus();
-      showDiscordRegErr(
-        result.error === "wrong_password"
-          ? "パスワードが正しくありません"
-          : "この学籍番号は登録済みです。パスワードを入力してください。"
-      );
-      return;
-    }
-    if (result.error === "password_not_set") {
-      showDiscordRegErr("この学籍番号はまだパスワードが設定されていません。先にログイン画面から学籍番号でログインし、パスワードを設定してください。");
-      return;
-    }
     if (result.error === "nickname_required") {
       showDiscordRegErr("ニックネームを入力してください");
       return;
