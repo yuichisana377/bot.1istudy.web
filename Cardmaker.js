@@ -651,12 +651,10 @@ function renderBreadcrumb() {
 //   scopeFolderId: 表示範囲。null ならホーム（アプリ全体）、フォルダidならそのフォルダ配下（サブフォルダ含む）のみ。
 function getInProgressItems(scopeFolderId) {
   const items = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key) continue;
+  for (const key of Object.keys(studyDataCache.progress)) {
     let isFolder, id;
-    if (key.startsWith('cm_progress_deck_'))        { isFolder = false; id = key.slice('cm_progress_deck_'.length); }
-    else if (key.startsWith('cm_progress_folder_'))  { isFolder = true;  id = key.slice('cm_progress_folder_'.length); }
+    if (key.startsWith('deck:'))        { isFolder = false; id = key.slice('deck:'.length); }
+    else if (key.startsWith('folder:')) { isFolder = true;  id = key.slice('folder:'.length); }
     else continue;
 
     const data = loadStudyProgress(isFolder, id);
@@ -718,12 +716,10 @@ function renderInProgressUI() {
 //   scopeFolderId: 表示範囲。null ならホーム（アプリ全体）、フォルダidならそのフォルダ配下（サブフォルダ含む）のみ。
 function getCompletedItems(scopeFolderId) {
   const items = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key) continue;
+  for (const key of Object.keys(studyDataCache.completed)) {
     let isFolder, id;
-    if (key.startsWith('cm_completed_deck_'))        { isFolder = false; id = key.slice('cm_completed_deck_'.length); }
-    else if (key.startsWith('cm_completed_folder_'))  { isFolder = true;  id = key.slice('cm_completed_folder_'.length); }
+    if (key.startsWith('deck:'))        { isFolder = false; id = key.slice('deck:'.length); }
+    else if (key.startsWith('folder:')) { isFolder = true;  id = key.slice('folder:'.length); }
     else continue;
 
     const data = loadCompletionRecord(isFolder, id);
@@ -1273,7 +1269,7 @@ async function renderDeckList() {
   folders = loadFoldersCache();
   renderDeckListUI();
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
     renderDeckListUI();
   } catch(e) {}
 }
@@ -2837,25 +2833,97 @@ async function syncDeckToServer(deck) {
   }
 }
 
-// ── 学習 ─────────────────────────────
-function getUnsureSet(deckId) {
-  try { const raw = localStorage.getItem('unsure_' + deckId); return new Set(raw ? JSON.parse(raw) : []); }
-  catch { return new Set(); }
+// ── 学習データ（わからないマーク／続きから／完了記録）の端末間共有 ──
+//   ★ 以前はブラウザのlocalStorageだけに保存していたため、別の端末を
+//     使うと見えなかった。ログイン（student_id）に紐付けてサーバー
+//     （GitHub）側にも保存し、他の端末からも同じ状態を見られるようにする。
+//   ・考え方は list_order.json / folders.json と同じ：
+//     「サーバーが正、ローカルのキャッシュは届くまでの間だけ即座に
+//     表示するために使う」。オフライン・通信失敗時もローカルキャッシュで
+//     即座に読み書きでき、通信は裏側で試みるだけなので操作は止めない。
+const STUDY_DATA_CACHE_KEY = 'cardmaker_study_data_cache_v1';
+function loadStudyDataCache() {
+  try {
+    const d = JSON.parse(localStorage.getItem(STUDY_DATA_CACHE_KEY));
+    if (d && typeof d === 'object') {
+      return { unsure: d.unsure || {}, progress: d.progress || {}, completed: d.completed || {} };
+    }
+  } catch (e) {}
+  return { unsure: {}, progress: {}, completed: {} };
 }
-function saveUnsureSet(deckId, set) {
-  localStorage.setItem('unsure_' + deckId, JSON.stringify([...set]));
+function saveStudyDataCache() {
+  try { localStorage.setItem(STUDY_DATA_CACHE_KEY, JSON.stringify(studyDataCache)); } catch (e) {}
+}
+let studyDataCache = loadStudyDataCache();
+
+// デッキ/フォルダを進捗・完了記録のキーに変換する（サーバー側と共通の形式）
+function studyItemKey(isFolder, id) { return (isFolder ? 'folder:' : 'deck:') + id; }
+
+// ★ サーバーから自分の学習データを取得し、キャッシュへ反映する
+async function fetchAndMergeStudyData() {
+  const session = getLoginSession();
+  if (!session || !session.session_token) return false;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const qs = new URLSearchParams({ guild_id: GUILD_ID, session_token: session.session_token });
+    const res = await fetch(`${API_BASE}get_study_data?${qs.toString()}`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data.ok) return false;
+    studyDataCache = {
+      unsure:    data.data.unsure    || {},
+      progress:  data.data.progress  || {},
+      completed: data.data.completed || {},
+    };
+    saveStudyDataCache();
+    return true;
+  } catch (e) {
+    return false; // 通信失敗時はローカルキャッシュのまま使い続ける
+  }
 }
 
-// ★ 追加：学習の続きから再開するための進捗保存・読込・削除
+// 学習データをサーバーへ送る共通処理（失敗しても操作自体は止めない）
+async function pushStudyDataToServer(path, body) {
+  const session = getLoginSession();
+  if (!session || !session.session_token) return false;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, ...body }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    return !!data.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ── わからないマーク ──────────────────
+function getUnsureSet(deckId) {
+  const arr = studyDataCache.unsure[deckId];
+  return new Set(Array.isArray(arr) ? arr : []);
+}
+function saveUnsureSet(deckId, set) {
+  const arr = [...set];
+  if (arr.length) studyDataCache.unsure[deckId] = arr;
+  else delete studyDataCache.unsure[deckId];
+  saveStudyDataCache();
+  pushStudyDataToServer('save_unsure', { deck_id: deckId, unsure: arr });
+}
+
+// ★ 学習の続きから再開するための進捗保存・読込・削除
 //   ・デッキ / フォルダそれぞれ独立したキーで保存する
 //   ・保存するのは「そのときのカードの並び順（キー配列）」「今何問目か」
 //     「'all'/'unsure' のどちらのモードだったか」「反転モードだったか」
 //     「シャッフル済みだったか」
 //   ・カードの内容自体は保存しない（常に最新の decks から引き直すため、
 //     編集や画像追加をしても続きから再開したときにズレない）
-function progressKey(isFolder, id) {
-  return (isFolder ? 'cm_progress_folder_' : 'cm_progress_deck_') + id;
-}
 function saveStudyProgress() {
   const id = studyIsFolder ? studyFolderId : studyDeckId;
   if (!id || !studyCards.length) return;
@@ -2868,36 +2936,40 @@ function saveStudyProgress() {
     shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
     updatedAt: Date.now(),
   };
-  try { localStorage.setItem(progressKey(studyIsFolder, id), JSON.stringify(data)); } catch(e) {}
+  const key = studyItemKey(studyIsFolder, id);
+  studyDataCache.progress[key] = data;
+  saveStudyDataCache();
+  pushStudyDataToServer('save_study_progress', { key, data });
 }
 function loadStudyProgress(isFolder, id) {
-  try {
-    const data = JSON.parse(localStorage.getItem(progressKey(isFolder, id)));
-    if (!data || !Array.isArray(data.order) || !data.order.length) return null;
-    if (typeof data.idx !== 'number' || data.idx >= data.order.length) return null;
-    return data;
-  } catch(e) { return null; }
+  const data = studyDataCache.progress[studyItemKey(isFolder, id)];
+  if (!data || !Array.isArray(data.order) || !data.order.length) return null;
+  if (typeof data.idx !== 'number' || data.idx >= data.order.length) return null;
+  return data;
 }
 function clearStudyProgress(isFolder, id) {
-  try { localStorage.removeItem(progressKey(isFolder, id)); } catch(e) {}
+  const key = studyItemKey(isFolder, id);
+  if (key in studyDataCache.progress) {
+    delete studyDataCache.progress[key];
+    saveStudyDataCache();
+    pushStudyDataToServer('save_study_progress', { key, data: null });
+  }
 }
 
-// ★ 追加：学習を最後まで終えた（完了した）記録の保存・読込
+// ★ 学習を最後まで終えた（完了した）記録の保存・読込
 //   ・「プレイ中（続きから）」とは別のキーで、完了した日時と問題数だけを保存する
-function completedKey(isFolder, id) {
-  return (isFolder ? 'cm_completed_folder_' : 'cm_completed_deck_') + id;
-}
 function saveCompletionRecord(isFolder, id, total) {
   if (!id || !total) return;
   const data = { total, completedAt: Date.now() };
-  try { localStorage.setItem(completedKey(isFolder, id), JSON.stringify(data)); } catch(e) {}
+  const key = studyItemKey(isFolder, id);
+  studyDataCache.completed[key] = data;
+  saveStudyDataCache();
+  pushStudyDataToServer('save_completion', { key, data });
 }
 function loadCompletionRecord(isFolder, id) {
-  try {
-    const data = JSON.parse(localStorage.getItem(completedKey(isFolder, id)));
-    if (!data || typeof data.completedAt !== 'number' || !data.total) return null;
-    return data;
-  } catch(e) { return null; }
+  const data = studyDataCache.completed[studyItemKey(isFolder, id)];
+  if (!data || typeof data.completedAt !== 'number' || !data.total) return null;
+  return data;
 }
 
 let studyDeckId = null;
@@ -4216,7 +4288,7 @@ async function forceRefreshOnReturn() {
   if (isForceRefreshing) return;
   isForceRefreshing = true;
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder()]);
+    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
@@ -4290,3 +4362,21 @@ async function checkOrderUpdate() {
 
 // 10秒ごとにチェック
 setInterval(checkOrderUpdate, 10000);
+
+// ===== わからないマーク／続きから／完了記録（study_data）の他端末での変更を反映 =====
+//   ★ list_order等と違って全ユーザー共通の1ファイルではなく生徒ごとのデータなので、
+//     ハッシュ比較はせず、一覧画面を見ているときだけ一定間隔で取得し直す
+//     （他端末でわからないマークを付けた／続きから再開した直後にも反映されるように）。
+async function checkStudyDataUpdate() {
+  const activeScreen = document.querySelector('.screen.active')?.id;
+  if (activeScreen !== 'screen-list') return; // 一覧画面を見ているときだけでよい
+  try {
+    const changed = await fetchAndMergeStudyData();
+    if (changed && document.querySelector('.screen.active')?.id === 'screen-list') {
+      renderDeckListUI();
+    }
+  } catch (e) {}
+}
+
+// 15秒ごとにチェック
+setInterval(checkStudyDataUpdate, 15000);
