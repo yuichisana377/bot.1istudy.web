@@ -3,7 +3,7 @@
 //  Cardmaker.html から読み込む
 // ============================================================
 
-const API_BASE = "https://python-bot-1istudy.onrender.com/";
+const API_BASE = "https://chiro-ubuntuser.tail1130ba.ts.net/";
 const GUILD_ID = "1509880344806162544";
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 
