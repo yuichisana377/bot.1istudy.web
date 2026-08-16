@@ -1280,7 +1280,50 @@ function openDeckMenu(id) {
   const deck = decks.find(d => d.id === id);
   document.getElementById('menu-deck-name').textContent = deck.name;
   document.getElementById('menu-unpublish-item').style.display = deck.filename ? '' : 'none';
+  // ★ 追加：「みんなでクイズ」機能への入口。公開済み（filenameあり）のデッキだけ表示する
+  //   （Quiz.jsはサーバーのget_card_setでデッキを取得するため、非公開のローカル限定
+  //   デッキは対象外）。Cardmaker.htmlを直接編集せず、既存のmodal-deck-menu内に
+  //   動的にボタンを追加することで、HTML側の変更なしに機能を追加している。
+  ensureQuizMenuItem();
+  document.getElementById('menu-quiz-item').style.display = deck.filename ? '' : 'none';
   openModal('modal-deck-menu');
+}
+
+// ★ 追加：「みんなでクイズを始める」ボタンをmodal-deck-menuの中に1回だけ生成する。
+//   既存の menu-unpublish-item をテンプレートとして直前に挿入することで、
+//   既存の他ボタンと見た目の統一感をできるだけ保つ（HTML未編集での追加のため）。
+function ensureQuizMenuItem() {
+  if (document.getElementById('menu-quiz-item')) return;
+  const modal = document.getElementById('modal-deck-menu');
+  if (!modal) return;
+  const anchor = document.getElementById('menu-unpublish-item');
+  const btn = document.createElement('button');
+  btn.id = 'menu-quiz-item';
+  btn.type = 'button';
+  btn.textContent = '🎮 みんなでクイズを始める';
+  if (anchor) {
+    btn.className = anchor.className; // 既存メニュー項目と同じクラスで見た目を揃える
+  } else {
+    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:12px 16px;border:none;background:none;font-size:15px;cursor:pointer;';
+  }
+  btn.onclick = () => { closeModal('modal-deck-menu'); startQuizFromDeck(menuTargetId); };
+  if (anchor && anchor.parentElement) {
+    anchor.parentElement.insertBefore(btn, anchor);
+  } else {
+    modal.appendChild(btn);
+  }
+}
+
+// ★ 追加：デッキ一覧の「⋮」メニューから、そのデッキを元にした「みんなでクイズ」の
+//   ホスト作成画面（Quiz.html）へ遷移する。
+function startQuizFromDeck(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck || !deck.filename) {
+    showCmAlert({ title: 'クイズを始められません', desc: '公開済みのデッキだけ「みんなでクイズ」を始められます。先に公開してください。' });
+    return;
+  }
+  const url = `Quiz.html?mode=host&deck=${encodeURIComponent(deck.filename)}&name=${encodeURIComponent(deck.name)}`;
+  location.href = url;
 }
 async function menuEdit()   { closeModal('modal-deck-menu'); await openEditDeck(menuTargetId); }
 function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId); }
