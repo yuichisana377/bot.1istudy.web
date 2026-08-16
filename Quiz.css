@@ -1,45 +1,50 @@
 /* ============================================================
    Quiz.css — みんなでクイズ
    デザイン方針：
-   ・深いネイビーの背景に、マーキー(電飾看板)を思わせるゴールドのアクセント。
+   ・CardMaker（cardmaker.css）と同じ明るい配色・青系アクセントに統一。
+     背景は明るいグレー、カードは白いサーフェスに薄いボーダーと
+     ソフトシャドウ、プライマリカラーは #2563EB。
    ・4択は「色 × 図形(▲◆●■)」で対応させ、早押し中に文字を読まなくても
      一瞬で選べるようにする（Kahoot等の早押しクイズで実証済みの実用パターン）。
-   ・見出しは Zen Kaku Gothic New の極太、数字（得点・タイマー・順位）は
-     Space Grotesk の幾何学的な書体で、ゲームショーらしい高揚感を出す。
+     色は既存パレット（赤=危険色、緑=完了色、青=ブランド色、金=強調色）を
+     流用し、アプリ全体でトーンが揃うようにしている。
+   ・書体はCardMakerと同じくシステムフォントに統一（継承前提）。
    ============================================================ */
 
 :root{
-  --bg: #0b0d22;
-  --bg-grad: radial-gradient(circle at 20% -10%, #23285f 0%, #0b0d22 45%),
-             radial-gradient(circle at 100% 110%, #1a1440 0%, #0b0d22 55%);
-  --panel: #171a40;
-  --panel-2: #1f2350;
-  --line: rgba(255,255,255,0.09);
-  --text: #f5f6ff;
-  --text-dim: #9aa0c9;
-  --accent: #ffb703;      /* マーキー・ゴールド */
-  --accent-ink: #241a02;
-  --accent-2: #ff5470;    /* ホスト操作・警告寄りの差し色 */
-  --good: #2ec4b6;
-  --bad: #ef476f;
+  --bg: #f8fafc;
+  --panel: #ffffff;         /* CardMakerの var(--surface) 相当 */
+  --panel-2: #f1f5f9;       /* ほんの少し沈んだ背景（チップ等） */
+  --line: #e2e8f0;          /* CardMakerの var(--border) 相当 */
+  --text: #0f172a;
+  --text-dim: #64748b;      /* CardMakerの var(--text-secondary) 相当 */
+  --shadow: 0 1px 3px rgba(15,23,42,.08), 0 1px 2px rgba(15,23,42,.04);
 
-  --choice-a: #e63946;  /* ▲ 赤   */
-  --choice-b: #3a86ff;  /* ◆ 青   */
-  --choice-c: #ffb703;  /* ● 金   */
-  --choice-d: #2a9d8f;  /* ■ 緑   */
+  --accent: #2563EB;        /* ブランドカラー（CardMakerと共通） */
+  --accent-soft: #EFF4FF;
+  --accent-ink: #ffffff;
+  --accent-2: #ef4444;      /* ホスト操作・警告寄りの差し色（danger色を流用） */
+  --good: #16a34a;          /* completed-card等と共通の緑 */
+  --bad: #ef4444;           /* btn-danger等と共通の赤 */
+  --gold: #f59e0b;          /* 1位・強調用のアクセント */
 
-  --radius: 20px;
-  --radius-sm: 12px;
-  --font-display: 'Zen Kaku Gothic New', 'Space Grotesk', sans-serif;
-  --font-num: 'Space Grotesk', 'Zen Kaku Gothic New', sans-serif;
-  --font-body: 'Zen Kaku Gothic New', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --choice-a: #ef4444;  /* ▲ 赤 */
+  --choice-b: #2563EB;  /* ◆ 青 */
+  --choice-c: #f59e0b;  /* ● 金 */
+  --choice-d: #16a34a;  /* ■ 緑 */
+
+  --radius: 16px;      /* CardMakerの var(--r-lg) 相当 */
+  --radius-sm: 10px;   /* CardMakerの var(--r-md) 相当 */
+  --font-display: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+  --font-num: inherit;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
 }
 
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body{ height:100%; }
 body{
   margin:0;
-  background:var(--bg-grad), var(--bg);
+  background:var(--bg);
   color:var(--text);
   font-family:var(--font-body);
   overscroll-behavior:none;
@@ -62,10 +67,12 @@ input,select{ font-family:inherit; }
   display:flex; align-items:center; justify-content:space-between;
   padding: max(14px, env(safe-area-inset-top)) 18px 12px;
   gap:10px;
+  background:var(--bg);
 }
 .qz-brand{
   display:flex; align-items:center; gap:8px;
-  font-family:var(--font-display); font-weight:900; font-size:17px; letter-spacing:.02em;
+  font-family:var(--font-display); font-weight:800; font-size:17px; letter-spacing:.01em;
+  color:var(--text);
 }
 .qz-brand-mark{
   display:inline-flex; align-items:center; justify-content:center;
@@ -80,9 +87,11 @@ input,select{ font-family:inherit; }
 }
 .qz-back, .qz-icon-btn{
   width:36px; height:36px; border-radius:50%; border:1px solid var(--line);
-  background:var(--panel); color:var(--text); font-size:16px;
+  background:var(--panel); color:var(--text-dim); font-size:16px;
   display:flex; align-items:center; justify-content:center;
+  transition:background .12s;
 }
+.qz-back:active, .qz-icon-btn:active{ background:var(--panel-2); }
 .qz-account{ font-size:13px; color:var(--text-dim); }
 
 /* ── 本文レイアウト ───────────────────────── */
@@ -101,22 +110,23 @@ input,select{ font-family:inherit; }
 
 /* ── ホーム ───────────────────────── */
 .qz-hero-title{
-  font-family:var(--font-display); font-weight:900; font-size:34px; line-height:1.25;
-  margin:10px 0 2px;
+  font-family:var(--font-display); font-weight:800; font-size:34px; line-height:1.25;
+  letter-spacing:-.02em;
+  margin:10px 0 2px; color:var(--text);
 }
 .qz-hero-sub{ color:var(--text-dim); font-size:14px; margin:0 0 18px; }
 
 .qz-home-actions{ width:100%; display:flex; flex-direction:column; gap:12px; }
 .qz-big-btn{
-  width:100%; border:none; border-radius:var(--radius);
+  width:100%; border-radius:var(--radius);
   padding:20px 18px; display:flex; align-items:center; gap:14px;
   font-family:var(--font-display); font-weight:700; font-size:16px;
-  transition:transform .12s ease;
+  transition:transform .12s ease, opacity .12s ease;
 }
-.qz-big-btn:active{ transform:scale(.97); }
+.qz-big-btn:active{ transform:scale(.97); opacity:.85; }
 .qz-big-btn-icon{ font-size:26px; }
-.qz-big-btn-join{ background:var(--panel-2); color:var(--text); border:1px solid var(--line); justify-content:flex-start; }
-.qz-big-btn-host{ background:var(--accent); color:var(--accent-ink); justify-content:flex-start; }
+.qz-big-btn-join{ background:var(--panel); color:var(--accent); border:1.5px solid var(--accent); justify-content:flex-start; box-shadow:var(--shadow); }
+.qz-big-btn-host{ background:var(--accent); color:#fff; border:none; justify-content:flex-start; box-shadow:var(--shadow); }
 
 /* ── 入力系 ───────────────────────── */
 .qz-label{ color:var(--text-dim); font-size:14px; margin:0; }
@@ -124,9 +134,10 @@ input,select{ font-family:inherit; }
 .qz-field-label{ font-size:13px; color:var(--text-dim); font-weight:600; }
 .qz-input{
   width:100%; padding:13px 14px; border-radius:var(--radius-sm);
-  border:1px solid var(--line); background:var(--panel); color:var(--text); font-size:15px;
+  border:2px solid var(--line); background:var(--panel); color:var(--text); font-size:15px;
+  outline:none; transition:border-color .15s;
 }
-.qz-input:focus{ outline:2px solid var(--accent); }
+.qz-input:focus{ border-color:var(--accent); }
 .qz-hint{ font-size:12.5px; color:var(--text-dim); line-height:1.6; margin:0; text-align:left; }
 .qz-error{ color:var(--bad); font-size:13px; min-height:18px; }
 
@@ -135,44 +146,49 @@ input,select{ font-family:inherit; }
   font-family:var(--font-num); font-weight:700; font-size:38px; letter-spacing:.3em;
   padding:16px 8px 16px 18px; border-radius:var(--radius-sm);
   border:2px solid var(--line); background:var(--panel); color:var(--accent);
+  outline:none; transition:border-color .15s;
 }
-.qz-code-input:focus{ outline:none; border-color:var(--accent); }
+.qz-code-input:focus{ border-color:var(--accent); }
 
 .qz-cta{
   width:100%; padding:16px; border:none; border-radius:var(--radius-sm);
-  background:var(--accent); color:var(--accent-ink);
+  background:var(--accent); color:#fff;
   font-family:var(--font-display); font-weight:700; font-size:16px;
-  margin-top:6px;
+  margin-top:6px; transition:transform .1s ease, opacity .12s ease;
 }
 .qz-cta:disabled{ opacity:.4; }
-.qz-cta:active:not(:disabled){ transform:scale(.98); }
+.qz-cta:active:not(:disabled){ transform:scale(.98); opacity:.85; }
 
 .qz-toggle-group{ display:flex; gap:8px; }
 .qz-toggle-opt{
-  flex:1; padding:11px 8px; border-radius:var(--radius-sm); border:1px solid var(--line);
-  background:var(--panel); color:var(--text-dim); font-weight:600; font-size:13.5px;
+  flex:1; padding:11px 8px; border-radius:var(--radius-sm); border:1.5px solid var(--line);
+  background:var(--panel); color:var(--text-dim); font-weight:700; font-size:13.5px;
+  transition:all .15s;
 }
-.qz-toggle-opt.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.qz-toggle-opt.active{ background:var(--accent-soft); color:var(--accent); border-color:var(--accent); }
 
 /* ── 手動問題作成 ───────────────────────── */
 .qz-manual-card{
   border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel);
+  box-shadow:var(--shadow);
   padding:14px; display:flex; flex-direction:column; gap:8px; margin-bottom:12px;
 }
 .qz-manual-card-head{ display:flex; justify-content:space-between; align-items:center; }
 .qz-manual-card-head b{ font-size:13px; color:var(--text-dim); }
-.qz-manual-remove{ background:none; border:none; color:var(--bad); font-size:13px; padding:2px 6px; }
+.qz-manual-remove{ background:none; border:none; color:var(--bad); font-size:13px; padding:2px 6px; font-weight:600; }
 .qz-manual-choice-row{ display:flex; align-items:center; gap:8px; }
 .qz-manual-choice-row input[type=radio]{ accent-color: var(--good); width:18px; height:18px; flex:none; }
 .qz-add-q-btn{
   width:100%; padding:12px; border-radius:var(--radius-sm); border:1.5px dashed var(--line);
   background:transparent; color:var(--text-dim); font-weight:600; font-size:14px;
 }
+.qz-add-q-btn:active{ background:var(--panel-2); }
 
 /* ── コード表示・待機室 ───────────────────────── */
 .qz-code-display{
-  font-family:var(--font-num); font-weight:700; font-size:56px; letter-spacing:.18em;
+  font-family:var(--font-num); font-weight:800; font-size:56px; letter-spacing:.18em;
   color:var(--accent); background:var(--panel); border:1px solid var(--line);
+  box-shadow:var(--shadow);
   border-radius:var(--radius); padding:18px 10px; width:100%; max-width:340px;
 }
 .qz-player-grid{
@@ -181,8 +197,8 @@ input,select{ font-family:inherit; }
 }
 .qz-player-chip{
   display:flex; align-items:center; gap:6px; padding:8px 12px 8px 8px;
-  border-radius:999px; background:var(--panel-2); border:1px solid var(--line);
-  font-size:13px; font-weight:600;
+  border-radius:999px; background:var(--panel); border:1px solid var(--line);
+  font-size:13px; font-weight:600; color:var(--text);
 }
 .qz-avatar{
   width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
@@ -197,12 +213,12 @@ input,select{ font-family:inherit; }
   width:100%; height:8px; border-radius:999px; background:var(--panel-2); overflow:hidden; margin-top:4px;
 }
 .qz-timerbar-fill{
-  height:100%; width:100%; background:linear-gradient(90deg, var(--good), var(--accent) 60%, var(--bad));
+  height:100%; width:100%; background:linear-gradient(90deg, var(--good), var(--gold) 60%, var(--bad));
   transform-origin:left center; transition:transform .25s linear, background-color .2s;
 }
 .qz-question-text{
   font-family:var(--font-display); font-weight:700; font-size:22px; line-height:1.4;
-  margin:14px 0 4px;
+  margin:14px 0 4px; color:var(--text);
 }
 .qz-answered-count{ color:var(--text-dim); font-size:13px; margin-bottom:6px; }
 
@@ -210,9 +226,10 @@ input,select{ font-family:inherit; }
   display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;
 }
 .qz-choice-btn{
-  position:relative; border:none; border-radius:16px; padding:20px 14px 20px 46px;
+  position:relative; border:none; border-radius:var(--radius-sm); padding:20px 14px 20px 46px;
   min-height:78px; text-align:left; font-weight:700; font-size:15px; color:#fff;
   display:flex; align-items:center; line-height:1.35;
+  box-shadow:var(--shadow);
   transition:transform .1s ease, opacity .2s ease, filter .2s ease;
 }
 .qz-choice-btn:active{ transform:scale(.96); }
@@ -222,28 +239,28 @@ input,select{ font-family:inherit; }
 }
 .qz-choice-a{ background:var(--choice-a); } .qz-choice-a::before{ clip-path:polygon(50% 0,100% 100%,0 100%); }
 .qz-choice-b{ background:var(--choice-b); } .qz-choice-b::before{ clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); }
-.qz-choice-c{ background:var(--choice-c); color:var(--accent-ink); } .qz-choice-c::before{ background:rgba(0,0,0,.75); border-radius:50%; }
+.qz-choice-c{ background:var(--choice-c); color:#3b2405; } .qz-choice-c::before{ background:rgba(0,0,0,.7); border-radius:50%; }
 .qz-choice-d{ background:var(--choice-d); } .qz-choice-d::before{ border-radius:3px; }
 
 .qz-choice-btn[disabled]{ pointer-events:none; }
 .qz-choice-btn.qz-dim{ opacity:.35; filter:grayscale(.3); }
-.qz-choice-btn.qz-picked{ outline:3px solid #fff; }
-.qz-choice-btn.qz-correct-flash{ outline:3px solid #fff; box-shadow:0 0 0 5px rgba(46,196,182,.5); }
-.qz-choice-btn.qz-wrong-flash{ box-shadow:0 0 0 5px rgba(239,71,111,.4); }
+.qz-choice-btn.qz-picked{ outline:3px solid #fff; outline-offset:-3px; }
+.qz-choice-btn.qz-correct-flash{ outline:3px solid #fff; outline-offset:-3px; box-shadow:0 0 0 4px rgba(22,163,74,.35); }
+.qz-choice-btn.qz-wrong-flash{ box-shadow:0 0 0 4px rgba(239,68,68,.3); }
 
 .qz-answer-feedback{
   margin-top:16px; padding:16px; border-radius:var(--radius-sm); text-align:center;
   font-family:var(--font-display); font-weight:700; font-size:17px;
 }
-.qz-answer-feedback.ok{ background:rgba(46,196,182,.15); color:var(--good); border:1px solid rgba(46,196,182,.4); }
-.qz-answer-feedback.ng{ background:rgba(239,71,111,.12); color:var(--bad); border:1px solid rgba(239,71,111,.35); }
+.qz-answer-feedback.ok{ background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+.qz-answer-feedback.ng{ background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
 .qz-waiting-note{ color:var(--text-dim); font-size:13px; text-align:center; margin-top:10px; }
 
 /* ── ホスト：正解発表パネル ───────────────────────── */
 .qz-reveal-panel{ margin-top:8px; }
 .qz-first-badge{
-  display:inline-flex; align-items:center; gap:6px; background:rgba(255,183,3,.14);
-  color:var(--accent); border:1px solid rgba(255,183,3,.4); border-radius:999px;
+  display:inline-flex; align-items:center; gap:6px; background:#fff7ed;
+  color:#c2410c; border:1px solid #fed7aa; border-radius:999px;
   padding:8px 14px; font-size:13.5px; font-weight:700; margin-bottom:10px;
 }
 .qz-mini-leaderboard{ display:flex; flex-direction:column; gap:6px; }
@@ -251,39 +268,40 @@ input,select{ font-family:inherit; }
 /* ── 順位・スコア一覧 共通 ───────────────────────── */
 .qz-lb-row{
   display:flex; align-items:center; gap:10px; padding:9px 12px;
-  border-radius:12px; background:var(--panel-2); border:1px solid var(--line);
+  border-radius:var(--radius-sm); background:var(--panel); border:1px solid var(--line);
 }
 .qz-lb-rank{ font-family:var(--font-num); font-weight:700; width:20px; text-align:center; color:var(--text-dim); font-size:13px; }
-.qz-lb-name{ flex:1; text-align:left; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qz-lb-name{ flex:1; text-align:left; font-size:14px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .qz-lb-score{ font-family:var(--font-num); font-weight:700; font-size:14px; color:var(--accent); }
 
 /* ── 結果画面 ───────────────────────── */
 .qz-podium{ display:flex; align-items:flex-end; gap:10px; width:100%; max-width:360px; margin:10px 0 22px; }
 .qz-podium-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; }
 .qz-podium-bar{ width:100%; border-radius:10px 10px 0 0; display:flex; align-items:flex-start; justify-content:center; padding-top:8px; }
-.qz-podium-1 .qz-podium-bar{ height:110px; background:linear-gradient(180deg,#ffd76a,var(--accent)); }
-.qz-podium-2 .qz-podium-bar{ height:82px; background:#b9bfe6; }
-.qz-podium-3 .qz-podium-bar{ height:64px; background:#cd8b5f; }
+.qz-podium-1 .qz-podium-bar{ height:110px; background:linear-gradient(180deg,#fde68a,var(--gold)); }
+.qz-podium-2 .qz-podium-bar{ height:82px; background:#cbd5e1; }
+.qz-podium-3 .qz-podium-bar{ height:64px; background:#e0b088; }
 .qz-podium-medal{ font-size:20px; }
-.qz-podium-name{ font-size:12.5px; font-weight:700; max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qz-podium-name{ font-size:12.5px; font-weight:700; color:var(--text); max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .qz-podium-score{ font-family:var(--font-num); font-size:12px; color:var(--text-dim); }
 .qz-full-leaderboard{ width:100%; display:flex; flex-direction:column; gap:6px; margin-bottom:20px; }
 
 /* ── モーダル ───────────────────────── */
 .qz-modal-overlay{
-  position:fixed; inset:0; background:rgba(5,6,17,.6); backdrop-filter:blur(2px);
+  position:fixed; inset:0; background:rgba(15,23,42,.45);
   display:none; align-items:center; justify-content:center; z-index:50; padding:20px;
 }
 .qz-modal-overlay.active{ display:flex; }
 .qz-modal{
   width:100%; max-width:320px; background:var(--panel); border:1px solid var(--line);
-  border-radius:var(--radius); padding:20px;
+  border-radius:var(--radius); padding:20px; box-shadow:0 8px 40px rgba(15,23,42,.15);
 }
-.qz-modal-title{ font-family:var(--font-display); font-weight:700; font-size:16px; margin-bottom:6px; }
+.qz-modal-title{ font-family:var(--font-display); font-weight:700; font-size:16px; margin-bottom:6px; color:var(--text); }
 .qz-modal-desc{ color:var(--text-dim); font-size:13.5px; line-height:1.6; margin-bottom:16px; }
 .qz-modal-actions{ display:flex; gap:8px; }
-.qz-modal-btn{ flex:1; padding:11px; border-radius:10px; border:none; font-weight:700; font-size:14px; }
-.qz-modal-btn-cancel{ background:var(--panel-2); color:var(--text); }
+.qz-modal-btn{ flex:1; padding:11px; border-radius:var(--radius-sm); border:none; font-weight:700; font-size:14px; transition:transform .1s, opacity .12s; }
+.qz-modal-btn:active{ transform:scale(.97); opacity:.85; }
+.qz-modal-btn-cancel{ background:var(--panel-2); color:var(--text-dim); border:1.5px solid var(--line); }
 .qz-modal-btn-ok{ background:var(--bad); color:#fff; }
 
 @media (min-width:600px){
