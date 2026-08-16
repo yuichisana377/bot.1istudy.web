@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>みんなでクイズ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="Quiz.css">
+</head>
+<body>
+
+<!-- ============ 読み込み中 ============ -->
+<section class="screen active" id="screen-loading">
+  <div class="loading-wrap">
+    <div class="loading-dot"></div>
+    <p>読み込み中…</p>
+  </div>
+</section>
+
+<!-- ============ ホーム（参加 / 作成） ============ -->
+<section class="screen" id="screen-home">
+  <header class="qz-header">
+    <div class="qz-brand"><span class="qz-brand-mark">Q</span>みんなでクイズ</div>
+    <div class="qz-account" id="home-account"></div>
+  </header>
+  <div class="qz-body qz-body-center">
+    <h1 class="qz-hero-title">早押し4択で<br>盛り上がろう</h1>
+    <p class="qz-hero-sub">正解10点、一番早く正解すると+2点。</p>
+
+    <div class="qz-home-actions">
+      <button class="qz-big-btn qz-big-btn-join" onclick="goJoinScreen()">
+        <span class="qz-big-btn-icon">🔑</span>
+        <span class="qz-big-btn-label">コードで参加する</span>
+      </button>
+      <button class="qz-big-btn qz-big-btn-host" onclick="goHostSetupScreen()">
+        <span class="qz-big-btn-icon">🎬</span>
+        <span class="qz-big-btn-label">クイズを作る（ホスト）</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 参加：コード入力 ============ -->
+<section class="screen" id="screen-join">
+  <header class="qz-header">
+    <button class="qz-back" onclick="showScreenQ('home')">←</button>
+    <div class="qz-brand-sm">参加する</div>
+    <span></span>
+  </header>
+  <div class="qz-body qz-body-center">
+    <p class="qz-label">ホストから伝えられた5文字のコードを入力してください</p>
+    <input id="join-code-input" class="qz-code-input" maxlength="5" autocomplete="off"
+           autocapitalize="characters" placeholder="ABCDE"
+           oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+    <div class="qz-error" id="join-error"></div>
+    <button class="qz-cta" id="join-submit-btn" onclick="submitJoin()">参加する</button>
+  </div>
+</section>
+
+<!-- ============ ホスト：セットアップ ============ -->
+<section class="screen" id="screen-host-setup">
+  <header class="qz-header">
+    <button class="qz-back" onclick="showScreenQ('home')">←</button>
+    <div class="qz-brand-sm">クイズを作る</div>
+    <span></span>
+  </header>
+  <div class="qz-body">
+    <label class="qz-field">
+      <span class="qz-field-label">クイズのタイトル</span>
+      <input id="hs-title" class="qz-input" placeholder="例）第3章 単語テスト" maxlength="40">
+    </label>
+
+    <div class="qz-field">
+      <span class="qz-field-label">問題の作り方</span>
+      <div class="qz-toggle-group" id="hs-source-toggle">
+        <button type="button" class="qz-toggle-opt active" data-src="deck" onclick="setHostSource('deck')">デッキから自動作成</button>
+        <button type="button" class="qz-toggle-opt" data-src="manual" onclick="setHostSource('manual')">自分で問題を作る</button>
+      </div>
+    </div>
+
+    <!-- デッキから作成 -->
+    <div id="hs-deck-panel">
+      <label class="qz-field">
+        <span class="qz-field-label">デッキ</span>
+        <select id="hs-deck-select" class="qz-input"></select>
+      </label>
+      <p class="qz-hint">表面（問題）と裏面（答え）から、答えをシャッフルして4択問題を自動で作ります。答えの種類が4つ以上あるデッキが必要です。</p>
+      <label class="qz-field">
+        <span class="qz-field-label">出題数</span>
+        <select id="hs-num-questions" class="qz-input">
+          <option value="">全部使う</option>
+          <option value="5">5問</option>
+          <option value="10">10問</option>
+          <option value="15">15問</option>
+          <option value="20">20問</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- 手動で作成 -->
+    <div id="hs-manual-panel" style="display:none">
+      <div id="hs-manual-list"></div>
+      <button type="button" class="qz-add-q-btn" onclick="addManualQuestion()">＋ 問題を追加</button>
+    </div>
+
+    <label class="qz-field">
+      <span class="qz-field-label">1問の制限時間</span>
+      <select id="hs-time-limit" class="qz-input">
+        <option value="10">10秒</option>
+        <option value="15">15秒</option>
+        <option value="20" selected>20秒</option>
+        <option value="30">30秒</option>
+        <option value="45">45秒</option>
+        <option value="60">60秒</option>
+      </select>
+    </label>
+
+    <div class="qz-error" id="hs-error"></div>
+    <button class="qz-cta" id="hs-create-btn" onclick="submitCreateRoom()">クイズを作成する</button>
+  </div>
+</section>
+
+<!-- ============ ホスト：ロビー ============ -->
+<section class="screen" id="screen-host-lobby">
+  <header class="qz-header">
+    <span></span>
+    <div class="qz-brand-sm" id="hl-title"></div>
+    <button class="qz-icon-btn" onclick="confirmQuitHost()">✕</button>
+  </header>
+  <div class="qz-body qz-body-center">
+    <p class="qz-label">このコードをみんなに伝えてください</p>
+    <div class="qz-code-display" id="hl-code">------</div>
+    <p class="qz-hint" id="hl-count">参加者 0人</p>
+    <div class="qz-player-grid" id="hl-players"></div>
+    <button class="qz-cta" id="hl-start-btn" onclick="hostStart()" disabled>クイズを始める</button>
+  </div>
+</section>
+
+<!-- ============ ホスト：出題中／結果発表 ============ -->
+<section class="screen" id="screen-host-play">
+  <header class="qz-header">
+    <div class="qz-progress-label" id="hp-progress"></div>
+    <div class="qz-brand-sm" id="hp-title"></div>
+    <button class="qz-icon-btn" onclick="confirmQuitHost()">✕</button>
+  </header>
+  <div class="qz-body">
+    <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="hp-timerbar"></div></div>
+    <h2 class="qz-question-text" id="hp-question"></h2>
+    <div class="qz-answered-count" id="hp-answered"></div>
+    <div class="qz-choice-grid" id="hp-choices"></div>
+    <div class="qz-reveal-panel" id="hp-reveal" style="display:none">
+      <div class="qz-first-badge" id="hp-first-badge"></div>
+      <div class="qz-mini-leaderboard" id="hp-leaderboard"></div>
+    </div>
+    <button class="qz-cta" id="hp-next-btn" onclick="hostNext()">正解を発表する</button>
+  </div>
+</section>
+
+<!-- ============ 結果発表（共通：ホスト／プレイヤー） ============ -->
+<section class="screen" id="screen-result">
+  <header class="qz-header">
+    <span></span>
+    <div class="qz-brand-sm">結果発表</div>
+    <span></span>
+  </header>
+  <div class="qz-body qz-body-center">
+    <div class="qz-podium" id="result-podium"></div>
+    <div class="qz-full-leaderboard" id="result-list"></div>
+    <button class="qz-cta" onclick="backToHomeFromResult()">ホームに戻る</button>
+  </div>
+</section>
+
+<!-- ============ プレイヤー：ロビー（参加後・開始待ち） ============ -->
+<section class="screen" id="screen-player-lobby">
+  <header class="qz-header">
+    <span></span>
+    <div class="qz-brand-sm" id="pl-title"></div>
+    <button class="qz-icon-btn" onclick="confirmQuitPlayer()">✕</button>
+  </header>
+  <div class="qz-body qz-body-center">
+    <div class="qz-waiting-anim">⏳</div>
+    <p class="qz-label" id="pl-status">ホストが開始するのを待っています…</p>
+    <div class="qz-player-grid" id="pl-players"></div>
+  </div>
+</section>
+
+<!-- ============ プレイヤー：出題中 ============ -->
+<section class="screen" id="screen-player-play">
+  <header class="qz-header">
+    <div class="qz-progress-label" id="pp-progress"></div>
+    <div class="qz-my-score" id="pp-score">0点</div>
+  </header>
+  <div class="qz-body">
+    <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="pp-timerbar"></div></div>
+    <h2 class="qz-question-text" id="pp-question"></h2>
+    <div class="qz-choice-grid" id="pp-choices"></div>
+    <div class="qz-answer-feedback" id="pp-feedback" style="display:none"></div>
+    <p class="qz-waiting-note" id="pp-waiting-note" style="display:none">ほかの人の解答を待っています…</p>
+  </div>
+</section>
+
+<!-- ============ 共通モーダル：確認 ============ -->
+<div class="qz-modal-overlay" id="qz-confirm-overlay">
+  <div class="qz-modal">
+    <div class="qz-modal-title" id="qz-confirm-title"></div>
+    <div class="qz-modal-desc" id="qz-confirm-desc"></div>
+    <div class="qz-modal-actions">
+      <button class="qz-modal-btn qz-modal-btn-cancel" id="qz-confirm-cancel">キャンセル</button>
+      <button class="qz-modal-btn qz-modal-btn-ok" id="qz-confirm-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="Quiz.js"></script>
+</body>
+</html>
