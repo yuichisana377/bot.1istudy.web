@@ -248,6 +248,21 @@ html, body {
 .block-action-btn.math-btn-active { background: #2563EB; color: #fff; }
 .block-action-btn.math-btn-active:active { background: #1D4ED8; }
 
+/* ── みんなでクイズへの導線（ホーム上部） ── */
+.quiz-banner {
+  display: flex; align-items: center; gap: .75rem;
+  background: var(--surface); border-radius: var(--r-lg);
+  box-shadow: var(--shadow); padding: .9rem 1rem;
+  margin-bottom: 1.1rem; text-decoration: none; color: inherit;
+  border-left: 4px solid #2563EB;
+}
+.quiz-banner:active { background: var(--bg); }
+.quiz-banner-icon { font-size: 26px; flex-shrink: 0; }
+.quiz-banner-text { flex: 1; min-width: 0; }
+.quiz-banner-title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+.quiz-banner-sub { font-size: 12.5px; color: var(--text-secondary); }
+.quiz-banner-arrow { font-size: 20px; color: var(--text-secondary); flex-shrink: 0; }
+
 /* ── プレイ中のデッキ（ホーム） ── */
 .inprogress-section { margin-bottom: 1.1rem; }
 .inprogress-label {
