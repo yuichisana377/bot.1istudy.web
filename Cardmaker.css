@@ -1,748 +1,309 @@
 /* ============================================================
-   cardmaker.css — CardMaker専用スタイル
-   cardmaker.html から読み込む
-============================================================ */
+   Quiz.css — みんなでクイズ
+   デザイン方針：
+   ・CardMaker（cardmaker.css）と同じ明るい配色・青系アクセントに統一。
+     背景は明るいグレー、カードは白いサーフェスに薄いボーダーと
+     ソフトシャドウ、プライマリカラーは #2563EB。
+   ・4択は「色 × 図形(▲◆●■)」で対応させ、早押し中に文字を読まなくても
+     一瞬で選べるようにする（Kahoot等の早押しクイズで実証済みの実用パターン）。
+     色は既存パレット（赤=危険色、緑=完了色、青=ブランド色、金=強調色）を
+     流用し、アプリ全体でトーンが揃うようにしている。
+   ・書体はCardMakerと同じくシステムフォントに統一（継承前提）。
+   ============================================================ */
 
-/* CardMaker固有のCSS変数（style.cssと衝突しないようにプレフィックス付き） */
+:root{
+  --bg: #f8fafc;
+  --panel: #ffffff;         /* CardMakerの var(--surface) 相当 */
+  --panel-2: #f1f5f9;       /* ほんの少し沈んだ背景（チップ等） */
+  --line: #e2e8f0;          /* CardMakerの var(--border) 相当 */
+  --text: #0f172a;
+  --text-dim: #64748b;      /* CardMakerの var(--text-secondary) 相当 */
+  --shadow: 0 1px 3px rgba(15,23,42,.08), 0 1px 2px rgba(15,23,42,.04);
 
-html, body {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
-  position: fixed;
-  inset: 0;
-}
+  --accent: #2563EB;        /* ブランドカラー（CardMakerと共通） */
+  --accent-soft: #EFF4FF;
+  --accent-ink: #ffffff;
+  --accent-2: #ef4444;      /* ホスト操作・警告寄りの差し色（danger色を流用） */
+  --good: #16a34a;          /* completed-card等と共通の緑 */
+  --bad: #ef4444;           /* btn-danger等と共通の赤 */
+  --gold: #f59e0b;          /* 1位・強調用のアクセント */
 
-/* width:100% + padding を使う要素がはみ出さないよう、
-   CardMakerページ全体でborder-boxに統一する */
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+  --choice-a: #ef4444;  /* ▲ 赤 */
+  --choice-b: #2563EB;  /* ◆ 青 */
+  --choice-c: #f59e0b;  /* ● 金 */
+  --choice-d: #16a34a;  /* ■ 緑 */
 
-.cm-scroll-body {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-
-/* CardMaker内のbodyはstyle.cssのbodyを上書きしない */
-/* 以下はCardMakerページ固有のスタイル */
-
-/* ── 画面 ── */
-/* 高さを固定してこの中の .scroll-body が確実に内部スクロールするようにする
-   （min-height だと画面が中身の分だけ縦に伸びてしまい、
-     position:fixed な body の overflow:hidden で下側が見えなくなるため） */
-.screen {
-  display: none;
-  height: 100dvh;
-  flex-direction: column;
-  /* 画面そのものはスクロールさせない。
-     スクロールが必要な画面は内部の .cm-scroll-body や .study-top 側で
-     overflow-y: auto を持たせること。こうしないと中身が
-     ビューポート高さを超えたときに body 側までスクロールが波及し、
-     sticky指定の .topbar まで一緒に動いてしまう。 */
-  overflow: hidden;
-}
-.screen.active {
-  display: flex;
+  --radius: 16px;      /* CardMakerの var(--r-lg) 相当 */
+  --radius-sm: 10px;   /* CardMakerの var(--r-md) 相当 */
+  --font-display: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+  --font-num: inherit;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
 }
 
-/* ── 上部タブ（トップバー） ──
-   position: sticky + top: 0 でスクロールしても常に画面上部に固定表示される。
-   ※ height と padding-top の両方に safe-area-inset-top を加えると、
-      box-sizing が content-box のままでは分の高さが二重に加算されてしまうため、
-      box-sizing: border-box を明示して正しい高さ(56px + セーフエリア)に収める。 */
-.topbar {
-  box-sizing: border-box;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  height: calc(56px + env(safe-area-inset-top, 0px));
-  display: flex; align-items: center;
-  padding: env(safe-area-inset-top, 0px) 1rem 0;
-  gap: .75rem;
-  position: sticky; top: 0; z-index: 100; flex-shrink: 0;
-}
-.topbar-title { font-size: 16px; font-weight: 700; flex: 1; }
-.topbar-back {
-  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
-  background: none; border: none; cursor: pointer;
-  font-size: 20px; color: var(--text-secondary); border-radius: 50%; flex-shrink: 0;
-}
-.topbar-back:active { background: var(--bg); }
-
-.inner { max-width: 520px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
-
-/* ── ボタン ── */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
-  padding: 0 1.25rem; height: 48px; border-radius: var(--r-md);
-  font-family: inherit; font-size: 15px; font-weight: 600;
-  border: none; cursor: pointer; transition: opacity .12s, transform .1s;
-  white-space: nowrap; flex-shrink: 0;
-}
-.btn:active { transform: scale(.97); opacity: .85; }
-.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-.btn-blue    { background: #2563EB; color: #fff; }
-.btn-outline { background: var(--surface); color: #2563EB; border: 1.5px solid #2563EB; }
-.btn-ghost   { background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); }
-.btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; width: auto; margin-top: 0; }
-.btn-sm      { height: 36px; padding: 0 .9rem; font-size: 13px; border-radius: 6px; }
-
-/* ── カードブロック（編集） ── */
-.card-block {
-  background: var(--surface); border-radius: var(--r-lg);
-  box-shadow: var(--shadow); margin-bottom: 1rem;
-  border-left: 4px solid transparent; transition: border-color .2s; overflow: hidden;
-}
-.card-block:focus-within { border-left-color: #2563EB; }
-.block-header { display: flex; align-items: center; padding: .75rem 1rem .5rem; }
-.block-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #2563EB; }
-.block-label-sub { font-size: 11px; color: var(--text-secondary); font-weight: 400; }
-.auto-textarea {
-  width: 100%; border: none; outline: none; resize: none; background: transparent;
-  font-family: inherit; font-size: 15px; color: var(--text);
-  line-height: 1.65; padding: .25rem 1rem .75rem; min-height: 80px;
-  field-sizing: content;
-}
-.auto-textarea::placeholder { color: var(--text-secondary); opacity: .7; }
-.block-actions {
-  display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem 1rem .9rem;
-  border-top: 1px solid var(--border);
-}
-.block-action-btn {
-  display: inline-flex; align-items: center; gap: .35rem;
-  padding: .4rem .8rem; border-radius: 20px; font-size: 13px; font-weight: 600;
-  cursor: pointer; background: #EFF4FF; color: #2563EB; border: none;
-}
-.block-action-btn:active { background: #dbeafe; }
-.img-strip { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0 1rem .75rem; }
-.img-thumb {
-  position: relative; width: 72px; height: 72px;
-  border-radius: 8px; overflow: hidden; border: 1px solid var(--border);
-}
-.img-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
-.img-thumb-del {
-  position: absolute; top: 2px; right: 2px;
-  width: 18px; height: 18px;
-  box-sizing: border-box;
-  padding: 0; margin: 0;
-  line-height: 1;
-  border-radius: 50%; background: rgba(0,0,0,.6); color: #fff;
-  border: none; cursor: pointer; font-size: 10px;
-  display: flex; align-items: center; justify-content: center;
-  -webkit-appearance: none; appearance: none;
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  overscroll-behavior:none;
 }
 
-/* ── 新規作成 ── */
-.welcome-wrap {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  flex: 1; padding: 2rem 1.5rem; text-align: center;
-}
-.welcome-icon  { font-size: 3.5rem; margin-bottom: 1rem; }
-.welcome-title { font-size: 24px; font-weight: 800; margin-bottom: .5rem; letter-spacing: -.02em; }
-.welcome-sub   { font-size: 14px; color: var(--text-secondary); margin-bottom: 2rem; line-height: 1.6; }
-.set-name-input {
-  width: 100%; max-width: 360px; padding: 14px 16px;
-  border: 2px solid var(--border); border-radius: var(--r-md);
-  font-family: inherit; font-size: 16px; color: var(--text);
-  background: var(--surface); outline: none; transition: border-color .15s; margin-bottom: 1rem;
-}
-.set-name-input:focus { border-color: #2563EB; }
+button{ font-family:inherit; cursor:pointer; }
+input,select{ font-family:inherit; }
 
-/* ── 編集画面下部バー ── */
-.editor-counter { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
-.editor-actions {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  background: var(--surface); border-top: 1px solid var(--border);
-  padding: .75rem 1rem calc(env(safe-area-inset-bottom, 0px) + 12px);
-  display: flex; gap: .5rem; z-index: 100;
+/* ── 画面切り替え ───────────────────────── */
+.screen{
+  display:none;
+  min-height:100vh;
+  min-height:100dvh;
+  flex-direction:column;
 }
-.editor-actions .btn { flex: 1; }
+.screen.active{ display:flex; }
 
-/* ── 理数モード（数式記号パレット） ── */
-.math-pad {
-  margin-top: .6rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
+/* ── ヘッダー ───────────────────────── */
+.qz-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: max(14px, env(safe-area-inset-top)) 18px 12px;
+  gap:10px;
+  background:var(--bg);
 }
-.math-pad-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .5rem .75rem;
-  border-bottom: 1px solid var(--border);
+.qz-brand{
+  display:flex; align-items:center; gap:8px;
+  font-family:var(--font-display); font-weight:800; font-size:17px; letter-spacing:.01em;
+  color:var(--text);
 }
-.math-pad-title {
-  font-size: 12px; font-weight: 700; color: var(--text-secondary);
+.qz-brand-mark{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:26px; height:26px; border-radius:8px;
+  background:var(--accent); color:var(--accent-ink);
+  font-family:var(--font-num); font-weight:700; font-size:15px;
+  transform:rotate(-6deg);
 }
-.math-pad-close {
-  width: 22px; height: 22px; border-radius: 50%;
-  border: none; background: transparent; color: var(--text-secondary);
-  font-size: 13px; line-height: 1; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+.qz-brand-sm{
+  font-family:var(--font-display); font-weight:700; font-size:15px; color:var(--text-dim);
+  max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
-.math-pad-close:active { background: var(--surface); }
+.qz-back, .qz-icon-btn{
+  width:36px; height:36px; border-radius:50%; border:1px solid var(--line);
+  background:var(--panel); color:var(--text-dim); font-size:16px;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .12s;
+}
+.qz-back:active, .qz-icon-btn:active{ background:var(--panel-2); }
+.qz-account{ font-size:13px; color:var(--text-dim); }
 
-.math-pad-body { padding: .6rem .7rem .7rem; }
+/* ── 本文レイアウト ───────────────────────── */
+.qz-body{
+  flex:1; width:100%; max-width:520px; margin:0 auto;
+  padding:6px 20px 40px; display:flex; flex-direction:column; gap:14px;
+}
+.qz-body-center{ justify-content:center; align-items:center; text-align:center; }
 
-/* プレビュー：実際に「分数の横線」「ルートの根号」が見える形でここに表示される */
-.math-preview-label {
-  font-size: 10.5px; font-weight: 700; color: var(--text-secondary);
-  margin-bottom: 4px;
+.loading-wrap{ margin:auto; display:flex; flex-direction:column; align-items:center; gap:14px; color:var(--text-dim); }
+.loading-dot{
+  width:14px; height:14px; border-radius:50%; background:var(--accent);
+  animation:pulse 1s ease-in-out infinite;
 }
-.math-preview {
-  min-height: 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: .5rem .65rem;
-  margin-bottom: .6rem;
-  font-size: 16px;
-  color: var(--text);
-  /* ★ スマホで縦スクロールが引っかからないよう、横スクロール領域は作らない
-     （overflow-x:auto にすると、この上をタップした時に縦スクロールが
-      効かなくなることがあるため、はみ出た分は折り返す／隠すだけにする） */
-  overflow-x: hidden;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  word-break: break-word;
-  touch-action: pan-y;
-}
-.math-preview:empty::before {
-  content: '記号を入力するとここにプレビューが表示されます';
-  color: var(--text-secondary);
-  font-size: 12px;
-}
+@keyframes pulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.6); opacity:.4; } }
 
-.math-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: .5rem; }
-.math-row:last-child { margin-bottom: 0; }
-.math-row-label {
-  width: 100%; font-size: 10.5px; font-weight: 700; color: var(--text-secondary);
-  margin-bottom: 1px;
+/* ── ホーム ───────────────────────── */
+.qz-hero-title{
+  font-family:var(--font-display); font-weight:800; font-size:34px; line-height:1.25;
+  letter-spacing:-.02em;
+  margin:10px 0 2px; color:var(--text);
 }
+.qz-hero-sub{ color:var(--text-dim); font-size:14px; margin:0 0 18px; }
 
-.math-key {
-  min-width: 36px; height: 36px; padding: 0 9px;
-  border: 1px solid var(--border); border-radius: 8px;
-  background: var(--surface);
-  font-size: 15px; font-weight: 600; font-family: inherit; color: var(--text);
-  line-height: 1;
-  display: inline-flex; align-items: center; justify-content: center;
-  cursor: pointer; user-select: none;
-  -webkit-tap-highlight-color: transparent;
+.qz-home-actions{ width:100%; display:flex; flex-direction:column; gap:12px; }
+.qz-big-btn{
+  width:100%; border-radius:var(--radius);
+  padding:20px 18px; display:flex; align-items:center; gap:14px;
+  font-family:var(--font-display); font-weight:700; font-size:16px;
+  transition:transform .12s ease, opacity .12s ease;
 }
-.math-key:active { background: var(--bg); }
+.qz-big-btn:active{ transform:scale(.97); opacity:.85; }
+.qz-big-btn-icon{ font-size:26px; }
+.qz-big-btn-join{ background:var(--panel); color:var(--accent); border:1.5px solid var(--accent); justify-content:flex-start; box-shadow:var(--shadow); }
+.qz-big-btn-host{ background:var(--accent); color:#fff; border:none; justify-content:flex-start; box-shadow:var(--shadow); }
 
-/* 分数・ルートボタンは「数式を組み立てる」特別なボタンとして少しだけ強調 */
-.math-key[data-action] { font-weight: 700; color: #2563EB; border-color: #DBEAFE; }
-.math-key-wide { flex-direction: column; min-width: 52px; height: 40px; gap: 1px; padding: 0 8px; }
-.math-key-hint { font-size: 9.5px; font-weight: 600; color: #60A5FA; line-height: 1; }
+/* ── 入力系 ───────────────────────── */
+.qz-label{ color:var(--text-dim); font-size:14px; margin:0; }
+.qz-field{ display:flex; flex-direction:column; gap:6px; text-align:left; width:100%; }
+.qz-field-label{ font-size:13px; color:var(--text-dim); font-weight:600; }
+.qz-input{
+  width:100%; padding:13px 14px; border-radius:var(--radius-sm);
+  border:2px solid var(--line); background:var(--panel); color:var(--text); font-size:15px;
+  outline:none; transition:border-color .15s;
+}
+.qz-input:focus{ border-color:var(--accent); }
+.qz-hint{ font-size:12.5px; color:var(--text-dim); line-height:1.6; margin:0; text-align:left; }
+.qz-error{ color:var(--bad); font-size:13px; min-height:18px; }
 
-.math-pad-tip {
-  font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: .4rem;
+.qz-code-input{
+  width:100%; max-width:280px; text-align:center;
+  font-family:var(--font-num); font-weight:700; font-size:38px; letter-spacing:.3em;
+  padding:16px 8px 16px 18px; border-radius:var(--radius-sm);
+  border:2px solid var(--line); background:var(--panel); color:var(--accent);
+  outline:none; transition:border-color .15s;
 }
+.qz-code-input:focus{ border-color:var(--accent); }
 
-/* パレットが開いている間、切り替えボタン自体もひと目でわかるようハイライト */
-.block-action-btn.math-btn-active { background: #2563EB; color: #fff; }
-.block-action-btn.math-btn-active:active { background: #1D4ED8; }
+.qz-cta{
+  width:100%; padding:16px; border:none; border-radius:var(--radius-sm);
+  background:var(--accent); color:#fff;
+  font-family:var(--font-display); font-weight:700; font-size:16px;
+  margin-top:6px; transition:transform .1s ease, opacity .12s ease;
+}
+.qz-cta:disabled{ opacity:.4; }
+.qz-cta:active:not(:disabled){ transform:scale(.98); opacity:.85; }
 
-/* ── プレイ中のデッキ（ホーム） ── */
-.inprogress-section { margin-bottom: 1.1rem; }
-.inprogress-label {
-  font-size: 13px; font-weight: 700; color: var(--text-secondary);
-  margin-bottom: .5rem; padding-left: 2px;
+.qz-toggle-group{ display:flex; gap:8px; }
+.qz-toggle-opt{
+  flex:1; padding:11px 8px; border-radius:var(--radius-sm); border:1.5px solid var(--line);
+  background:var(--panel); color:var(--text-dim); font-weight:700; font-size:13.5px;
+  transition:all .15s;
 }
-.inprogress-scroll {
-  display: flex; gap: .75rem; overflow-x: auto; padding: 2px 2px .3rem;
-  -webkit-overflow-scrolling: touch; scrollbar-width: none;
-}
-.inprogress-scroll::-webkit-scrollbar { display: none; }
-.inprogress-card {
-  flex: 0 0 auto; width: 190px; background: var(--surface);
-  border-radius: var(--r-lg); box-shadow: var(--shadow);
-  padding: .9rem .95rem; cursor: pointer;
-  border-left: 4px solid #2563EB;
-}
-.inprogress-card:active { background: var(--bg); }
-.inprogress-subject {
-  font-size: 11px; font-weight: 700; color: var(--text-secondary);
-  margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.inprogress-title {
-  font-size: 14px; font-weight: 700; margin-bottom: .35rem;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.inprogress-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: .5rem; }
-.inprogress-bar-track {
-  height: 5px; border-radius: 3px; background: var(--border);
-  overflow: hidden; margin-bottom: .6rem;
-}
-.inprogress-bar-fill { height: 100%; background: #2563EB; }
-.inprogress-resume-btn {
-  font-size: 12px; font-weight: 700; color: #2563EB;
-  display: flex; align-items: center; gap: 4px;
-}
+.qz-toggle-opt.active{ background:var(--accent-soft); color:var(--accent); border-color:var(--accent); }
 
-/* ── プレイ済み（完了）デッキ（ホーム） ── */
-.completed-section { margin-bottom: 1.1rem; }
-.completed-label {
-  font-size: 13px; font-weight: 700; color: var(--text-secondary);
-  margin-bottom: .5rem; padding-left: 2px;
+/* ── 手動問題作成 ───────────────────────── */
+.qz-manual-card{
+  border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel);
+  box-shadow:var(--shadow);
+  padding:14px; display:flex; flex-direction:column; gap:8px; margin-bottom:12px;
 }
-.completed-scroll {
-  display: flex; gap: .75rem; overflow-x: auto; padding: 2px 2px .3rem;
-  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+.qz-manual-card-head{ display:flex; justify-content:space-between; align-items:center; }
+.qz-manual-card-head b{ font-size:13px; color:var(--text-dim); }
+.qz-manual-remove{ background:none; border:none; color:var(--bad); font-size:13px; padding:2px 6px; font-weight:600; }
+.qz-manual-choice-row{ display:flex; align-items:center; gap:8px; }
+.qz-manual-choice-row input[type=radio]{ accent-color: var(--good); width:18px; height:18px; flex:none; }
+.qz-add-q-btn{
+  width:100%; padding:12px; border-radius:var(--radius-sm); border:1.5px dashed var(--line);
+  background:transparent; color:var(--text-dim); font-weight:600; font-size:14px;
 }
-.completed-scroll::-webkit-scrollbar { display: none; }
-.completed-card {
-  flex: 0 0 auto; width: 190px; background: var(--surface);
-  border-radius: var(--r-lg); box-shadow: var(--shadow);
-  padding: .9rem .95rem; cursor: pointer;
-  border-left: 4px solid #16a34a;
-}
-.completed-card:active { background: var(--bg); }
-.completed-subject {
-  font-size: 11px; font-weight: 700; color: var(--text-secondary);
-  margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.completed-title {
-  font-size: 14px; font-weight: 700; margin-bottom: .35rem;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.completed-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: .6rem; }
-.completed-replay-btn {
-  font-size: 12px; font-weight: 700; color: #16a34a;
-  display: flex; align-items: center; gap: 4px;
-}
+.qz-add-q-btn:active{ background:var(--panel-2); }
 
-/* ── デッキ一覧 ── */
-.deck-grid { display: flex; flex-direction: column; gap: .9rem; }
-.deck-card {
-  background: var(--surface); border-radius: var(--r-lg);
-  box-shadow: var(--shadow); padding: 1rem 1rem 1rem 1.1rem;
-  display: flex; align-items: center; gap: .75rem;
-  /* ★ 追加：カード本体を長押しして並び替えられるようにしたため、
-     長押し時にOS標準のテキスト選択／コールアウトメニューが
-     出てしまわないようにしておく */
-  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+/* ── コード表示・待機室 ───────────────────────── */
+.qz-code-display{
+  font-family:var(--font-num); font-weight:800; font-size:56px; letter-spacing:.18em;
+  color:var(--accent); background:var(--panel); border:1px solid var(--line);
+  box-shadow:var(--shadow);
+  border-radius:var(--radius); padding:18px 10px; width:100%; max-width:340px;
 }
-/* ★ 追加：並び替え中（JS側でこのクラスを付け外しする）は自前のtransformで動かすので
-   CSSトランジションは切っておく。他のカードは並び替え中、少しなめらかに位置が動く。 */
-.deck-card.dragging { transition: none; }
-.deck-grid .deck-card:not(.dragging) { transition: transform .15s ease; }
-.deck-card-info { flex: 1; min-width: 0; }
-.deck-card-subject {
-  font-size: 11px; font-weight: 700; color: var(--text-secondary);
-  margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.qz-player-grid{
+  display:flex; flex-wrap:wrap; gap:10px; justify-content:center; width:100%;
+  padding:6px 0 14px;
 }
-.deck-card-title {
-  font-size: 16px; font-weight: 700; margin-bottom: .25rem;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.qz-player-chip{
+  display:flex; align-items:center; gap:6px; padding:8px 12px 8px 8px;
+  border-radius:999px; background:var(--panel); border:1px solid var(--line);
+  font-size:13px; font-weight:600; color:var(--text);
 }
-.deck-card-meta { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-.deck-card-actions { display: flex; gap: .5rem; flex-shrink: 0; align-items: center; }
-.icon-btn {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: var(--bg); border: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; cursor: pointer; flex-shrink: 0;
+.qz-avatar{
+  width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-num); font-weight:700; font-size:11px; color:#fff; flex:none;
 }
-.icon-btn:active { background: var(--border); }
+.qz-waiting-anim{ font-size:44px; margin-bottom:6px; }
 
-/* ── 公開バッジ ── */
-.pub-badge {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 11px; font-weight: 700; padding: 2px 8px;
-  border-radius: 20px; white-space: nowrap;
+/* ── 出題画面 共通 ───────────────────────── */
+.qz-progress-label{ font-family:var(--font-num); font-weight:700; font-size:13px; color:var(--text-dim); }
+.qz-my-score{ font-family:var(--font-num); font-weight:700; font-size:14px; color:var(--accent); }
+.qz-timerbar-track{
+  width:100%; height:8px; border-radius:999px; background:var(--panel-2); overflow:hidden; margin-top:4px;
 }
-.pub-badge.published  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.pub-badge.local      { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
-.pub-badge.draft      { background: #fefce8; color: #a16207; border: 1px solid #fde68a; }
-/* ★ 追加：公開予定だがまだ公開されていない（作成中）デッキ用バッジ */
-.pub-badge.inprogress { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.qz-timerbar-fill{
+  height:100%; width:100%; background:linear-gradient(90deg, var(--good), var(--gold) 60%, var(--bad));
+  transform-origin:left center; transition:transform .25s linear, background-color .2s;
+}
+.qz-question-text{
+  font-family:var(--font-display); font-weight:700; font-size:22px; line-height:1.4;
+  margin:14px 0 4px; color:var(--text);
+}
+.qz-answered-count{ color:var(--text-dim); font-size:13px; margin-bottom:6px; }
 
-.add-deck-btn {
-  width: 52px; height: 52px; border-radius: 50%;
-  background: #2563EB; color: #fff; border: none;
-  font-size: 26px; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,.10);
-  display: flex; align-items: center; justify-content: center;
-  position: fixed; bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px) + 8px); right: 1.25rem;
-  z-index: 100; transition: transform .15s;
+.qz-choice-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;
 }
-.add-deck-btn:active { transform: scale(.93); }
-.empty-state { text-align: center; padding: 4rem 1.5rem; color: var(--text-secondary); font-size: 14px; }
-.empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+.qz-choice-btn{
+  position:relative; border:none; border-radius:var(--radius-sm); padding:20px 14px 20px 46px;
+  min-height:78px; text-align:left; font-weight:700; font-size:15px; color:#fff;
+  display:flex; align-items:center; line-height:1.35;
+  box-shadow:var(--shadow);
+  transition:transform .1s ease, opacity .2s ease, filter .2s ease;
+}
+.qz-choice-btn:active{ transform:scale(.96); }
+.qz-choice-btn::before{
+  content:""; position:absolute; left:16px; top:50%; transform:translateY(-50%);
+  width:16px; height:16px; background:rgba(255,255,255,.9);
+}
+.qz-choice-a{ background:var(--choice-a); } .qz-choice-a::before{ clip-path:polygon(50% 0,100% 100%,0 100%); }
+.qz-choice-b{ background:var(--choice-b); } .qz-choice-b::before{ clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); }
+.qz-choice-c{ background:var(--choice-c); color:#3b2405; } .qz-choice-c::before{ background:rgba(0,0,0,.7); border-radius:50%; }
+.qz-choice-d{ background:var(--choice-d); } .qz-choice-d::before{ border-radius:3px; }
 
-/* ── フォルダ ── */
-/* ★ 追加：フォルダはデッキと見分けやすいよう、ごく薄い黄色っぽい背景にする */
-.folder-card {
-  cursor: pointer;
-  background: #FFFDF2;
-  border: 1px solid #FBF6DA;
-}
-.folder-card:active { background: #FFF9E0; }
+.qz-choice-btn[disabled]{ pointer-events:none; }
+.qz-choice-btn.qz-dim{ opacity:.35; filter:grayscale(.3); }
+.qz-choice-btn.qz-picked{ outline:3px solid #fff; outline-offset:-3px; }
+.qz-choice-btn.qz-correct-flash{ outline:3px solid #fff; outline-offset:-3px; box-shadow:0 0 0 4px rgba(22,163,74,.35); }
+.qz-choice-btn.qz-wrong-flash{ box-shadow:0 0 0 4px rgba(239,68,68,.3); }
 
-.folder-breadcrumb {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
-  font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem;
+.qz-answer-feedback{
+  margin-top:16px; padding:16px; border-radius:var(--radius-sm); text-align:center;
+  font-family:var(--font-display); font-weight:700; font-size:17px;
 }
-.folder-breadcrumb .crumb {
-  cursor: pointer; padding: 3px 6px; border-radius: 6px; font-weight: 600;
-}
-.folder-breadcrumb .crumb:active { background: var(--bg); }
-.folder-breadcrumb .crumb-sep { color: var(--text-secondary); margin: 0 1px; }
+.qz-answer-feedback.ok{ background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+.qz-answer-feedback.ng{ background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
+.qz-waiting-note{ color:var(--text-dim); font-size:13px; text-align:center; margin-top:10px; }
 
-.move-picker-list {
-  max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: 1rem;
+/* ── ホスト：正解発表パネル ───────────────────────── */
+.qz-reveal-panel{ margin-top:8px; }
+.qz-first-badge{
+  display:inline-flex; align-items:center; gap:6px; background:#fff7ed;
+  color:#c2410c; border:1px solid #fed7aa; border-radius:999px;
+  padding:8px 14px; font-size:13.5px; font-weight:700; margin-bottom:10px;
 }
-.move-picker-row {
-  padding: .7rem .75rem; font-size: 14px; font-weight: 500; color: var(--text);
-  border-bottom: 1px solid var(--border); cursor: pointer;
-}
-.move-picker-row:last-child { border-bottom: none; }
-.move-picker-row:active { background: var(--bg); }
-.move-picker-row.current { background: #EFF4FF; color: #2563EB; font-weight: 700; }
-.move-picker-row.disabled { color: var(--text-secondary); opacity: .4; cursor: not-allowed; }
-.move-picker-current-tag {
-  font-size: 10px; background: #2563EB; color: #fff; padding: 1px 6px; border-radius: 10px; margin-left: 4px;
-}
+.qz-mini-leaderboard{ display:flex; flex-direction:column; gap:6px; }
 
-/* ── 学習画面 ── */
-/* overflow:hidden は共通の .screen ルールに統合済み */
-.study-top {
-  flex: 1; display: flex; flex-direction: column;
-  background: var(--surface);
-  border-bottom: 2px solid var(--border);
-  padding: 1rem 1rem .75rem;
-  overflow-y: auto; -webkit-overflow-scrolling: touch;
-  min-height: 0;
+/* ── 順位・スコア一覧 共通 ───────────────────────── */
+.qz-lb-row{
+  display:flex; align-items:center; gap:10px; padding:9px 12px;
+  border-radius:var(--radius-sm); background:var(--panel); border:1px solid var(--line);
 }
-.study-progress-row {
-  display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; flex-shrink: 0;
-}
-.study-progress-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-.study-progress-fill { height: 100%; background: #2563EB; border-radius: 2px; transition: width .3s ease; }
-.study-progress-label { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
-.study-tag-row {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: .5rem; margin-bottom: .6rem;
-}
-.study-q-tag {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: #2563EB; flex-shrink: 0;
-}
-/* ★ フォルダ再生時、この問題がどのデッキ（カードセット）由来かを示すバッジ */
-.study-deck-tag {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; border: 1px solid #bfdbfe;
-  padding: 2px 9px; border-radius: 20px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 60%;
-}
-.study-q-text {
-  font-size: 18px; font-weight: 600; line-height: 1.65;
-  white-space: pre-wrap; word-break: break-word; flex: 1;
-}
-.study-q-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
-.study-q-imgs img { height: 80px; border-radius: 6px; object-fit: cover; cursor: pointer; }
-.study-bottom { flex-shrink: 0; background: var(--bg); display: flex; flex-direction: column; }
+.qz-lb-rank{ font-family:var(--font-num); font-weight:700; width:20px; text-align:center; color:var(--text-dim); font-size:13px; }
+.qz-lb-name{ flex:1; text-align:left; font-size:14px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qz-lb-score{ font-family:var(--font-num); font-weight:700; font-size:14px; color:var(--accent); }
 
-/* 答えを見る前のバー（前へ + 答えを見る） */
-.study-reveal-bar {
-  padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom, 0px));
-  display: flex; align-items: center; justify-content: center; gap: .5rem;
-}
-.study-reveal-bar .btn { flex: 1; }
-.study-reveal-bar .btn-ghost { flex: 0 0 auto; }
+/* ── 結果画面 ───────────────────────── */
+.qz-podium{ display:flex; align-items:flex-end; gap:10px; width:100%; max-width:360px; margin:10px 0 22px; }
+.qz-podium-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; }
+.qz-podium-bar{ width:100%; border-radius:10px 10px 0 0; display:flex; align-items:flex-start; justify-content:center; padding-top:8px; }
+.qz-podium-1 .qz-podium-bar{ height:110px; background:linear-gradient(180deg,#fde68a,var(--gold)); }
+.qz-podium-2 .qz-podium-bar{ height:82px; background:#cbd5e1; }
+.qz-podium-3 .qz-podium-bar{ height:64px; background:#e0b088; }
+.qz-podium-medal{ font-size:20px; }
+.qz-podium-name{ font-size:12.5px; font-weight:700; color:var(--text); max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qz-podium-score{ font-family:var(--font-num); font-size:12px; color:var(--text-dim); }
+.qz-full-leaderboard{ width:100%; display:flex; flex-direction:column; gap:6px; margin-bottom:20px; }
 
-.study-answer-panel {
-  background: var(--surface);
-  border-top: 2px solid #2563EB;
-  padding: 1rem;
-  overflow-y: auto; -webkit-overflow-scrolling: touch;
-  max-height: 38vh;
-  display: none;
+/* ── モーダル ───────────────────────── */
+.qz-modal-overlay{
+  position:fixed; inset:0; background:rgba(15,23,42,.45);
+  display:none; align-items:center; justify-content:center; z-index:50; padding:20px;
 }
-.study-answer-panel.show { display: block; animation: slideUpCM .22s ease; }
+.qz-modal-overlay.active{ display:flex; }
+.qz-modal{
+  width:100%; max-width:320px; background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--radius); padding:20px; box-shadow:0 8px 40px rgba(15,23,42,.15);
+}
+.qz-modal-title{ font-family:var(--font-display); font-weight:700; font-size:16px; margin-bottom:6px; color:var(--text); }
+.qz-modal-desc{ color:var(--text-dim); font-size:13.5px; line-height:1.6; margin-bottom:16px; }
+.qz-modal-actions{ display:flex; gap:8px; }
+.qz-modal-btn{ flex:1; padding:11px; border-radius:var(--radius-sm); border:none; font-weight:700; font-size:14px; transition:transform .1s, opacity .12s; }
+.qz-modal-btn:active{ transform:scale(.97); opacity:.85; }
+.qz-modal-btn-cancel{ background:var(--panel-2); color:var(--text-dim); border:1.5px solid var(--line); }
+.qz-modal-btn-ok{ background:var(--bad); color:#fff; }
 
-/* ★ 追加：自動採点モードの解答入力欄 */
-.study-answer-input-wrap { padding: 0 1rem .6rem; flex-shrink: 0; }
-.study-answer-input {
-  width: 100%; box-sizing: border-box; padding: 12px 14px;
-  border: 2px solid var(--border); border-radius: var(--r-md);
-  font-family: inherit; font-size: 16px; color: var(--text);
-  background: var(--surface); outline: none; transition: border-color .15s;
+@media (min-width:600px){
+  .qz-choice-grid{ grid-template-columns:1fr 1fr; }
 }
-.study-answer-input:focus { border-color: #2563EB; }
-
-/* ★ 追加：自動採点の判定結果（○正解 / ✕不正解） */
-.study-grade-result {
-  display: flex; align-items: center; gap: .7rem;
-  padding: .7rem .9rem; border-radius: var(--r-md);
-  margin-bottom: .85rem;
-}
-.study-grade-result.correct   { background: #dcfce7; }
-.study-grade-result.incorrect { background: #fee2e2; }
-.grade-mark { font-size: 20px; font-weight: 800; flex-shrink: 0; white-space: nowrap; }
-.study-grade-result.correct   .grade-mark { color: #16a34a; }
-.study-grade-result.incorrect .grade-mark { color: #dc2626; }
-.grade-user-answer { font-size: 13px; color: var(--text-secondary); word-break: break-word; line-height: 1.5; }
-@keyframes slideUpCM { from { transform: translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
-.answer-tag {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: #2563EB; margin-bottom: .5rem;
-}
-.answer-text {
-  font-size: 16px; font-weight: 600; line-height: 1.65;
-  white-space: pre-wrap; word-break: break-word; color: var(--text);
-}
-.answer-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
-.answer-imgs img { height: 72px; border-radius: 6px; object-fit: cover; cursor: pointer; }
-.expl-divider { border: none; border-top: 1px solid var(--border); margin: .75rem 0; }
-.expl-tag {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: var(--text-secondary); margin-bottom: .4rem;
-}
-.expl-text { font-size: 14px; color: var(--text-secondary); line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
-.study-nav {
-  display: flex; gap: .5rem;
-  padding: .6rem 1rem calc(.6rem + env(safe-area-inset-bottom, 0px) + 12px);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-}
-.study-nav .btn { flex: 1; }
-.study-done {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 2rem; text-align: center; gap: 1rem;
-}
-.study-done-icon  { font-size: 3.5rem; }
-.study-done-title { font-size: 22px; font-weight: 800; }
-.study-done-sub   { font-size: 14px; color: var(--text-secondary); }
-
-/* ── 作成済みリスト ── */
-.created-section { margin-top: 1.5rem; }
-.created-label {
-  font-size: 11px; font-weight: 700; letter-spacing: .07em;
-  text-transform: uppercase; color: var(--text-secondary); margin-bottom: .75rem;
-}
-.created-list { display: flex; flex-direction: column; gap: .6rem; }
-.created-item {
-  background: var(--surface); border-radius: var(--r-md);
-  border: 1px solid var(--border); padding: .75rem 1rem;
-  display: flex; align-items: flex-start; gap: .75rem;
-}
-.created-item-num {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; width: 24px; height: 24px;
-  border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; margin-top: 1px;
-}
-.created-item-body { flex: 1; min-width: 0; }
-.created-item-q { font-size: 13px; font-weight: 600; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.created-item-a { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.created-item-btns { display: flex; gap: .35rem; flex-shrink: 0; }
-
-/* ── モーダル ── */
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.4);
-  z-index: 300; display: none; align-items: flex-end; justify-content: center;
-}
-.modal-overlay.open { display: flex; animation: fadeInCM .15s ease; }
-@keyframes fadeInCM { from { opacity: 0; } }
-@media (min-width: 520px) { .modal-overlay { align-items: center; } }
-.modal-sheet {
-  background: var(--surface);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
-  width: 100%; padding: 1rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
-  box-shadow: 0 -8px 40px rgba(0,0,0,.15);
-  animation: sheetUpCM .22s ease;
-  /* ★ 理数記号パネルなどを開くと中身が画面の高さを超えることがあるが、
-     これまでモーダル自体にスクロール手段が無く、はみ出た部分に
-     まったく触れない（スクロールできない）状態になっていたため追加。 */
-  max-height: 88vh;
-  max-height: 88dvh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-@keyframes sheetUpCM { from { transform: translateY(30px); opacity: 0; } }
-@media (min-width: 520px) {
-  .modal-sheet { border-radius: var(--r-lg); max-width: 420px; margin: 1rem; padding-bottom: 1.5rem; animation: none; }
-}
-.modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto .9rem; }
-@media (min-width: 520px) { .modal-handle { display: none; } }
-.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 1rem; }
-.modal-input {
-  width: 100%; padding: 12px 14px; border: 2px solid var(--border);
-  border-radius: var(--r-md); font-family: inherit; font-size: 16px;
-  color: var(--text); background: var(--bg); outline: none;
-  margin-bottom: 1rem; transition: border-color .15s;
-}
-.modal-input:focus { border-color: #2563EB; background: var(--surface); }
-.modal-btns { display: flex; gap: .5rem; }
-.modal-btns .btn { flex: 1; }
-
-/* メニューシート */
-.menu-item {
-  display: flex; align-items: center; gap: .9rem;
-  padding: .9rem .25rem; border-bottom: 1px solid var(--border);
-  font-size: 15px; font-weight: 500; cursor: pointer; color: var(--text);
-}
-.menu-item:last-child { border-bottom: none; }
-.menu-item:active { background: var(--bg); border-radius: var(--r-md); }
-.menu-item.danger { color: #EF4444; }
-.menu-icon { font-size: 20px; width: 28px; text-align: center; }
-
-/* わからないボタン */
-.unsure-btn {
-  display: inline-flex; align-items: center; gap: .4rem;
-  padding: .4rem .9rem; border-radius: 20px; font-size: 13px; font-weight: 600;
-  cursor: pointer; border: 1.5px solid var(--border);
-  background: var(--surface); color: var(--text-secondary);
-  transition: all .15s; flex-shrink: 0;
-}
-.unsure-btn.marked { background: #fffbeb; color: #b45309; border-color: #fcd34d; }
-
-/* わからないバッジ */
-.unsure-badge {
-  display: inline-flex; align-items: center;
-  font-size: 10px; background: #fffbeb; color: #b45309;
-  border: 1px solid #fcd34d; padding: 1px 7px; border-radius: 20px; font-weight: 700;
-}
-
-/* プレイモード */
-.play-mode-item {
-  display: flex; align-items: center; gap: .9rem;
-  padding: 1rem .25rem; border-bottom: 1px solid var(--border);
-  font-size: 15px; font-weight: 500; cursor: pointer; color: var(--text);
-  border-radius: var(--r-md);
-}
-.play-mode-item:last-child { border-bottom: none; }
-.play-mode-item:active { background: var(--bg); }
-.play-mode-icon { font-size: 22px; width: 32px; text-align: center; }
-.play-mode-sub  { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-
-/* ── 反転モードトグル（プレイモード選択シート内） ── */
-.reverse-toggle-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .8rem .25rem; margin-bottom: .5rem;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px; font-weight: 600; color: var(--text);
-  cursor: pointer;
-}
-.reverse-toggle-row input[type="checkbox"] {
-  width: 20px; height: 20px; accent-color: #2563EB; cursor: pointer; flex-shrink: 0;
-}
-
-/* ── 画像ライトボックス（タップで拡大表示） ── */
-.img-lightbox-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.88);
-  z-index: 500; display: none; align-items: center; justify-content: center;
-  padding: 2rem 1rem calc(2rem + env(safe-area-inset-bottom, 0px));
-  cursor: zoom-out;
-}
-.img-lightbox-overlay.open { display: flex; animation: fadeInCM .15s ease; }
-.img-lightbox-overlay img {
-  max-width: 100%; max-height: 100%;
-  border-radius: 10px; object-fit: contain;
-  box-shadow: 0 8px 40px rgba(0,0,0,.4);
-}
-
-/* ── カード編集モーダル：入力欄と「画像を追加」ボタンを近づける ── */
-#modal-card-edit textarea.modal-input { margin-bottom: .25rem; }
-#modal-card-edit .img-strip { padding: 0 0 .25rem; }
-#modal-card-edit .block-actions { padding-top: 0; border-top: none; margin-bottom: .5rem; }
-
-/* ── カード編集モーダル：保存する／閉じるボタンを画面下側に固定 ── */
-#modal-card-edit .modal-sheet { padding-bottom: 0; }
-#modal-card-edit .modal-btns {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  background: var(--surface);
-  margin: 1rem -1.25rem 0;
-  padding: .75rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--border);
-}
-
-/* ══════════ 一覧表示（問題と答えをまとめて見る） ══════════ */
-.list-view-tabs {
-  display: flex; gap: .5rem; margin-bottom: 1rem;
-  position: sticky; top: 0; background: var(--bg); padding: .25rem 0 .5rem; z-index: 2;
-}
-.list-view-tab {
-  flex: 1; padding: .6rem .5rem; border-radius: var(--r-md);
-  border: 1.5px solid var(--border); background: var(--surface);
-  font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--text-secondary);
-  cursor: pointer; transition: all .15s;
-}
-.list-view-tab.active { border-color: #2563EB; color: #2563EB; background: #EFF4FF; }
-.list-view-tab:active { opacity: .8; }
-
-.list-view-item {
-  background: var(--surface); border-radius: var(--r-lg);
-  border: 1px solid var(--border); padding: 1rem 1.1rem;
-  margin-bottom: .85rem;
-}
-.list-view-item-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .65rem; }
-.list-view-item-num {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; width: 22px; height: 22px; flex-shrink: 0;
-  border-radius: 50%; display: flex; align-items: center; justify-content: center;
-}
-.list-view-deck-tag {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; border: 1px solid #bfdbfe;
-  padding: 1px 9px; border-radius: 20px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
-}
-.list-view-unsure-badge { font-size: 13px; }
-.list-view-edit-btn {
-  margin-left: auto; flex-shrink: 0; border: none; background: transparent;
-  font-size: 15px; padding: 4px 6px; border-radius: 6px; cursor: pointer; line-height: 1;
-}
-.list-view-edit-btn:active { background: var(--bg); }
-.list-view-q-tag, .list-view-a-tag, .list-view-e-tag {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: #2563EB; margin-bottom: .35rem;
-}
-.list-view-e-tag { color: var(--text-secondary); margin-top: .65rem; }
-.list-view-q-text {
-  font-size: 15.5px; font-weight: 600; line-height: 1.6;
-  white-space: pre-wrap; word-break: break-word; margin-bottom: .5rem;
-}
-.list-view-a-text {
-  font-size: 14.5px; font-weight: 600; line-height: 1.6; color: var(--text);
-  white-space: pre-wrap; word-break: break-word;
-}
-.list-view-e-text {
-  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
-  white-space: pre-wrap; word-break: break-word;
-}
-.list-view-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 .5rem; }
-.list-view-imgs img { height: 68px; border-radius: 6px; object-fit: cover; cursor: pointer; }
-
-/* ══════════ ボタンの「押せた感」＆ローディングスピナー ══════════ */
-/* ★ 追加：サーバー通信を伴うボタン（デッキ作成・フォルダ作成など）を押した際、
-   通信が終わるまで見た目に変化がなく「押せたのか分からない」という
-   問題を解消するための共通スタイル。 */
-.btn-spinner {
-  display: inline-block; width: 15px; height: 15px;
-  border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
-  border-radius: 50%; animation: btnSpinCM .7s linear infinite;
-  vertical-align: -3px; margin-right: 7px;
-  flex-shrink: 0;
-}
-.btn-outline .btn-spinner,
-.btn-ghost   .btn-spinner {
-  border-color: rgba(37,99,235,.25); border-top-color: #2563EB;
-}
-.btn.btn-loading { cursor: default; opacity: .8; pointer-events: none; }
-@keyframes btnSpinCM { to { transform: rotate(360deg); } }
-
-/* ★ 追加：デッキカード／フォルダカードにも押した瞬間の反応を付ける（タップ時に少し縮む） */
-.deck-card:active { transform: scale(.97); }
-.deck-card:not(.folder-card):active { background: var(--bg); }
