@@ -45,7 +45,7 @@ function setButtonLoading(btn, loading, label) {
   }
 }
 
-const API_BASE    = "https://python-bot-1istudy.onrender.com/";
+const API_BASE    = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const GUILD_ID    = "1509880344806162544";
 const SESSION_KEY = "sl_session";
 const DEFAULT_TASK_POINTS = 5;
