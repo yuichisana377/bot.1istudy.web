@@ -281,9 +281,9 @@ async function submitCreateRoom() {
   errEl.textContent = '';
   const title = document.getElementById('hs-title').value.trim();
   const isDeckSrc = document.querySelector('#hs-source-toggle .qz-toggle-opt[data-src="deck"]').classList.contains('active');
-  const time_limit_sec = Number(document.getElementById('hs-time-limit').value);
+  // ★ 制限時間は1問20秒固定（サーバー側でも固定されている）。
 
-  const body = withAuth({ title, time_limit_sec });
+  const body = withAuth({ title });
 
   if (isDeckSrc) {
     const filename = document.getElementById('hs-deck-select').value;
@@ -393,71 +393,34 @@ function playerChipsHtml(players) {
 
 const CHOICE_CLASSES = ['qz-choice-a', 'qz-choice-b', 'qz-choice-c', 'qz-choice-d'];
 
-function renderHostPlay(room) {
-  showScreenQ('host-play');
-  const qChanged = room.current_q !== renderedQIndex || room.state !== renderedState;
-  renderedQIndex = room.current_q; renderedState = room.state;
-
-  document.getElementById('hp-progress').textContent = `Q ${room.current_q + 1} / ${room.total_questions}`;
-  document.getElementById('hp-title').textContent = room.title;
-  document.getElementById('hp-question').textContent = room.question.question;
-  document.getElementById('hp-answered').textContent = `${room.answered_count} / ${room.total_players} 人が回答`;
-
-  const choicesEl = document.getElementById('hp-choices');
-  const revealed = room.state === 'reveal';
-  choicesEl.innerHTML = room.question.choices.map((c, i) => `
-    <button class="qz-choice-btn ${CHOICE_CLASSES[i]} ${revealed && i !== room.question.correct_index ? 'qz-dim' : ''} ${revealed && i === room.question.correct_index ? 'qz-correct-flash' : ''}" disabled>
-      ${escapeHtml(c)}
-    </button>`).join('');
-
-  const revealPanel = document.getElementById('hp-reveal');
-  const nextBtn = document.getElementById('hp-next-btn');
-  if (revealed) {
-    revealPanel.style.display = '';
-    document.getElementById('hp-first-badge').textContent = room.first_correct_nickname
-      ? `⚡ 一番早く正解：${room.first_correct_nickname} さん（+2点ボーナス）`
-      : '⚡ 正解者はいませんでした';
-    document.getElementById('hp-leaderboard').innerHTML = miniLeaderboardHtml(room.players);
-    const isLast = room.current_q + 1 >= room.total_questions;
-    nextBtn.textContent = isLast ? '結果を見る' : '次の問題へ';
-  } else {
-    revealPanel.style.display = 'none';
-    nextBtn.textContent = '正解を発表する';
-  }
-
-  updateTimerBarFor(room, 'hp-timerbar');
-}
-
-function miniLeaderboardHtml(players) {
-  return players.slice(0, 5).map((p, i) => `
-    <div class="qz-lb-row">
-      <span class="qz-lb-rank">${i + 1}</span>
-      <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
-      <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
-      <span class="qz-lb-score">${p.score}点</span>
-    </div>`).join('');
-}
-
-function renderPlayerPlay(room) {
-  showScreenQ('player-play');
+// ★ ホストも1人の参加者として一緒に回答する。出題画面はホスト用／
+//   プレイヤー用でほぼ同じ処理になるため、共通ロジックをここにまとめる。
+//   （進行はすべてサーバー側の自動判定に任せる：全員回答 or 時間切れで
+//   自動的に正解発表(reveal)へ、発表からしばらくすると自動的に次の問題へ
+//   進むので、ここでは「今の room の状態をそのまま描画する」だけでよい）
+function renderPlayScreen(room, opts) {
+  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, nextNoteId, timerbarId, answeredCountId } = opts;
   const qChanged = room.current_q !== renderedQIndex;
   const stateChanged = room.state !== renderedState;
   if (qChanged) hasAnsweredThisQ = false;
   renderedQIndex = room.current_q; renderedState = room.state;
 
-  document.getElementById('pp-progress').textContent = `Q ${room.current_q + 1} / ${room.total_questions}`;
+  document.getElementById(progressId).textContent = `Q ${room.current_q + 1} / ${room.total_questions}`;
   const myScore = room.players.find(p => p.id === STUDENT.id)?.score ?? 0;
-  document.getElementById('pp-score').textContent = `${myScore}点`;
-  document.getElementById('pp-question').textContent = room.question.question;
+  document.getElementById(scoreId).textContent = `${myScore}点`;
+  document.getElementById(questionId).textContent = room.question.question;
+  if (answeredCountId) {
+    document.getElementById(answeredCountId).textContent = `${room.answered_count} / ${room.total_players} 人が回答`;
+  }
 
   const revealed = room.state === 'reveal';
   const yourAnswer = room.your_answer;
   const answered = (yourAnswer !== undefined) || hasAnsweredThisQ;
 
-  const choicesEl = document.getElementById('pp-choices');
+  const choicesEl = document.getElementById(choicesId);
   if (qChanged || stateChanged || !choicesEl.dataset.built || Number(choicesEl.dataset.built) !== room.current_q) {
     choicesEl.innerHTML = room.question.choices.map((c, i) => `
-      <button class="qz-choice-btn ${CHOICE_CLASSES[i]}" onclick="submitAnswer(${i})">${escapeHtml(c)}</button>`).join('');
+      <button class="qz-choice-btn ${CHOICE_CLASSES[i]}" onclick="submitAnswer(${i}, '${choicesId}', '${waitingNoteId}')">${escapeHtml(c)}</button>`).join('');
     choicesEl.dataset.built = room.current_q;
   }
 
@@ -472,8 +435,9 @@ function renderPlayerPlay(room) {
     }
   });
 
-  const feedbackEl = document.getElementById('pp-feedback');
-  const waitingNote = document.getElementById('pp-waiting-note');
+  const feedbackEl = document.getElementById(feedbackId);
+  const waitingNote = document.getElementById(waitingNoteId);
+  const nextNote = nextNoteId ? document.getElementById(nextNoteId) : null;
   if (revealed && yourAnswer !== undefined) {
     feedbackEl.style.display = '';
     if (room.your_correct) {
@@ -497,23 +461,68 @@ function renderPlayerPlay(room) {
     feedbackEl.style.display = 'none';
     waitingNote.style.display = 'none';
   }
+  if (nextNote) nextNote.style.display = revealed ? '' : 'none';
 
-  updateTimerBarFor(room, 'pp-timerbar');
+  updateTimerBarFor(room, timerbarId);
 }
 
-// タイマーバー：サーバーの question_started_at + time_limit_sec を基準に、
-// クライアント側では200msごとに残り時間を計算してスムーズに減らしていく。
+function renderHostPlay(room) {
+  showScreenQ('host-play');
+  renderPlayScreen(room, {
+    progressId: 'hp-progress', scoreId: 'hp-score', questionId: 'hp-question',
+    choicesId: 'hp-choices', feedbackId: 'hp-feedback', waitingNoteId: 'hp-waiting-note',
+    timerbarId: 'hp-timerbar', answeredCountId: 'hp-answered',
+  });
+
+  const revealPanel = document.getElementById('hp-reveal');
+  if (room.state === 'reveal') {
+    revealPanel.style.display = '';
+    document.getElementById('hp-first-badge').textContent = room.first_correct_nickname
+      ? `⚡ 一番早く正解：${room.first_correct_nickname} さん（+2点ボーナス）`
+      : '⚡ 正解者はいませんでした';
+    document.getElementById('hp-leaderboard').innerHTML = miniLeaderboardHtml(room.players);
+  } else {
+    revealPanel.style.display = 'none';
+  }
+}
+
+function miniLeaderboardHtml(players) {
+  return players.slice(0, 5).map((p, i) => `
+    <div class="qz-lb-row">
+      <span class="qz-lb-rank">${i + 1}</span>
+      <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
+      <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
+      <span class="qz-lb-score">${p.score}点</span>
+    </div>`).join('');
+}
+
+function renderPlayerPlay(room) {
+  showScreenQ('player-play');
+  renderPlayScreen(room, {
+    progressId: 'pp-progress', scoreId: 'pp-score', questionId: 'pp-question',
+    choicesId: 'pp-choices', feedbackId: 'pp-feedback', waitingNoteId: 'pp-waiting-note',
+    nextNoteId: 'pp-next-note', timerbarId: 'pp-timerbar',
+  });
+}
+
+// タイマーバー：出題中はサーバーの question_started_at + time_limit_sec を、
+// 正解発表中は reveal_started_at + reveal_duration_sec（次の問題へ自動で
+// 進むまでの残り時間）を基準に、クライアント側では200msごとに残り時間を
+// 計算してスムーズに減らしていく。
 function updateTimerBarFor(room, elId) {
   const el = document.getElementById(elId);
-  el.dataset.startedAt = room.question_started_at || '';
-  el.dataset.limit = room.time_limit_sec;
-  el.dataset.frozen = room.state === 'reveal' ? '1' : '0';
+  if (room.state === 'reveal') {
+    el.dataset.startedAt = room.reveal_started_at || '';
+    el.dataset.limit = room.reveal_duration_sec || '';
+  } else {
+    el.dataset.startedAt = room.question_started_at || '';
+    el.dataset.limit = room.time_limit_sec || '';
+  }
 }
 function tickTimerBars() {
   ['hp-timerbar', 'pp-timerbar'].forEach(id => {
     const el = document.getElementById(id);
-    if (!el || !el.dataset.startedAt) return;
-    if (el.dataset.frozen === '1') { el.style.transform = 'scaleX(0)'; return; }
+    if (!el || !el.dataset.startedAt || !el.dataset.limit) return;
     const started = Number(el.dataset.startedAt) * 1000;
     const limit = Number(el.dataset.limit) * 1000;
     const remain = Math.max(0, limit - (Date.now() - started));
@@ -521,15 +530,16 @@ function tickTimerBars() {
   });
 }
 
-async function submitAnswer(choiceIndex) {
+async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId = 'pp-waiting-note') {
   if (hasAnsweredThisQ) return;
   hasAnsweredThisQ = true;
-  const choicesEl = document.getElementById('pp-choices');
+  const choicesEl = document.getElementById(choicesId);
   [...choicesEl.children].forEach((btn, i) => {
     btn.disabled = true;
     btn.classList.toggle('qz-picked', i === choiceIndex);
   });
-  document.getElementById('pp-waiting-note').style.display = '';
+  const waitingNote = document.getElementById(waitingNoteId);
+  if (waitingNote) waitingNote.style.display = '';
   await apiPost('quiz_answer', withAuth({ code: roomCode, choice_index: choiceIndex }));
   pollOnce();
 }
@@ -542,14 +552,6 @@ async function hostStart() {
   btn.disabled = true;
   const data = await apiPost('quiz_start', withAuth({ code: roomCode }));
   if (!data.ok) { btn.disabled = false; alert(quizErrorText(data.error)); return; }
-  renderRoom(data.room);
-}
-async function hostNext() {
-  const btn = document.getElementById('hp-next-btn');
-  btn.disabled = true;
-  const data = await apiPost('quiz_next', withAuth({ code: roomCode }));
-  btn.disabled = false;
-  if (!data.ok) { alert(quizErrorText(data.error)); return; }
   renderRoom(data.room);
 }
 async function confirmQuitHost() {

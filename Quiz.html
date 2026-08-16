@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>みんなでクイズ</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
+     共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
+<link rel="stylesheet" href="/Style.css">
 <link rel="stylesheet" href="Quiz.css">
 </head>
 <body>
@@ -105,17 +105,7 @@
       <button type="button" class="qz-add-q-btn" onclick="addManualQuestion()">＋ 問題を追加</button>
     </div>
 
-    <label class="qz-field">
-      <span class="qz-field-label">1問の制限時間</span>
-      <select id="hs-time-limit" class="qz-input">
-        <option value="10">10秒</option>
-        <option value="15">15秒</option>
-        <option value="20" selected>20秒</option>
-        <option value="30">30秒</option>
-        <option value="45">45秒</option>
-        <option value="60">60秒</option>
-      </select>
-    </label>
+    <p class="qz-hint">1問20秒。全員が回答し終わるか時間切れになったら自動で正解を発表し、しばらくしたら次の問題に進みます。あなたも参加者として一緒に回答できます。</p>
 
     <div class="qz-error" id="hs-error"></div>
     <button class="qz-cta" id="hs-create-btn" onclick="submitCreateRoom()">クイズを作成する</button>
@@ -138,23 +128,25 @@
   </div>
 </section>
 
-<!-- ============ ホスト：出題中／結果発表 ============ -->
+<!-- ============ ホスト：出題中／結果発表（ホストも参加者として回答する） ============ -->
 <section class="screen" id="screen-host-play">
   <header class="qz-header">
     <div class="qz-progress-label" id="hp-progress"></div>
-    <div class="qz-brand-sm" id="hp-title"></div>
+    <div class="qz-my-score" id="hp-score">0点</div>
     <button class="qz-icon-btn" onclick="confirmQuitHost()">✕</button>
   </header>
   <div class="qz-body">
     <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="hp-timerbar"></div></div>
-    <h2 class="qz-question-text" id="hp-question"></h2>
     <div class="qz-answered-count" id="hp-answered"></div>
+    <h2 class="qz-question-text" id="hp-question"></h2>
     <div class="qz-choice-grid" id="hp-choices"></div>
+    <div class="qz-answer-feedback" id="hp-feedback" style="display:none"></div>
+    <p class="qz-waiting-note" id="hp-waiting-note" style="display:none">ほかの人の解答を待っています…</p>
     <div class="qz-reveal-panel" id="hp-reveal" style="display:none">
       <div class="qz-first-badge" id="hp-first-badge"></div>
       <div class="qz-mini-leaderboard" id="hp-leaderboard"></div>
+      <p class="qz-waiting-note">まもなく次の問題です…</p>
     </div>
-    <button class="qz-cta" id="hp-next-btn" onclick="hostNext()">正解を発表する</button>
   </div>
 </section>
 
@@ -198,6 +190,7 @@
     <div class="qz-choice-grid" id="pp-choices"></div>
     <div class="qz-answer-feedback" id="pp-feedback" style="display:none"></div>
     <p class="qz-waiting-note" id="pp-waiting-note" style="display:none">ほかの人の解答を待っています…</p>
+    <p class="qz-waiting-note" id="pp-next-note" style="display:none">まもなく次の問題です…</p>
   </div>
 </section>
 

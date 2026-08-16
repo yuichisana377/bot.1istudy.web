@@ -1,57 +1,58 @@
 /* ============================================================
    Quiz.css — みんなでクイズ
    デザイン方針：
-   ・CardMaker（cardmaker.css）と同じ明るい配色・青系アクセントに統一。
-     背景は明るいグレー、カードは白いサーフェスに薄いボーダーと
-     ソフトシャドウ、プライマリカラーは #2563EB。
-   ・4択は「色 × 図形(▲◆●■)」で対応させ、早押し中に文字を読まなくても
-     一瞬で選べるようにする（Kahoot等の早押しクイズで実証済みの実用パターン）。
-     色は既存パレット（赤=危険色、緑=完了色、青=ブランド色、金=強調色）を
-     流用し、アプリ全体でトーンが揃うようにしている。
-   ・書体はCardMakerと同じくシステムフォントに統一（継承前提）。
+   ・配色・角丸・シャドウ・書体はすべて Style.css の共通トークン
+     （--bg / --surface / --border / --text / --text-secondary /
+      --r-sm / --r-md / --r-lg / --shadow）をそのまま使い、CardMaker
+     （Cardmaker.css）と完全に同じ見た目のトーンに揃える。
+     独自のフォントや背景色は定義しない（Quiz.htmlもStyle.cssを読み込む
+     前提。bodyの背景・文字色・書体もCardMaker同様、style.css側の
+     ものを上書きしない）。
+   ・ボタンはCardMakerの .btn と同じ規格（高さ48px・角丸var(--r-md)・
+     押下時 transform:scale(.97) + opacity:.85・disabledはopacity:.4）
+     に統一する。
+   ・カード状の要素（手動問題入力・招待コード表示など）はCardMakerの
+     .card-block / .deck-card と同じく、白いサーフェス(var(--surface))
+     + var(--shadow) + var(--r-lg) の組み合わせにする。
+   ・確認モーダルはCardMakerの .modal-overlay / .modal-sheet と同じ
+     「下から出てくるボトムシート（デスクトップ幅では中央カード）」
+     パターンに統一する。
+   ・4択ボタンだけはCardMaker側に相当するパーツが無いため、早押しクイズ
+     の定番である「色×図形(▲◆●■)」の専用デザインを維持しつつ、使う色は
+     アプリ全体の意味付け（青=ブランド／緑=正解・完了／赤=危険／
+     金・琥珀=強調）に揃えている。
    ============================================================ */
 
 :root{
-  --bg: #f8fafc;
-  --panel: #ffffff;         /* CardMakerの var(--surface) 相当 */
-  --panel-2: #f1f5f9;       /* ほんの少し沈んだ背景（チップ等） */
-  --line: #e2e8f0;          /* CardMakerの var(--border) 相当 */
-  --text: #0f172a;
-  --text-dim: #64748b;      /* CardMakerの var(--text-secondary) 相当 */
-  --shadow: 0 1px 3px rgba(15,23,42,.08), 0 1px 2px rgba(15,23,42,.04);
-
-  --accent: #2563EB;        /* ブランドカラー（CardMakerと共通） */
-  --accent-soft: #EFF4FF;
+  /* CardMakerには無い、クイズ専用の意味付けカラーだけをここで追加する。
+     背景・境界線・文字色・角丸・影は Style.css の共通トークンをそのまま使う。 */
+  --accent: #2563EB;        /* ブランドカラー（CardMakerの主要ボタン色と共通） */
+  --accent-soft: #EFF4FF;   /* CardMakerの block-action-btn 等と共通の薄い青 */
   --accent-ink: #ffffff;
-  --accent-2: #ef4444;      /* ホスト操作・警告寄りの差し色（danger色を流用） */
-  --good: #16a34a;          /* completed-card等と共通の緑 */
-  --bad: #ef4444;           /* btn-danger等と共通の赤 */
-  --gold: #f59e0b;          /* 1位・強調用のアクセント */
+  --good: #16a34a;          /* completed-card 等と共通の緑（正解） */
+  --good-soft: #dcfce7;
+  --bad: #EF4444;           /* btn-danger 等と共通の赤（不正解・危険操作） */
+  --bad-soft: #FEF2F2;
+  --warn: #b45309;          /* unsure-badge 等と共通の琥珀（一番乗りバッジ） */
+  --warn-soft: #fffbeb;
+  --warn-line: #fcd34d;
+  --gold: #f59e0b;          /* 表彰台1位の演出用 */
 
-  --choice-a: #ef4444;  /* ▲ 赤 */
-  --choice-b: #2563EB;  /* ◆ 青 */
-  --choice-c: #f59e0b;  /* ● 金 */
-  --choice-d: #16a34a;  /* ■ 緑 */
-
-  --radius: 16px;      /* CardMakerの var(--r-lg) 相当 */
-  --radius-sm: 10px;   /* CardMakerの var(--r-md) 相当 */
-  --font-display: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
-  --font-num: inherit;
-  --font-body: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+  --choice-a: var(--bad);    /* ▲ 赤 */
+  --choice-b: var(--accent); /* ◆ 青 */
+  --choice-c: var(--gold);   /* ● 金 */
+  --choice-d: var(--good);   /* ■ 緑 */
 }
 
-*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-html,body{ height:100%; }
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:var(--font-body);
-  overscroll-behavior:none;
-}
+/* Style.cssで既に *,*::before,*::after は border-box + margin/padding:0 に
+   リセット済みだが、CardMaker.cssと同様に明示しておく（安全側） */
+*, *::before, *::after{ box-sizing:border-box; }
+
+/* ★ CardMaker.cssと同じ方針：bodyの背景・文字色・書体はStyle.cssの
+   ものをそのまま使い、ここでは上書きしない。 */
 
 button{ font-family:inherit; cursor:pointer; }
-input,select{ font-family:inherit; }
+input, select{ font-family:inherit; }
 
 /* ── 画面切り替え ───────────────────────── */
 .screen{
@@ -62,134 +63,139 @@ input,select{ font-family:inherit; }
 }
 .screen.active{ display:flex; }
 
-/* ── ヘッダー ───────────────────────── */
+/* ── ヘッダー（CardMakerの .topbar と同じ規格） ───────────────────────── */
 .qz-header{
+  box-sizing:border-box;
   display:flex; align-items:center; justify-content:space-between;
-  padding: max(14px, env(safe-area-inset-top)) 18px 12px;
-  gap:10px;
-  background:var(--bg);
+  gap:.75rem;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  height:calc(56px + env(safe-area-inset-top, 0px));
+  padding:env(safe-area-inset-top, 0px) 1rem 0;
+  position:sticky; top:0; z-index:100; flex-shrink:0;
 }
 .qz-brand{
   display:flex; align-items:center; gap:8px;
-  font-family:var(--font-display); font-weight:800; font-size:17px; letter-spacing:.01em;
+  font-weight:800; font-size:16px; letter-spacing:-.01em;
   color:var(--text);
 }
 .qz-brand-mark{
   display:inline-flex; align-items:center; justify-content:center;
-  width:26px; height:26px; border-radius:8px;
+  width:26px; height:26px; border-radius:var(--r-sm);
   background:var(--accent); color:var(--accent-ink);
-  font-family:var(--font-num); font-weight:700; font-size:15px;
-  transform:rotate(-6deg);
+  font-weight:700; font-size:14px;
 }
 .qz-brand-sm{
-  font-family:var(--font-display); font-weight:700; font-size:15px; color:var(--text-dim);
+  font-weight:700; font-size:15px; color:var(--text-secondary);
   max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .qz-back, .qz-icon-btn{
-  width:36px; height:36px; border-radius:50%; border:1px solid var(--line);
-  background:var(--panel); color:var(--text-dim); font-size:16px;
+  width:36px; height:36px; border-radius:50%; border:1px solid var(--border);
+  background:var(--bg); color:var(--text-secondary); font-size:16px;
   display:flex; align-items:center; justify-content:center;
-  transition:background .12s;
+  transition:background .12s; flex-shrink:0;
 }
-.qz-back:active, .qz-icon-btn:active{ background:var(--panel-2); }
-.qz-account{ font-size:13px; color:var(--text-dim); }
+.qz-back:active, .qz-icon-btn:active{ background:var(--border); }
+.qz-account{ font-size:13px; color:var(--text-secondary); }
 
-/* ── 本文レイアウト ───────────────────────── */
+/* ── 本文レイアウト（CardMakerの .inner と同じ最大幅） ───────────────────────── */
 .qz-body{
   flex:1; width:100%; max-width:520px; margin:0 auto;
-  padding:6px 20px 40px; display:flex; flex-direction:column; gap:14px;
+  padding:1.25rem 1rem 6rem; display:flex; flex-direction:column; gap:14px;
 }
 .qz-body-center{ justify-content:center; align-items:center; text-align:center; }
 
-.loading-wrap{ margin:auto; display:flex; flex-direction:column; align-items:center; gap:14px; color:var(--text-dim); }
+.loading-wrap{ margin:auto; display:flex; flex-direction:column; align-items:center; gap:14px; color:var(--text-secondary); }
 .loading-dot{
   width:14px; height:14px; border-radius:50%; background:var(--accent);
-  animation:pulse 1s ease-in-out infinite;
+  animation:qzPulse 1s ease-in-out infinite;
 }
-@keyframes pulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.6); opacity:.4; } }
+@keyframes qzPulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.6); opacity:.4; } }
 
 /* ── ホーム ───────────────────────── */
 .qz-hero-title{
-  font-family:var(--font-display); font-weight:800; font-size:34px; line-height:1.25;
-  letter-spacing:-.02em;
+  font-weight:800; font-size:26px; line-height:1.3; letter-spacing:-.02em;
   margin:10px 0 2px; color:var(--text);
 }
-.qz-hero-sub{ color:var(--text-dim); font-size:14px; margin:0 0 18px; }
+.qz-hero-sub{ color:var(--text-secondary); font-size:14px; margin:0 0 18px; }
 
 .qz-home-actions{ width:100%; display:flex; flex-direction:column; gap:12px; }
 .qz-big-btn{
-  width:100%; border-radius:var(--radius);
-  padding:20px 18px; display:flex; align-items:center; gap:14px;
-  font-family:var(--font-display); font-weight:700; font-size:16px;
-  transition:transform .12s ease, opacity .12s ease;
+  width:100%; border-radius:var(--r-md);
+  padding:16px 18px; display:flex; align-items:center; gap:14px;
+  font-weight:700; font-size:15px;
+  transition:opacity .12s, transform .1s;
 }
 .qz-big-btn:active{ transform:scale(.97); opacity:.85; }
-.qz-big-btn-icon{ font-size:26px; }
-.qz-big-btn-join{ background:var(--panel); color:var(--accent); border:1.5px solid var(--accent); justify-content:flex-start; box-shadow:var(--shadow); }
+.qz-big-btn-icon{ font-size:24px; }
+.qz-big-btn-join{ background:var(--surface); color:var(--accent); border:1.5px solid var(--accent); justify-content:flex-start; box-shadow:var(--shadow); }
 .qz-big-btn-host{ background:var(--accent); color:#fff; border:none; justify-content:flex-start; box-shadow:var(--shadow); }
 
-/* ── 入力系 ───────────────────────── */
-.qz-label{ color:var(--text-dim); font-size:14px; margin:0; }
+/* ── 入力系（CardMakerの .set-name-input / .modal-input と同じ規格） ───────────────────────── */
+.qz-label{ color:var(--text-secondary); font-size:14px; margin:0; }
 .qz-field{ display:flex; flex-direction:column; gap:6px; text-align:left; width:100%; }
-.qz-field-label{ font-size:13px; color:var(--text-dim); font-weight:600; }
+.qz-field-label{ font-size:13px; color:var(--text-secondary); font-weight:600; }
 .qz-input{
-  width:100%; padding:13px 14px; border-radius:var(--radius-sm);
-  border:2px solid var(--line); background:var(--panel); color:var(--text); font-size:15px;
+  width:100%; padding:13px 14px; border-radius:var(--r-md);
+  border:2px solid var(--border); background:var(--surface); color:var(--text); font-size:15px;
   outline:none; transition:border-color .15s;
 }
 .qz-input:focus{ border-color:var(--accent); }
-.qz-hint{ font-size:12.5px; color:var(--text-dim); line-height:1.6; margin:0; text-align:left; }
+.qz-hint{ font-size:12.5px; color:var(--text-secondary); line-height:1.6; margin:0; text-align:left; }
 .qz-error{ color:var(--bad); font-size:13px; min-height:18px; }
 
 .qz-code-input{
   width:100%; max-width:280px; text-align:center;
-  font-family:var(--font-num); font-weight:700; font-size:38px; letter-spacing:.3em;
-  padding:16px 8px 16px 18px; border-radius:var(--radius-sm);
-  border:2px solid var(--line); background:var(--panel); color:var(--accent);
+  font-weight:700; font-size:34px; letter-spacing:.3em;
+  padding:16px 8px 16px 18px; border-radius:var(--r-md);
+  border:2px solid var(--border); background:var(--surface); color:var(--accent);
   outline:none; transition:border-color .15s;
 }
 .qz-code-input:focus{ border-color:var(--accent); }
 
+/* ── ボタン（CardMakerの .btn と同じ規格：高さ48px・角丸var(--r-md)） ───────────────────────── */
 .qz-cta{
-  width:100%; padding:16px; border:none; border-radius:var(--radius-sm);
+  width:100%; height:48px; padding:0 1.25rem; border:none; border-radius:var(--r-md);
   background:var(--accent); color:#fff;
-  font-family:var(--font-display); font-weight:700; font-size:16px;
-  margin-top:6px; transition:transform .1s ease, opacity .12s ease;
+  font-weight:600; font-size:15px;
+  margin-top:6px; transition:opacity .12s, transform .1s;
 }
-.qz-cta:disabled{ opacity:.4; }
-.qz-cta:active:not(:disabled){ transform:scale(.98); opacity:.85; }
+.qz-cta:disabled{ opacity:.4; cursor:not-allowed; }
+.qz-cta:active:not(:disabled){ transform:scale(.97); opacity:.85; }
 
 .qz-toggle-group{ display:flex; gap:8px; }
 .qz-toggle-opt{
-  flex:1; padding:11px 8px; border-radius:var(--radius-sm); border:1.5px solid var(--line);
-  background:var(--panel); color:var(--text-dim); font-weight:700; font-size:13.5px;
+  flex:1; padding:11px 8px; border-radius:var(--r-md); border:1.5px solid var(--border);
+  background:var(--surface); color:var(--text-secondary); font-weight:700; font-size:13.5px;
   transition:all .15s;
 }
 .qz-toggle-opt.active{ background:var(--accent-soft); color:var(--accent); border-color:var(--accent); }
+.qz-toggle-opt:disabled{ opacity:.5; }
 
-/* ── 手動問題作成 ───────────────────────── */
+/* ── 手動問題作成（CardMakerの .card-block と同じ規格） ───────────────────────── */
 .qz-manual-card{
-  border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel);
-  box-shadow:var(--shadow);
+  border-radius:var(--r-lg); background:var(--surface); box-shadow:var(--shadow);
+  border-left:4px solid transparent; transition:border-color .2s;
   padding:14px; display:flex; flex-direction:column; gap:8px; margin-bottom:12px;
 }
+.qz-manual-card:focus-within{ border-left-color:var(--accent); }
 .qz-manual-card-head{ display:flex; justify-content:space-between; align-items:center; }
-.qz-manual-card-head b{ font-size:13px; color:var(--text-dim); }
+.qz-manual-card-head b{ font-size:13px; color:var(--text-secondary); }
 .qz-manual-remove{ background:none; border:none; color:var(--bad); font-size:13px; padding:2px 6px; font-weight:600; }
 .qz-manual-choice-row{ display:flex; align-items:center; gap:8px; }
-.qz-manual-choice-row input[type=radio]{ accent-color: var(--good); width:18px; height:18px; flex:none; }
+.qz-manual-choice-row input[type=radio]{ accent-color:var(--good); width:18px; height:18px; flex:none; }
 .qz-add-q-btn{
-  width:100%; padding:12px; border-radius:var(--radius-sm); border:1.5px dashed var(--line);
-  background:transparent; color:var(--text-dim); font-weight:600; font-size:14px;
+  width:100%; padding:12px; border-radius:var(--r-md); border:1.5px dashed var(--border);
+  background:transparent; color:var(--text-secondary); font-weight:600; font-size:14px;
 }
-.qz-add-q-btn:active{ background:var(--panel-2); }
+.qz-add-q-btn:active{ background:var(--bg); }
 
-/* ── コード表示・待機室 ───────────────────────── */
+/* ── コード表示・待機室（CardMakerの .deck-card / .card-block と同じ白いサーフェス） ───────────────────────── */
 .qz-code-display{
-  font-family:var(--font-num); font-weight:800; font-size:56px; letter-spacing:.18em;
-  color:var(--accent); background:var(--panel); border:1px solid var(--line);
+  font-weight:800; font-size:52px; letter-spacing:.16em;
+  color:var(--accent); background:var(--surface); border:1px solid var(--border);
   box-shadow:var(--shadow);
-  border-radius:var(--radius); padding:18px 10px; width:100%; max-width:340px;
+  border-radius:var(--r-lg); padding:18px 10px; width:100%; max-width:340px;
 }
 .qz-player-grid{
   display:flex; flex-wrap:wrap; gap:10px; justify-content:center; width:100%;
@@ -197,36 +203,36 @@ input,select{ font-family:inherit; }
 }
 .qz-player-chip{
   display:flex; align-items:center; gap:6px; padding:8px 12px 8px 8px;
-  border-radius:999px; background:var(--panel); border:1px solid var(--line);
+  border-radius:999px; background:var(--surface); border:1px solid var(--border);
   font-size:13px; font-weight:600; color:var(--text);
 }
 .qz-avatar{
   width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  font-family:var(--font-num); font-weight:700; font-size:11px; color:#fff; flex:none;
+  font-weight:700; font-size:11px; color:#fff; flex:none;
 }
 .qz-waiting-anim{ font-size:44px; margin-bottom:6px; }
 
 /* ── 出題画面 共通 ───────────────────────── */
-.qz-progress-label{ font-family:var(--font-num); font-weight:700; font-size:13px; color:var(--text-dim); }
-.qz-my-score{ font-family:var(--font-num); font-weight:700; font-size:14px; color:var(--accent); }
+.qz-progress-label{ font-weight:700; font-size:13px; color:var(--text-secondary); }
+.qz-my-score{ font-weight:700; font-size:14px; color:var(--accent); }
 .qz-timerbar-track{
-  width:100%; height:8px; border-radius:999px; background:var(--panel-2); overflow:hidden; margin-top:4px;
+  width:100%; height:8px; border-radius:999px; background:var(--bg); overflow:hidden; margin-top:4px;
 }
 .qz-timerbar-fill{
   height:100%; width:100%; background:linear-gradient(90deg, var(--good), var(--gold) 60%, var(--bad));
-  transform-origin:left center; transition:transform .25s linear, background-color .2s;
+  transform-origin:left center; transition:transform .25s linear;
 }
 .qz-question-text{
-  font-family:var(--font-display); font-weight:700; font-size:22px; line-height:1.4;
+  font-weight:700; font-size:21px; line-height:1.4;
   margin:14px 0 4px; color:var(--text);
 }
-.qz-answered-count{ color:var(--text-dim); font-size:13px; margin-bottom:6px; }
+.qz-answered-count{ color:var(--text-secondary); font-size:13px; margin-bottom:6px; }
 
 .qz-choice-grid{
   display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;
 }
 .qz-choice-btn{
-  position:relative; border:none; border-radius:var(--radius-sm); padding:20px 14px 20px 46px;
+  position:relative; border:none; border-radius:var(--r-lg); padding:20px 14px 20px 46px;
   min-height:78px; text-align:left; font-weight:700; font-size:15px; color:#fff;
   display:flex; align-items:center; line-height:1.35;
   box-shadow:var(--shadow);
@@ -249,18 +255,18 @@ input,select{ font-family:inherit; }
 .qz-choice-btn.qz-wrong-flash{ box-shadow:0 0 0 4px rgba(239,68,68,.3); }
 
 .qz-answer-feedback{
-  margin-top:16px; padding:16px; border-radius:var(--radius-sm); text-align:center;
-  font-family:var(--font-display); font-weight:700; font-size:17px;
+  margin-top:16px; padding:16px; border-radius:var(--r-md); text-align:center;
+  font-weight:700; font-size:16px;
 }
-.qz-answer-feedback.ok{ background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+.qz-answer-feedback.ok{ background:var(--good-soft); color:#15803d; border:1px solid #bbf7d0; }
 .qz-answer-feedback.ng{ background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
-.qz-waiting-note{ color:var(--text-dim); font-size:13px; text-align:center; margin-top:10px; }
+.qz-waiting-note{ color:var(--text-secondary); font-size:13px; text-align:center; margin-top:10px; }
 
-/* ── ホスト：正解発表パネル ───────────────────────── */
+/* ── ホスト：正解発表パネル（CardMakerの .unsure-badge と同じ琥珀色） ───────────────────────── */
 .qz-reveal-panel{ margin-top:8px; }
 .qz-first-badge{
-  display:inline-flex; align-items:center; gap:6px; background:#fff7ed;
-  color:#c2410c; border:1px solid #fed7aa; border-radius:999px;
+  display:inline-flex; align-items:center; gap:6px; background:var(--warn-soft);
+  color:var(--warn); border:1px solid var(--warn-line); border-radius:999px;
   padding:8px 14px; font-size:13.5px; font-weight:700; margin-bottom:10px;
 }
 .qz-mini-leaderboard{ display:flex; flex-direction:column; gap:6px; }
@@ -268,41 +274,59 @@ input,select{ font-family:inherit; }
 /* ── 順位・スコア一覧 共通 ───────────────────────── */
 .qz-lb-row{
   display:flex; align-items:center; gap:10px; padding:9px 12px;
-  border-radius:var(--radius-sm); background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--r-md); background:var(--surface); border:1px solid var(--border);
 }
-.qz-lb-rank{ font-family:var(--font-num); font-weight:700; width:20px; text-align:center; color:var(--text-dim); font-size:13px; }
+.qz-lb-rank{ font-weight:700; width:20px; text-align:center; color:var(--text-secondary); font-size:13px; }
 .qz-lb-name{ flex:1; text-align:left; font-size:14px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.qz-lb-score{ font-family:var(--font-num); font-weight:700; font-size:14px; color:var(--accent); }
+.qz-lb-score{ font-weight:700; font-size:14px; color:var(--accent); }
 
 /* ── 結果画面 ───────────────────────── */
 .qz-podium{ display:flex; align-items:flex-end; gap:10px; width:100%; max-width:360px; margin:10px 0 22px; }
 .qz-podium-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; }
-.qz-podium-bar{ width:100%; border-radius:10px 10px 0 0; display:flex; align-items:flex-start; justify-content:center; padding-top:8px; }
+.qz-podium-bar{ width:100%; border-radius:var(--r-sm) var(--r-sm) 0 0; display:flex; align-items:flex-start; justify-content:center; padding-top:8px; }
 .qz-podium-1 .qz-podium-bar{ height:110px; background:linear-gradient(180deg,#fde68a,var(--gold)); }
 .qz-podium-2 .qz-podium-bar{ height:82px; background:#cbd5e1; }
 .qz-podium-3 .qz-podium-bar{ height:64px; background:#e0b088; }
 .qz-podium-medal{ font-size:20px; }
 .qz-podium-name{ font-size:12.5px; font-weight:700; color:var(--text); max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.qz-podium-score{ font-family:var(--font-num); font-size:12px; color:var(--text-dim); }
+.qz-podium-score{ font-size:12px; color:var(--text-secondary); }
 .qz-full-leaderboard{ width:100%; display:flex; flex-direction:column; gap:6px; margin-bottom:20px; }
 
-/* ── モーダル ───────────────────────── */
+/* ── モーダル（CardMakerの .modal-overlay / .modal-sheet と同じボトムシート） ───────────────────────── */
 .qz-modal-overlay{
-  position:fixed; inset:0; background:rgba(15,23,42,.45);
-  display:none; align-items:center; justify-content:center; z-index:50; padding:20px;
+  position:fixed; inset:0; background:rgba(0,0,0,.4);
+  z-index:300; display:none; align-items:flex-end; justify-content:center;
 }
-.qz-modal-overlay.active{ display:flex; }
+.qz-modal-overlay.active{ display:flex; animation:qzFadeIn .15s ease; }
+@keyframes qzFadeIn{ from{ opacity:0; } }
+@media (min-width:520px){ .qz-modal-overlay{ align-items:center; } }
 .qz-modal{
-  width:100%; max-width:320px; background:var(--panel); border:1px solid var(--line);
-  border-radius:var(--radius); padding:20px; box-shadow:0 8px 40px rgba(15,23,42,.15);
+  width:100%; background:var(--surface);
+  border-radius:var(--r-lg) var(--r-lg) 0 0;
+  padding:1rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  box-shadow:0 -8px 40px rgba(0,0,0,.15);
+  animation:qzSheetUp .22s ease;
 }
-.qz-modal-title{ font-family:var(--font-display); font-weight:700; font-size:16px; margin-bottom:6px; color:var(--text); }
-.qz-modal-desc{ color:var(--text-dim); font-size:13.5px; line-height:1.6; margin-bottom:16px; }
+/* CardMakerの .modal-handle 相当（見た目だけなのでHTMLを増やさず疑似要素で表現） */
+.qz-modal::before{
+  content:""; display:block; width:36px; height:4px; background:var(--border);
+  border-radius:2px; margin:0 auto .9rem;
+}
+@keyframes qzSheetUp{ from{ transform:translateY(30px); opacity:0; } }
+@media (min-width:520px){
+  .qz-modal{ border-radius:var(--r-lg); max-width:340px; margin:1rem; padding:1.25rem; animation:none; }
+  .qz-modal::before{ display:none; }
+}
+.qz-modal-title{ font-weight:700; font-size:16px; margin-bottom:6px; color:var(--text); }
+.qz-modal-desc{ color:var(--text-secondary); font-size:13.5px; line-height:1.6; margin-bottom:16px; }
 .qz-modal-actions{ display:flex; gap:8px; }
-.qz-modal-btn{ flex:1; padding:11px; border-radius:var(--radius-sm); border:none; font-weight:700; font-size:14px; transition:transform .1s, opacity .12s; }
+.qz-modal-btn{
+  flex:1; height:44px; border-radius:var(--r-md); font-weight:600; font-size:14px;
+  transition:opacity .12s, transform .1s;
+}
 .qz-modal-btn:active{ transform:scale(.97); opacity:.85; }
-.qz-modal-btn-cancel{ background:var(--panel-2); color:var(--text-dim); border:1.5px solid var(--line); }
-.qz-modal-btn-ok{ background:var(--bad); color:#fff; }
+.qz-modal-btn-cancel{ background:transparent; color:var(--text-secondary); border:1.5px solid var(--border); }
+.qz-modal-btn-ok{ background:var(--bad-soft); color:var(--bad); border:1.5px solid #fecaca; }
 
 @media (min-width:600px){
   .qz-choice-grid{ grid-template-columns:1fr 1fr; }
