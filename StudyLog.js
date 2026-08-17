@@ -141,7 +141,7 @@ async function loadTasks() {
 // ============================================================
 const LS_TIMER_LASTLOG  = "sl_timer_lastlog_"  + STUDENT.id; // { at, minutes }
 const LS_MANUAL_LASTLOG = "sl_manual_lastlog_" + STUDENT.id; // { [subject]: at }
-const MANUAL_COOLDOWN_MS = 60 * 1000; // 1分
+const MANUAL_COOLDOWN_MS = 20 * 1000; // 20秒（連打対策。サーバー側のMANUAL_COOLDOWN_SECと一致させること）
 
 function getTimerLastLog() {
   try { return JSON.parse(localStorage.getItem(LS_TIMER_LASTLOG)); } catch(e) { return null; }
@@ -986,14 +986,30 @@ async function saveManual() {
     return;
   }
 
-  // ★ 同じ教科での連続手入力は、前回の記録から1分経つまで不可（誤操作・二重送信防止）
-  var manualMap = getManualLastLogMap();
-  var lastAt    = manualMap[sub];
+  // ★ 教科を問わず、本人の直近の手入力から MANUAL_COOLDOWN_MS 経つまで不可（連打防止）
+  //   ※サーバー側（bot.py の add_study_log）にも同じ判定があり、そちらが最終防衛。
+  //     ここはあくまで早めにエラーを見せるためのUX用チェック。
+  var manualMap  = getManualLastLogMap();
+  var allTimes   = Object.keys(manualMap).map(function(k) { return manualMap[k]; });
+  var lastAnyAt  = allTimes.length ? Math.max.apply(null, allTimes) : null;
+  if (lastAnyAt) {
+    var elapsedAnyMs = Date.now() - lastAnyAt;
+    if (elapsedAnyMs < MANUAL_COOLDOWN_MS) {
+      var remainAnySec = Math.ceil((MANUAL_COOLDOWN_MS - elapsedAnyMs) / 1000);
+      errEl.textContent   = "✕ 記録は、前回から" + (MANUAL_COOLDOWN_MS / 1000) + "秒経ってから行えます（あと" + remainAnySec + "秒）";
+      errEl.style.display = "block";
+      setTimeout(function() { errEl.style.display = "none"; }, 3500);
+      return;
+    }
+  }
+
+  // ★ 同じ教科での連続手入力は、前回の記録から MANUAL_COOLDOWN_MS 経つまで不可
+  var lastAt = manualMap[sub];
   if (lastAt) {
     var elapsedMs = Date.now() - lastAt;
     if (elapsedMs < MANUAL_COOLDOWN_MS) {
       var remainSec = Math.ceil((MANUAL_COOLDOWN_MS - elapsedMs) / 1000);
-      errEl.textContent   = "✕ 同じ教科の記録は、前回から1分経ってから行えます（あと" + remainSec + "秒）";
+      errEl.textContent   = "✕ 同じ教科の記録は、前回から" + (MANUAL_COOLDOWN_MS / 1000) + "秒経ってから行えます（あと" + remainSec + "秒）";
       errEl.style.display = "block";
       setTimeout(function() { errEl.style.display = "none"; }, 3500);
       return;
