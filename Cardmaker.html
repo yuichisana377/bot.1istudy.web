@@ -69,6 +69,7 @@
   <div class="topbar">
     <button class="menu-btn" onclick="openDrawer()">☰</button>
     <div class="topbar-title">📇 CardMaker</div>
+    <button class="icon-btn" onclick="openSearchScreen()" title="問題を検索" aria-label="検索">🔍</button>
     <div class="header-account" style="margin-left:auto;display:flex;align-items:center;gap:8px;">
       <div id="header-avatar" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;"></div>
       <div style="line-height:1.25;text-align:right;">
@@ -106,6 +107,25 @@
     </div>
   </div>
   <button class="add-deck-btn" onclick="openAddChoice()" aria-label="追加">＋</button>
+</div>
+
+<!-- ══════════ 単語検索 ══════════ -->
+<div class="screen" id="screen-search">
+  <div class="topbar">
+    <button class="topbar-back" onclick="showScreen('list')">←</button>
+    <div class="topbar-title">🔍 問題を検索</div>
+  </div>
+  <div class="cm-scroll-body">
+    <div class="search-body">
+      <div>
+        <input type="text" class="modal-input" id="search-input" placeholder="問題文・解答で検索"
+               oninput="onSearchInput()" style="margin-bottom:.4rem">
+        <div class="search-scope-label" id="search-scope-label"></div>
+      </div>
+      <div class="search-status" id="search-status" style="display:none"></div>
+      <div id="search-results"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════ セット名入力 ══════════ -->
