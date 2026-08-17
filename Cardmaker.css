@@ -717,6 +717,11 @@ html, body {
   background: var(--surface); border-radius: var(--r-lg);
   border: 1px solid var(--border); padding: 1rem 1.1rem;
   margin-bottom: .85rem;
+  transition: background-color .3s, border-color .3s;
+}
+/* ★ 検索結果から一覧にジャンプしたとき、該当の問題を一瞬ハイライトして見つけやすくする */
+.list-view-item-highlight {
+  background: #EFF4FF; border-color: #2563EB;
 }
 .list-view-item-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .65rem; }
 .list-view-item-num {

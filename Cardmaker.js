@@ -753,13 +753,23 @@ function runSearch() {
     </div>`).join('') + `</div>`;
 }
 
-// ★ 検索結果をタップしたら、そのデッキの編集画面を開き、該当カードを
-//   そのままカード編集モーダルで表示する（作成済みリストから探す手間を省く）。
+// ★ 検索結果をタップしたら、編集画面ではなく「一覧で見る」画面（そのデッキの
+//   全問題をまとめて見られる画面）を開き、該当の問題の位置まで自動でスクロールする。
+//   検索の準備段階（prepareSearchScope）で対象デッキのカードは読み込み済みのはず。
 async function openSearchResult(deckId, cardId) {
-  await openEditDeck(deckId);
   const deck = decks.find(d => d.id === deckId);
-  const card = deck && deck.cards.find(c => c.id === cardId);
-  if (card) openCardEditModalCommon(deckId, card, 'editor');
+  if (!deck) return;
+  const card = deck.cards.find(c => c.id === cardId);
+  if (!card) return;
+
+  studyIsFolder = false;
+  studyDeckId = deckId;
+  listViewFilter = 'all';
+  listViewReverse = false;
+  document.getElementById('list-view-title').textContent = deck.name;
+  pendingListViewScrollKey = cardKey(card);
+  showScreen('list-view');
+  renderListView();
 }
 
 // ── プレイ中（続きから再開できる）デッキ・フォルダ ────────────────────
@@ -3537,6 +3547,9 @@ async function startStudyMode(mode) {
 //   openPlayMode() / openFolderPlayMode() で既に設定・読み込み済みのものをそのまま使う。
 let listViewFilter = 'all';   // 'all' | 'unsure'
 let listViewReverse = false;  // 問題と解答を逆にするか
+// ★ 検索結果などから、この一覧を開いたら特定の問題までスクロールしたい場合に
+//   キー（cardKey）をセットしておく。renderListView() が描画後に1回だけ消費する。
+let pendingListViewScrollKey = null;
 
 function openListView() {
   listViewReverse = document.getElementById('reverse-mode-checkbox').checked;
@@ -3615,6 +3628,7 @@ function renderListView() {
 
     const item = document.createElement('div');
     item.className = 'list-view-item';
+    item.dataset.key = cardKey(c); // ★ 検索結果などから、この問題までスクロールするための目印
 
     const head = document.createElement('div');
     head.className = 'list-view-item-head';
@@ -3697,6 +3711,21 @@ function renderListView() {
 
     wrap.appendChild(item);
   });
+
+  // ★ 検索結果などから「この問題までスクロールして」と指定されていれば、
+  //   描画完了後にその位置まで自動でスクロールし、見つけやすいよう一瞬ハイライトする。
+  if (pendingListViewScrollKey) {
+    const key = pendingListViewScrollKey;
+    pendingListViewScrollKey = null;
+    const target = wrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (target) {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('list-view-item-highlight');
+        setTimeout(() => target.classList.remove('list-view-item-highlight'), 1800);
+      });
+    }
+  }
 }
 
 // ★ 一覧画面のカードをタップで編集する（保存後は renderListView() が呼ばれ再描画される）
