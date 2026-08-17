@@ -954,24 +954,19 @@ body {
 }
 
 /* ============================================================
-   サービス情報（画面最下部のアップデート情報）
+   サービス情報ページ（ServiceInfo.html）
 ============================================================ */
 .service-info {
-  max-width: 640px;
-  margin: -4.5rem auto 0; /* plan-main の下部余白(FAB避け)を打ち消して詰める */
-  padding: 0 1rem 7rem;   /* こちらが実質の最終要素になるのでFAB分の余白を確保 */
   display: flex;
   flex-direction: column;
   gap: 12px;
-  scroll-margin-top: 66px; /* ドロワーからのアンカー遷移時、ヘッダーに隠れないように */
 }
 
 .service-info-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-top: 1.2rem;
-  border-top: 1px solid var(--border);
+  margin-bottom: 2px;
 }
 
 .service-info-icon { font-size: 20px; flex-shrink: 0; }
