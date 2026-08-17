@@ -125,14 +125,18 @@ async function autoLogin(session) {
 // ============================================================
 //  API
 // ============================================================
-async function fetchUsers() {
+// ★ 以前はここで /get_users を呼び、全生徒の学籍番号・ニックネーム一覧を
+//   丸ごと取得していた（ログイン画面を開いてIDを1件確認するだけなのに、
+//   認証なしで名簿全体がブラウザに渡ってしまっていた）。
+//   /check_student は問い合わせた1件についてだけ最小限の情報を返す。
+async function checkStudent(id) {
   const res = await fetch(
-    `${API_BASE}/get_users?guild_id=${GUILD_ID}`,
+    `${API_BASE}/check_student?guild_id=${GUILD_ID}&id=${encodeURIComponent(id)}`,
     { headers: { "Content-Type": "application/json" } }
   );
   const data = await res.json();
-  if (!data.ok) throw new Error("fetch_users_failed");
-  return data.users || []; // ★ password_hash等は含まれない（サーバー側で除去済み）
+  if (!data.ok) throw new Error("check_student_failed");
+  return data; // { ok:true, exists:boolean, nickname?, has_password? }
 }
 
 async function loginRequest(id, password) {
@@ -251,14 +255,13 @@ async function submitId() {
     //   既に登録済みの学籍番号の場合は、これまで通りパスワード入力を求める。
     setBtn(btnEl, true, "確認中…");
     try {
-      const users  = await fetchUsers();
-      const exists = users.some(u => u.id === raw);
-      if (!exists) {
+      const check = await checkStudent(raw);
+      if (!check.exists) {
         openRegisterStep(raw, "new");
         return;
       }
     } catch {
-      // ユーザー一覧の取得に失敗した場合は、判定できないので通常通りエラーにする
+      // 確認に失敗した場合は、判定できないので通常通りエラーにする
     } finally {
       setBtn(btnEl, false, "ログイン →");
     }
@@ -335,9 +338,8 @@ async function openRegisterStep(id, mode, prefillPassword) {
     nicknameField.style.display = "none";
     let nicknameLabel = id;
     try {
-      const users = await fetchUsers();
-      const user  = users.find(u => u.id === id);
-      if (user) nicknameLabel = user.nickname;
+      const check = await checkStudent(id);
+      if (check.exists && check.nickname) nicknameLabel = check.nickname;
     } catch {}
     document.getElementById("reg-title").textContent = "パスワード設定 🔑";
     document.getElementById("reg-desc").innerHTML =
