@@ -453,6 +453,15 @@ body {
 .empty-msg { text-align: center; padding: 3rem 1rem; color: var(--text-tertiary); font-size: 14px; }
 .error-msg { text-align: center; padding: 1.5rem; color: #991b1b; font-size: 13px; background: #fee2e2; border-radius: var(--r-md); }
 
+/* ★ 予定一覧・ログの「もっと読み込む」ボタン（段階読み込み用） */
+.load-more-btn {
+  display: block; width: 100%; margin: 4px 0 14px; padding: 11px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.load-more-btn:active   { background: var(--bg); }
+.load-more-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .btn-primary:disabled, .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { display: inline-block; width: 16px; height: 16px; margin-right: 8px; vertical-align: -3px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }

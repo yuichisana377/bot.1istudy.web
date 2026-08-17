@@ -26,6 +26,26 @@ let editTarget = null;
 let delTarget  = null;
 let detailTarget = null; // ★ 詳細モーダルで表示中の予定のlabel
 
+// ============================================================
+//  ★ 予定一覧・ログの段階読み込み（ページング）
+//  ─────────────────────────────
+//  予定を自動削除しなくなったため、過去分は年月とともに増え続ける。
+//  全件を読み込んでから表示すると開くたびに遅くなっていくので、
+//  ①これからの予定（未来分）を先に読み込んで即表示 → ②過去分は直近から
+//  1ページ分だけ自動で追加読み込み → ③それでも続きがあれば
+//  「もっと読み込む」ボタンで手動追加、という段階的な読み込みにする。
+//  ログも同様に、最新分を1ページ読み込んで即表示し、続きはボタンで読む。
+// ============================================================
+const PAST_PLANS_PAGE_SIZE = 50;
+const LOGS_PAGE_SIZE       = 50;
+let pastPlansOffset  = 0;
+let pastPlansHasMore = false;
+let pastPlansLoading = false;
+let logsData    = [];
+let logsOffset  = 0;
+let logsHasMore = false;
+let logsLoading = false;
+
 // ★ ポイント選択状態（'add' / 'edit' ごとに選択中のポイント値を保持）
 let selectedPoints = { add: null, edit: null };
 
@@ -125,13 +145,45 @@ async function loadChannels() {
 async function loadPlans() {
   document.getElementById('plan-loading').style.display = 'block';
   document.getElementById('plan-content').innerHTML = '';
+  plans = [];
+  pastPlansOffset  = 0;
+  pastPlansHasMore = false;
+
+  // ① これからの予定（未来分）を先に読み込んで表示する
   try {
-    const data = await api(`/list_schedule?guild_id=${GUILD_ID}`);
+    const data = await api(`/list_schedule?guild_id=${GUILD_ID}&scope=future`);
     plans = data.ok ? data.plans : [];
   } catch(e) { plans = []; }
   document.getElementById('plan-loading').style.display = 'none';
   renderPlans();
   scrollToToday();
+
+  // ② 続けて、過去分を直近から1ページ分だけ自動で追加読み込みする
+  //   （まだ多く残っている場合は「もっと読み込む」ボタンで手動追加）
+  await loadMorePastPlans();
+}
+
+/** 過去の予定を1ページ分読み込んで既存の plans に追加する（「もっと読み込む」ボタンからも呼ばれる） */
+async function loadMorePastPlans() {
+  if (pastPlansLoading) return;
+  pastPlansLoading = true;
+  const btn = document.getElementById('plan-load-more-btn');
+  if (btn) setLoading(btn, '読み込み中…', true);
+
+  try {
+    const data = await api(`/list_schedule?guild_id=${GUILD_ID}&scope=past&offset=${pastPlansOffset}&limit=${PAST_PLANS_PAGE_SIZE}`);
+    if (data.ok) {
+      plans = plans.concat(data.plans);
+      pastPlansOffset += data.plans.length;
+      pastPlansHasMore = !!data.has_more;
+    } else {
+      pastPlansHasMore = false;
+    }
+  } catch(e) {
+    pastPlansHasMore = false;
+  }
+  pastPlansLoading = false;
+  renderPlans();
 }
 
 function scrollToToday() {
@@ -168,11 +220,44 @@ function scrollToToday() {
 async function loadLogs() {
   document.getElementById('log-loading').style.display = 'block';
   document.getElementById('log-content').innerHTML = '';
+  logsData    = [];
+  logsOffset  = 0;
+  logsHasMore = false;
+
+  // 最新から1ページ分だけ読み込んで、すべて読み込む前に表示する
   try {
-    const data = await api(`/list_logs?guild_id=${GUILD_ID}`);
-    renderLogs(data.ok ? data.logs : []);
-  } catch(e) { renderLogs([]); }
+    const data = await api(`/list_logs?guild_id=${GUILD_ID}&offset=0&limit=${LOGS_PAGE_SIZE}`);
+    if (data.ok) {
+      logsData    = data.logs;
+      logsOffset  = data.logs.length;
+      logsHasMore = !!data.has_more;
+    }
+  } catch(e) { logsData = []; }
   document.getElementById('log-loading').style.display = 'none';
+  renderLogs();
+}
+
+/** ログを1ページ分読み込んで既存の logsData に追加する（「もっと読み込む」ボタンから呼ばれる） */
+async function loadMoreLogs() {
+  if (logsLoading) return;
+  logsLoading = true;
+  const btn = document.getElementById('log-load-more-btn');
+  if (btn) setLoading(btn, '読み込み中…', true);
+
+  try {
+    const data = await api(`/list_logs?guild_id=${GUILD_ID}&offset=${logsOffset}&limit=${LOGS_PAGE_SIZE}`);
+    if (data.ok) {
+      logsData = logsData.concat(data.logs);
+      logsOffset += data.logs.length;
+      logsHasMore = !!data.has_more;
+    } else {
+      logsHasMore = false;
+    }
+  } catch(e) {
+    logsHasMore = false;
+  }
+  logsLoading = false;
+  renderLogs();
 }
 
 // ============================================================
@@ -299,10 +384,16 @@ function renderPlans() {
   const el = document.getElementById('plan-content');
   const filtered = getFilteredPlans();
 
+  // ★ 日付は昇順（過去→未来）で並ぶため、「もっと読み込む」で追加される
+  //   過去の予定は一番上に来る。ボタンも一覧の先頭に置く。
+  const loadMoreHtml = pastPlansHasMore
+    ? `<button type="button" id="plan-load-more-btn" class="load-more-btn" onclick="loadMorePastPlans()">さらに過去の予定を読み込む</button>`
+    : '';
+
   if (!filtered.length) {
-    el.innerHTML = plans.length
+    el.innerHTML = loadMoreHtml + (plans.length
       ? '<div class="empty-msg">条件に一致する予定はありません</div>'
-      : '<div class="empty-msg">予定はありません</div>';
+      : '<div class="empty-msg">予定はありません</div>');
     return;
   }
 
@@ -310,7 +401,7 @@ function renderPlans() {
   const grouped = {};
   filtered.forEach(p => { (grouped[p.date] = grouped[p.date] || []).push(p); });
 
-  el.innerHTML = Object.keys(grouped).sort().map(date => {
+  el.innerHTML = loadMoreHtml + Object.keys(grouped).sort().map(date => {
     const d = new Date(date + 'T00:00:00');
     const label = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${WDAYS[d.getDay()]}）`;
 
@@ -412,10 +503,13 @@ function deleteFromDetail() {
 // ============================================================
 const TYPE_LABEL = { add:'追加', edit:'編集', delete:'削除', cleanup:'自動削除' };
 
-function renderLogs(logs) {
+function renderLogs() {
   const el = document.getElementById('log-content');
-  if (!logs.length) { el.innerHTML = '<div class="empty-msg">ログはありません</div>'; return; }
-  el.innerHTML = logs.map(l => `
+  if (!logsData.length) { el.innerHTML = '<div class="empty-msg">ログはありません</div>'; return; }
+  const loadMoreHtml = logsHasMore
+    ? `<button type="button" id="log-load-more-btn" class="load-more-btn" onclick="loadMoreLogs()">もっと読み込む</button>`
+    : '';
+  el.innerHTML = logsData.map(l => `
     <div class="tl-item">
       <div class="tl-dot dot-${l.type}"></div>
       <div class="tl-time">${l.time}</div>
@@ -423,7 +517,7 @@ function renderLogs(logs) {
         <div class="tl-type type-${l.type}">${TYPE_LABEL[l.type] || l.type}</div>
         <div class="tl-detail">${l.detail}</div>
       </div>
-    </div>`).join('');
+    </div>`).join('') + loadMoreHtml;
 }
 
 // ============================================================
@@ -849,9 +943,15 @@ async function digestMessage(message) {
 //   ・スクロール位置を保ったまま renderPlans() を再実行
 //   ・編集／削除モーダルが開いていれば、その選択リストも最新化
 //   ・入力中のフォーム（追加モーダルなど）やカレンダーの状態は一切触らない
+// ★ さらに変更点：ここで list_schedule を無条件（全件）取得すると、
+//   ページング導入の意味がなくなり10秒ごとに全件を読み直してしまうため、
+//   監視対象は「これからの予定」（scope=future）だけに絞る。
+//   新規追加・編集・削除はほぼ常に近い将来の予定に対して行われるため、
+//   これで実用上十分。既に読み込み済みの過去分ページはそのまま維持し、
+//   未来分だけを最新のものに差し替える。
 async function checkScheduleUpdate() {
   try {
-    const res = await fetch(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`);
+    const res = await fetch(`${API_BASE}list_schedule?guild_id=${GUILD_ID}&scope=future`);
     const txt = await res.text();
     const hash = await digestMessage(txt);
 
@@ -865,11 +965,13 @@ async function checkScheduleUpdate() {
     if (hash === lastScheduleHash) return;
     lastScheduleHash = hash;
 
-    // データだけ差し替える
+    // 未来分だけ差し替える（読み込み済みの過去分ページはそのまま維持する）
     let data;
     try { data = JSON.parse(txt); } catch(e) { return; }
     if (!data.ok) return;
-    plans = data.plans;
+    const today = todayLocalStr();
+    const pastLoaded = plans.filter(p => p.date < today);
+    plans = data.plans.concat(pastLoaded);
 
     // スクロール位置を保ったまま予定一覧を再描画
     const scrollY = window.scrollY;
