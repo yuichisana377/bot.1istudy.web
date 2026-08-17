@@ -298,6 +298,46 @@
   </div>
 </div>
 
+<!-- ══════════ 一人用4択クイズ（クイズ過去問フォルダ専用） ══════════ -->
+<div class="screen" id="screen-quiz-play">
+  <div class="topbar">
+    <button class="topbar-back" onclick="showScreen('list')">←</button>
+    <div class="topbar-title" id="qp-title">クイズ</div>
+    <div class="editor-counter" id="qp-score-label">0点</div>
+  </div>
+  <div class="cm-scroll-body">
+    <div class="inner">
+
+      <!-- 出題中 -->
+      <div id="qp-play-content">
+        <div class="study-progress-row">
+          <div class="study-progress-bar">
+            <div class="study-progress-fill" id="qp-prog-fill"></div>
+          </div>
+          <div class="study-progress-label" id="qp-prog-label"></div>
+        </div>
+        <div class="study-q-text" id="qp-q-text" style="margin-top:1rem"></div>
+        <div class="study-q-imgs" id="qp-q-imgs"></div>
+        <div class="qp-choices" id="qp-choices"></div>
+        <div class="qp-next-wrap" id="qp-next-wrap" style="display:none">
+          <button class="btn btn-blue" style="width:100%" onclick="quizPlayNext()" id="qp-next-btn">次へ →</button>
+        </div>
+      </div>
+
+      <!-- 結果・ランキング -->
+      <div id="qp-result-content" style="display:none;text-align:center">
+        <div class="study-done-icon">🎉</div>
+        <div class="study-done-title" id="qp-result-score"></div>
+        <div class="study-done-sub" id="qp-result-rank"></div>
+        <div class="qp-leaderboard" id="qp-leaderboard"></div>
+        <button class="btn btn-outline" style="width:100%;margin-top:1rem" onclick="startSoloQuiz(soloQuizDeckId)">もう一度挑戦する</button>
+        <button class="btn btn-blue" style="width:100%;margin-top:.5rem" onclick="showScreen('list')">一覧に戻る</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ 一覧表示（問題と答えをまとめて見る） ══════════ -->
 <div class="screen" id="screen-list-view">
   <div class="topbar">
@@ -349,13 +389,16 @@
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-title" id="folder-menu-name" style="font-size:14px;color:var(--text-secondary);font-weight:600;margin-bottom:.75rem"></div>
-    <div class="menu-item" onclick="folderMenuRename()">
+    <div id="folder-menu-locked-note" style="display:none;font-size:13px;color:var(--text-secondary);line-height:1.6;padding:.25rem 0 .5rem">
+      🔒 このフォルダは自動管理されているため、名前の変更・移動・削除はできません。中のフォルダ・デッキは自由に作成・移動・編集できます。
+    </div>
+    <div class="menu-item" id="folder-menu-rename-item" onclick="folderMenuRename()">
       <span class="menu-icon">📝</span>フォルダ名を変更する
     </div>
-    <div class="menu-item" onclick="folderMenuMove()">
+    <div class="menu-item" id="folder-menu-move-item" onclick="folderMenuMove()">
       <span class="menu-icon">📂</span>移動する
     </div>
-    <div class="menu-item danger" onclick="folderMenuDelete()">
+    <div class="menu-item danger" id="folder-menu-delete-item" onclick="folderMenuDelete()">
       <span class="menu-icon">🗑</span>フォルダを削除する
     </div>
   </div>
@@ -490,23 +533,48 @@
     </div>
     <div class="math-pad" id="mathpad-modal-q" data-target="modal-edit-q" data-btn="mathbtn-modal-q" style="display:none;margin-bottom:.75rem"></div>
 
-    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解答</label>
-    <textarea class="modal-input" id="modal-edit-a" style="min-height:70px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
-    <div class="img-strip" id="modal-imgs-a"></div>
-    <div class="block-actions" style="margin-bottom:.5rem">
-      <button class="block-action-btn" onclick="addModalImage('a')">🖼 画像を追加</button>
-      <button class="block-action-btn" id="mathbtn-modal-a" onclick="toggleMathPad('mathpad-modal-a')">🧮 理数記号</button>
+    <div id="modal-edit-answer-block">
+      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解答</label>
+      <textarea class="modal-input" id="modal-edit-a" style="min-height:70px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
+      <div class="img-strip" id="modal-imgs-a"></div>
+      <div class="block-actions" style="margin-bottom:.5rem">
+        <button class="block-action-btn" onclick="addModalImage('a')">🖼 画像を追加</button>
+        <button class="block-action-btn" id="mathbtn-modal-a" onclick="toggleMathPad('mathpad-modal-a')">🧮 理数記号</button>
+      </div>
+      <div class="math-pad" id="mathpad-modal-a" data-target="modal-edit-a" data-btn="mathbtn-modal-a" style="display:none;margin-bottom:.75rem"></div>
     </div>
-    <div class="math-pad" id="mathpad-modal-a" data-target="modal-edit-a" data-btn="mathbtn-modal-a" style="display:none;margin-bottom:.75rem"></div>
 
-    <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解説（任意）</label>
-    <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
-    <div class="img-strip" id="modal-imgs-e"></div>
-    <div class="block-actions" style="margin-bottom:.5rem">
-      <button class="block-action-btn" onclick="addModalImage('e')">🖼 画像を追加</button>
-      <button class="block-action-btn" id="mathbtn-modal-e" onclick="toggleMathPad('mathpad-modal-e')">🧮 理数記号</button>
+    <!-- ★「クイズ過去問」デッキ（4択）の問題を編集する場合はこちらを使う -->
+    <div id="modal-edit-choices-block" style="display:none">
+      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">選択肢（左のラジオボタンで正解を選ぶ）</label>
+      <div class="modal-choice-row">
+        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-0" value="0">
+        <input type="text" class="modal-input" id="modal-edit-choice-0" placeholder="選択肢 A" maxlength="80" style="margin-bottom:0">
+      </div>
+      <div class="modal-choice-row">
+        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-1" value="1">
+        <input type="text" class="modal-input" id="modal-edit-choice-1" placeholder="選択肢 B" maxlength="80" style="margin-bottom:0">
+      </div>
+      <div class="modal-choice-row">
+        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-2" value="2">
+        <input type="text" class="modal-input" id="modal-edit-choice-2" placeholder="選択肢 C" maxlength="80" style="margin-bottom:0">
+      </div>
+      <div class="modal-choice-row" style="margin-bottom:1rem">
+        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-3" value="3">
+        <input type="text" class="modal-input" id="modal-edit-choice-3" placeholder="選択肢 D" maxlength="80" style="margin-bottom:0">
+      </div>
     </div>
-    <div class="math-pad" id="mathpad-modal-e" data-target="modal-edit-e" data-btn="mathbtn-modal-e" style="display:none;margin-bottom:1rem"></div>
+
+    <div id="modal-edit-explanation-block">
+      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解説（任意）</label>
+      <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
+      <div class="img-strip" id="modal-imgs-e"></div>
+      <div class="block-actions" style="margin-bottom:.5rem">
+        <button class="block-action-btn" onclick="addModalImage('e')">🖼 画像を追加</button>
+        <button class="block-action-btn" id="mathbtn-modal-e" onclick="toggleMathPad('mathpad-modal-e')">🧮 理数記号</button>
+      </div>
+      <div class="math-pad" id="mathpad-modal-e" data-target="modal-edit-e" data-btn="mathbtn-modal-e" style="display:none;margin-bottom:1rem"></div>
+    </div>
 
     <div class="modal-btns">
       <button class="btn btn-ghost" onclick="closeModal('modal-card-edit')">閉じる</button>

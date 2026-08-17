@@ -378,6 +378,37 @@ html, body {
 .pub-badge.draft      { background: #fefce8; color: #a16207; border: 1px solid #fde68a; }
 /* ★ 追加：公開予定だがまだ公開されていない（作成中）デッキ用バッジ */
 .pub-badge.inprogress { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+/* ★ 追加：「クイズ過去問」フォルダ内（一人用4択モードでプレイする）デッキ用バッジ */
+.pub-badge.archive    { background: #EFF4FF; color: #2563EB; border: 1px solid #bfdbfe; }
+
+/* ── カード編集モーダルの4択入力欄（modal-edit-choices-block） ── */
+.modal-choice-row { display: flex; align-items: center; gap: 8px; margin-bottom: .5rem; }
+.modal-choice-row input[type=radio] { accent-color: #16a34a; width: 18px; height: 18px; flex-shrink: 0; }
+
+/* ── 一人用4択クイズ（screen-quiz-play） ── */
+.qp-choices { display: flex; flex-direction: column; gap: .6rem; margin-top: 1.25rem; }
+.qp-choice-btn {
+  width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r-md);
+  border: 2px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: opacity .15s, border-color .15s, background .15s;
+}
+.qp-choice-btn:active:not(:disabled) { opacity: .85; }
+.qp-choice-btn:disabled { cursor: not-allowed; }
+.qp-choice-btn.qp-correct { background: #dcfce7; border-color: #16a34a; color: #166534; }
+.qp-choice-btn.qp-wrong   { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
+.qp-choice-btn.qp-dim     { opacity: .45; }
+.qp-next-wrap { margin-top: 1.25rem; }
+
+.qp-leaderboard { display: flex; flex-direction: column; gap: .5rem; margin: 1.5rem 0; text-align: left; }
+.qp-lb-row {
+  display: flex; align-items: center; gap: .6rem; padding: .6rem .9rem;
+  border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface);
+}
+.qp-lb-row.me { border-color: #2563EB; background: #EFF4FF; }
+.qp-lb-rank  { font-weight: 700; width: 22px; text-align: center; color: var(--text-secondary); font-size: 13px; flex-shrink: 0; }
+.qp-lb-name  { flex: 1; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qp-lb-score { font-weight: 700; font-size: 14px; color: #2563EB; flex-shrink: 0; }
 
 .add-deck-btn {
   width: 52px; height: 52px; border-radius: 50%;

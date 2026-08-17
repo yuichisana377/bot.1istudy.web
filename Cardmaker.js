@@ -67,6 +67,11 @@ function loadFoldersCache() { try { return JSON.parse(localStorage.getItem(FOLDE
 function saveFoldersCache(f) { localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(f)); }
 const MAX_FOLDER_DEPTH = 3;
 
+// ★ 「クイズ過去問」フォルダ（クイズ由来の4択アーカイブ用・システムフォルダ）。
+//   固定IDはbot.py側と同じ値。名前変更・削除・移動はできず、中身は
+//   フォルダの中でなら自由に作成・移動・編集できるが、外へは出せない。
+const QUIZ_ARCHIVE_FOLDER_ID = "quiz_archive_root";
+
 let folders = loadFoldersCache(); // { id, name, parentId }
 let currentFolderId = null; // null = ルート
 
@@ -227,12 +232,19 @@ function maxLevelInSubtree(id) {
 }
 function canMoveFolderTo(folderId, newParentId) {
   if (folderId === newParentId) return false;
+  // ★「クイズ過去問」フォルダ自身は移動できない（システムフォルダ）
+  if (folderId === QUIZ_ARCHIVE_FOLDER_ID) return false;
   const descIds = folderDescendants(folderId).map(f => f.id);
   if (newParentId && descIds.includes(newParentId)) return false;
   const oldLevel = folderLevel(folderId);
   const newLevel = folderLevel(newParentId) + 1;
   const shift = newLevel - oldLevel;
-  return (maxLevelInSubtree(folderId) + shift) <= MAX_FOLDER_DEPTH;
+  if ((maxLevelInSubtree(folderId) + shift) > MAX_FOLDER_DEPTH) return false;
+  // ★「クイズ過去問」フォルダの中身は、その外へ移動できない
+  if (isFolderInFolderScope(folderId, QUIZ_ARCHIVE_FOLDER_ID) && !isFolderInFolderScope(newParentId, QUIZ_ARCHIVE_FOLDER_ID)) {
+    return false;
+  }
+  return true;
 }
 function countDecksRecursive(folderId) {
   const direct = decks.filter(d => (d.folderId || null) === folderId).length;
@@ -276,6 +288,25 @@ function isFolderInFolderScope(fid, folderId) {
   if (folderId === null) return true;
   if (fid === folderId) return true;
   return folderDescendants(folderId).some(f => f.id === fid);
+}
+
+// ★ デッキ版の canMoveFolderTo。今のところ制限は「クイズ過去問フォルダの中に
+//   あるデッキは、その外へ移動できない」の1つだけ（フォルダのような階層数
+//   制限はデッキには存在しないため）。
+function canMoveDeckTo(deckId, targetFolderId) {
+  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) && !isFolderInFolderScope(targetFolderId, QUIZ_ARCHIVE_FOLDER_ID)) {
+    return false;
+  }
+  return true;
+}
+
+// ★ ドラッグ&ドロップの data-key（"deck:<filename>" または "localdeck:<id>"）から
+//   実際のデッキidを引く共通ヘルパー（autoOpenFolderDuringDrag と同じ規則）。
+function resolveDeckIdFromDragKey(key) {
+  const d = key.startsWith('deck:')
+    ? decks.find(x => x.filename === key.slice('deck:'.length))
+    : decks.find(x => x.id === key.slice('localdeck:'.length));
+  return d ? d.id : null;
 }
 
 // ── ログインセッション ─────────────────────
@@ -583,6 +614,10 @@ function renderDeckListUI() {
         : d.incomplete
           ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
           : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
+    // ★ 「クイズ過去問」フォルダの中のデッキだと分かるようにバッジを付ける
+    //   （プレイ時の挙動が通常のフラッシュカードと違う＝一人用4択モードになるため）
+    const quizArchiveBadge = isDeckInFolderScope(d.id, QUIZ_ARCHIVE_FOLDER_ID)
+      ? `<span class="pub-badge archive">🎯 過去問</span>` : '';
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
@@ -608,6 +643,7 @@ function renderDeckListUI() {
         <div class="deck-card-meta">
           ${questionCount} 問
           ${pubBadge}
+          ${quizArchiveBadge}
           ${unsureBadge}
         </div>
       </div>
@@ -1039,6 +1075,13 @@ function openFolderMenu(id) {
   folderMenuTargetId = id;
   const f = folders.find(x => x.id === id);
   document.getElementById('folder-menu-name').textContent = f ? f.name : '';
+  // ★「クイズ過去問」フォルダ自身はシステムフォルダなので、改名・移動・削除の
+  //   操作項目を隠し、代わりに説明だけ表示する（中身の操作は制限しない）。
+  const isLocked = id === QUIZ_ARCHIVE_FOLDER_ID;
+  document.getElementById('folder-menu-locked-note').style.display = isLocked ? '' : 'none';
+  document.getElementById('folder-menu-rename-item').style.display = isLocked ? 'none' : '';
+  document.getElementById('folder-menu-move-item').style.display   = isLocked ? 'none' : '';
+  document.getElementById('folder-menu-delete-item').style.display = isLocked ? 'none' : '';
   openModal('modal-folder-menu');
 }
 function folderMenuRename() { closeModal('modal-folder-menu'); openFolderNameModal('rename', folderMenuTargetId); }
@@ -1113,13 +1156,18 @@ function renderMovePickerList() {
     ? (decks.find(d => d.id === movePickerTargetId)?.folderId || null)
     : (folders.find(f => f.id === movePickerTargetId)?.parentId || null);
 
+  // ★ 移動可否の判定は種類ごとに分ける（フォルダは階層数チェックも兼ねる canMoveFolderTo、
+  //   デッキは canMoveDeckTo）。どちらも「クイズ過去問フォルダの外へは出せない」を含む。
+  const canMoveTo = movePickerKind === 'folder'
+    ? (targetId) => canMoveFolderTo(movePickerTargetId, targetId)
+    : (targetId) => canMoveDeckTo(movePickerTargetId, targetId);
+
   const rows = [];
-  const rootDisabled = movePickerKind === 'folder' && !canMoveFolderTo(movePickerTargetId, null);
-  rows.push({ id: null, label: '🏠 ルート', level: 0, disabled: rootDisabled });
+  rows.push({ id: null, label: '🏠 ルート', level: 0, disabled: !canMoveTo(null) });
 
   function walk(parentId, level) {
     folderChildren(parentId).forEach(f => {
-      const disabled = movePickerKind === 'folder' && !canMoveFolderTo(movePickerTargetId, f.id);
+      const disabled = !canMoveTo(f.id);
       rows.push({ id: f.id, label: '📁 ' + f.name, level, disabled });
       walk(f.id, level + 1);
     });
@@ -1142,7 +1190,7 @@ async function selectMoveTarget(targetId) {
 
   if (movePickerKind === 'deck') {
     const d = decks.find(x => x.id === movePickerTargetId);
-    if (!d) return;
+    if (!d || !canMoveDeckTo(d.id, targetId)) return;
 
     // ★ 修正：公開済みデッキを移動する前に、必ずサーバーから最新のカード本体を
     //   取り直す。失敗時は loadDeckCardsWithRecovery が再試行・強制続行の
@@ -2420,6 +2468,9 @@ function renderCreatedList() {
       let ok = true;
       if (dragKey.startsWith('folder:')) {
         ok = canMoveFolderTo(dragKey.slice('folder:'.length), parentId);
+      } else {
+        const deckId = resolveDeckIdFromDragKey(dragKey);
+        ok = deckId ? canMoveDeckTo(deckId, parentId) : true;
       }
       if (ok) {
         applyHoverTarget(exitZone.el, parentId);
@@ -2446,7 +2497,8 @@ function renderCreatedList() {
         const draggedFolderId = dragKey.slice('folder:'.length);
         if (canMoveFolderTo(draggedFolderId, fid)) targetFolderId = fid;
       } else {
-        targetFolderId = fid;
+        const deckId = resolveDeckIdFromDragKey(dragKey);
+        if (!deckId || canMoveDeckTo(deckId, fid)) targetFolderId = fid;
       }
     }
 
@@ -2895,27 +2947,51 @@ async function editCurrentStudyCard() {
   openCardEditModalCommon(deckId, freshCard, 'study');
 }
 
+let editingIsQuizChoice = false; // ★ 追加：4択カード（クイズ過去問デッキ）を編集中かどうか
+
 function openCardEditModalCommon(deckId, c, context) {
   editingDeckId  = deckId;
   editingCardKey = cardKey(c);
   editingContext = context;
-  document.getElementById('modal-edit-q').value = mathToPlainText(c.question);
-  document.getElementById('modal-edit-a').value = mathToPlainText(c.answer);
-  document.getElementById('modal-edit-e').value = mathToPlainText(c.explanation||'');
-  ['modal-edit-q','modal-edit-a','modal-edit-e'].forEach(id => {
-    const el = document.getElementById(id);
-    autoResize(el);
-    el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 既存の数式プレビューを反映させる
-  });
+  // ★「クイズ過去問」デッキのカード（choices/correct_indexを持つ）は、
+  //   通常の解答/解説欄の代わりに4択入力欄を表示する。
+  editingIsQuizChoice = Array.isArray(c.choices) && c.choices.length === 4;
 
-  // ★ 追加：既存の画像をモーダル専用バッファへコピーして表示する
-  //   （元の配列を直接触らず、保存時にまとめて書き戻すため）
-  editImgBuf = {
-    q: [...(c.imgs_q || [])],
-    a: [...(c.imgs_a || [])],
-    e: [...(c.imgs_e || [])],
-  };
-  ['q','a','e'].forEach(k => renderModalImgStrip(k));
+  document.getElementById('modal-edit-q').value = mathToPlainText(c.question);
+  autoResize(document.getElementById('modal-edit-q'));
+  document.getElementById('modal-edit-q').dispatchEvent(new Event('input', { bubbles: true }));
+
+  document.getElementById('modal-edit-answer-block').style.display      = editingIsQuizChoice ? 'none' : '';
+  document.getElementById('modal-edit-choices-block').style.display     = editingIsQuizChoice ? '' : 'none';
+  document.getElementById('modal-edit-explanation-block').style.display = editingIsQuizChoice ? 'none' : '';
+
+  if (editingIsQuizChoice) {
+    c.choices.forEach((choice, i) => {
+      document.getElementById(`modal-edit-choice-${i}`).value = choice;
+    });
+    const radio = document.getElementById(`modal-edit-correct-${c.correct_index}`);
+    if (radio) radio.checked = true;
+    // ★ 問題文の画像だけはこのモードでも使う（imgs_q）
+    editImgBuf = { q: [...(c.imgs_q || [])], a: [], e: [] };
+    renderModalImgStrip('q');
+  } else {
+    document.getElementById('modal-edit-a').value = mathToPlainText(c.answer);
+    document.getElementById('modal-edit-e').value = mathToPlainText(c.explanation||'');
+    ['modal-edit-a','modal-edit-e'].forEach(id => {
+      const el = document.getElementById(id);
+      autoResize(el);
+      el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 既存の数式プレビューを反映させる
+    });
+
+    // ★ 追加：既存の画像をモーダル専用バッファへコピーして表示する
+    //   （元の配列を直接触らず、保存時にまとめて書き戻すため）
+    editImgBuf = {
+      q: [...(c.imgs_q || [])],
+      a: [...(c.imgs_a || [])],
+      e: [...(c.imgs_e || [])],
+    };
+    ['q','a','e'].forEach(k => renderModalImgStrip(k));
+  }
 
   document.getElementById('card-edit-ok').style.display  = 'none';
   document.getElementById('card-edit-err').style.display = 'none';
@@ -2924,9 +3000,15 @@ function openCardEditModalCommon(deckId, c, context) {
 
 async function saveCardEdit() {
   const q = document.getElementById('modal-edit-q').value.trim();
+  const errBar = document.getElementById('card-edit-err');
+
+  // ★「クイズ過去問」デッキの4択カードは、通常の解答/解説とは別の保存経路にする
+  if (editingIsQuizChoice) {
+    return saveQuizChoiceCardEdit(q, errBar);
+  }
+
   const a = document.getElementById('modal-edit-a').value.trim();
   const e = document.getElementById('modal-edit-e').value.trim();
-  const errBar = document.getElementById('card-edit-err');
   if (!q || !a) {
     errBar.textContent = '✕ 問題文と解答は必須です';
     errBar.style.display = 'block';
@@ -2988,6 +3070,56 @@ async function saveCardEdit() {
     }
   } else {
     // 未公開デッキはローカル保存のみ
+    showBanner('💾 保存しました（ローカル）', '#dcfce7', '#166534');
+  }
+}
+
+// ★「クイズ過去問」デッキの4択カード編集を保存する（saveCardEditから分岐して呼ばれる）
+async function saveQuizChoiceCardEdit(q, errBar) {
+  const choices = [0, 1, 2, 3].map(i => document.getElementById(`modal-edit-choice-${i}`).value.trim());
+  const checkedRadio = document.querySelector('input[name="modal-edit-correct"]:checked');
+  if (!q || choices.some(c => !c) || !checkedRadio) {
+    errBar.textContent = '✕ 問題文・4つの選択肢・正解の選択はすべて必須です';
+    errBar.style.display = 'block';
+    setTimeout(() => errBar.style.display = 'none', 3000);
+    return;
+  }
+  if (await warnIfBugChars(q, 'modal-edit-q')) return;
+  for (let i = 0; i < 4; i++) {
+    if (await warnIfBugChars(choices[i], `modal-edit-choice-${i}`)) return;
+  }
+  const correctIndex = Number(checkedRadio.value);
+
+  const deck = decks.find(d => d.id === editingDeckId);
+  if (!deck) { closeModal('modal-card-edit'); return; }
+  const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
+  if (idx === -1) { closeModal('modal-card-edit'); return; }
+
+  const card = deck.cards[idx];
+  card.question = q;
+  card.choices = choices;
+  card.correct_index = correctIndex;
+  // ★ answer も正解の選択肢文言で更新しておく（検索・一覧表示など既存コードのため）
+  card.answer = choices[correctIndex];
+  card.imgs_q = [...editImgBuf.q];
+
+  saveDecks(decks);
+  closeModal('modal-card-edit');
+
+  if (editingContext === 'listview') {
+    renderListView();
+  } else {
+    renderCreatedList();
+  }
+
+  if (deck.filename) {
+    const ok = await queueSyncDeckToServer(deck);
+    if (ok) {
+      showBanner('💾 保存しました', '#dcfce7', '#166534');
+    } else {
+      showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+    }
+  } else {
     showBanner('💾 保存しました（ローカル）', '#dcfce7', '#166534');
   }
 }
@@ -3382,9 +3514,175 @@ async function openFolderPlayMode(folderId) {
 //   「同じ間違いをまた編集してしまう」「もう直っていたのに気づかない」
 //   といったすれ違いが起きやすかった。プレイのたびに読み込み直すことで、
 //   誰かが編集した直後でも次にプレイした人にはほぼ即座に反映される。
+// ============================================================
+//  ★ 一人用4択クイズ（「クイズ過去問」フォルダのデッキ専用）
+//  ─────────────────────────────────────────────
+//  みんなでクイズ（Quiz.js）でホストが作ったオリジナル4択クイズは、
+//  bot.py側で自動的にこのフォルダへデッキとしてアーカイブされる
+//  （各カードに choices/correct_index が入っている）。
+//  ライブルームには接続せず、この画面の中だけで完結する一人用モード。
+//  プレイ後はサーバーにスコアを送り、そのデッキの過去の挑戦者全員の中での
+//  順位（ランキング）を取得して表示する。
+// ============================================================
+let soloQuizDeckId  = null;
+let soloQuizCards   = [];
+let soloQuizIdx     = 0;
+let soloQuizScore   = 0;
+let soloQuizAnswered = false;
+
+async function startSoloQuiz(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+
+  await waitForPendingSync(deckId);
+  let result = await ensureDeckCardsLoaded(deckId, true);
+  while (!result.ok) {
+    const retry = await showCmConfirm({
+      title: '読み込みに失敗しました',
+      desc: '通信環境を確認してもう一度お試しください。',
+      okLabel: 'もう一度試す', cancelLabel: 'やめる',
+    });
+    if (!retry) return;
+    result = await ensureDeckCardsLoaded(deckId, true);
+  }
+
+  const freshDeck = decks.find(d => d.id === deckId);
+  const playable = freshDeck.cards.filter(c => Array.isArray(c.choices) && c.choices.length === 4);
+  if (!playable.length) {
+    await showCmAlert({ title: '4択の問題がありません', desc: 'このデッキには4択形式の問題がまだありません。' });
+    return;
+  }
+
+  soloQuizDeckId = deckId;
+  soloQuizCards  = [...playable];
+  // 出題順をシャッフル（Fisher-Yates。shuffleStudy()と同じやり方）
+  for (let i = soloQuizCards.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [soloQuizCards[i], soloQuizCards[j]] = [soloQuizCards[j], soloQuizCards[i]];
+  }
+  soloQuizIdx = 0;
+  soloQuizScore = 0;
+
+  document.getElementById('qp-title').textContent = freshDeck.name;
+  document.getElementById('qp-result-content').style.display = 'none';
+  document.getElementById('qp-play-content').style.display = '';
+  showScreen('quiz-play');
+  renderQuizPlayQuestion();
+}
+
+function renderQuizPlayQuestion() {
+  const card = soloQuizCards[soloQuizIdx];
+  soloQuizAnswered = false;
+  document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
+  const pct = soloQuizCards.length > 1 ? (soloQuizIdx / soloQuizCards.length) * 100 : 0;
+  document.getElementById('qp-prog-fill').style.width = pct + '%';
+  document.getElementById('qp-prog-label').textContent = `${soloQuizIdx + 1} / ${soloQuizCards.length}`;
+  setMathText(document.getElementById('qp-q-text'), card.question);
+  document.getElementById('qp-q-imgs').innerHTML = (card.imgs_q || []).map(s =>
+    `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+
+  const letters = ['A', 'B', 'C', 'D'];
+  const choicesEl = document.getElementById('qp-choices');
+  choicesEl.innerHTML = letters.map((l, i) => `
+    <button type="button" class="qp-choice-btn" onclick="answerQuizPlay(${i})">
+      <b>${l}.</b> <span id="qp-choice-text-${i}"></span>
+    </button>`).join('');
+  card.choices.forEach((c, i) => setMathText(document.getElementById(`qp-choice-text-${i}`), c));
+
+  document.getElementById('qp-next-wrap').style.display = 'none';
+}
+
+function answerQuizPlay(idx) {
+  if (soloQuizAnswered) return;
+  soloQuizAnswered = true;
+  const card = soloQuizCards[soloQuizIdx];
+  if (idx === card.correct_index) {
+    soloQuizScore++;
+    document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
+  }
+
+  [...document.querySelectorAll('#qp-choices .qp-choice-btn')].forEach((btn, i) => {
+    btn.disabled = true;
+    if (i === card.correct_index) btn.classList.add('qp-correct');
+    else if (i === idx) btn.classList.add('qp-wrong');
+    else btn.classList.add('qp-dim');
+  });
+
+  document.getElementById('qp-next-wrap').style.display = '';
+  document.getElementById('qp-next-btn').textContent =
+    soloQuizIdx === soloQuizCards.length - 1 ? '結果を見る →' : '次へ →';
+}
+
+function quizPlayNext() {
+  soloQuizIdx++;
+  if (soloQuizIdx >= soloQuizCards.length) {
+    finishSoloQuiz();
+  } else {
+    renderQuizPlayQuestion();
+  }
+}
+
+async function finishSoloQuiz() {
+  document.getElementById('qp-play-content').style.display = 'none';
+  document.getElementById('qp-result-content').style.display = '';
+
+  const total = soloQuizCards.length;
+  document.getElementById('qp-result-score').textContent = `${soloQuizScore} / ${total} 問正解！`;
+  document.getElementById('qp-result-rank').textContent = '結果を送信しています…';
+  document.getElementById('qp-leaderboard').innerHTML = '';
+
+  const session = getLoginSession();
+  const deck = decks.find(d => d.id === soloQuizDeckId);
+  if (!session || !deck || !deck.filename) {
+    document.getElementById('qp-result-rank').textContent = '';
+    return;
+  }
+
+  try {
+    await fetch(`${API_BASE}quiz_archive_submit_score`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        guild_id: GUILD_ID, session_token: session.session_token,
+        filename: deck.filename, score: soloQuizScore, total,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (e) { /* スコア送信に失敗してもランキング表示は試みる */ }
+
+  try {
+    const res = await fetch(`${API_BASE}quiz_archive_leaderboard?filename=${encodeURIComponent(deck.filename)}`, { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+    if (data.ok) {
+      renderQuizLeaderboard(data.leaderboard, session.student_id);
+    } else {
+      document.getElementById('qp-result-rank').textContent = '';
+    }
+  } catch (e) {
+    document.getElementById('qp-result-rank').textContent = '';
+  }
+}
+
+function renderQuizLeaderboard(rows, myStudentId) {
+  const myRank = rows.findIndex(r => r.student_id === myStudentId) + 1;
+  document.getElementById('qp-result-rank').textContent =
+    myRank > 0 ? `あなたの順位：${myRank} 位 / ${rows.length} 人中` : '';
+  document.getElementById('qp-leaderboard').innerHTML = rows.map((r, i) => `
+    <div class="qp-lb-row${r.student_id === myStudentId ? ' me' : ''}">
+      <span class="qp-lb-rank">${i + 1}</span>
+      <span class="qp-lb-name">${esc(r.nickname)}</span>
+      <span class="qp-lb-score">${r.score} / ${r.total}</span>
+    </div>`).join('');
+}
+
 async function openPlayMode(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
+  // ★「クイズ過去問」フォルダの中のデッキは、通常のフラッシュカード（すべて/
+  //   わからないだけ/続きから の選択モーダル）ではなく、一人用4択モードで
+  //   プレイする。
+  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID)) {
+    return startSoloQuiz(deckId);
+  }
   studyIsFolder = false;
   studyDeckId = deckId;
 
