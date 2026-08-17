@@ -198,11 +198,17 @@
   </header>
   <div class="qz-body">
     <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="pp-timerbar"></div></div>
+    <div class="qz-answered-count" id="pp-answered"></div>
     <h2 class="qz-question-text" id="pp-question"></h2>
     <div class="qz-choice-grid" id="pp-choices"></div>
     <div class="qz-answer-feedback" id="pp-feedback" style="display:none"></div>
     <p class="qz-waiting-note" id="pp-waiting-note" style="display:none">ほかの人の解答を待っています…</p>
-    <p class="qz-waiting-note" id="pp-next-note" style="display:none">まもなく次の問題です…</p>
+    <!-- ★ 追加：正解発表中、ホストと同じ「一番早く正解した人」「ミニ順位表」を参加者にも見せる -->
+    <div class="qz-reveal-panel" id="pp-reveal" style="display:none">
+      <div class="qz-first-badge" id="pp-first-badge"></div>
+      <div class="qz-mini-leaderboard" id="pp-leaderboard"></div>
+      <p class="qz-waiting-note">まもなく次の問題です…</p>
+    </div>
   </div>
 </section>
 

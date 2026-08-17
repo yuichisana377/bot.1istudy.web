@@ -107,6 +107,19 @@ let renderedQIndex = -1;   // 直近に描画した問題番号（変わった�
 let renderedState = null;  // 直近に描画した room.state
 let hasAnsweredThisQ = false;
 let quitting = false;      // 退出処理中の二重実行防止
+// ★ 追加：サーバーとこの端末の時計のズレ（ms）。タイマーバーは
+//   question_started_at（サーバー時計での開始時刻）を、この端末の
+//   Date.now()と直接比較して残り時間を計算しているため、端末の時計が
+//   サーバーとズレていると（特にスマホでよくある）進み方がホストと
+//   食い違って見えていた。quiz_join/quiz_state/quiz_start のレスポンスに
+//   含まれる server_now（サーバー側のその時点でのDate.now()相当）から
+//   毎回このズレを計算し直し、タイマー計算時に補正する。
+let quizClockOffsetMs = 0;
+function applyServerNow(data) {
+  if (data && typeof data.server_now === 'number') {
+    quizClockOffsetMs = data.server_now - Date.now();
+  }
+}
 let launchDeckInfo = null; // ?mode=host&deck=... で渡されたデッキ情報
 
 // ============================================================
@@ -229,6 +242,7 @@ async function joinRoomByCode(code) {
   roomCode = code;
   isHost = !!data.is_host;
   renderedQIndex = -1; renderedState = null;
+  applyServerNow(data);
   history.replaceState(null, '', `${location.pathname}?code=${code}`);
   renderRoom(data.room);
   startPolling();
@@ -534,6 +548,7 @@ async function pollOnce() {
     return;
   }
   isHost = !!data.is_host;
+  applyServerNow(data);
   renderRoom(data.room);
 }
 
@@ -586,7 +601,7 @@ const CHOICE_CLASSES = ['qz-choice-a', 'qz-choice-b', 'qz-choice-c', 'qz-choice-
 //   自動的に正解発表(reveal)へ、発表からしばらくすると自動的に次の問題へ
 //   進むので、ここでは「今の room の状態をそのまま描画する」だけでよい）
 function renderPlayScreen(room, opts) {
-  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, nextNoteId, timerbarId, answeredCountId } = opts;
+  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, timerbarId, answeredCountId, revealPanelId, firstBadgeId, leaderboardId } = opts;
   const qChanged = room.current_q !== renderedQIndex;
   const stateChanged = room.state !== renderedState;
   if (qChanged) hasAnsweredThisQ = false;
@@ -596,9 +611,7 @@ function renderPlayScreen(room, opts) {
   const myScore = room.players.find(p => p.id === STUDENT.id)?.score ?? 0;
   document.getElementById(scoreId).textContent = `${myScore}点`;
   document.getElementById(questionId).textContent = room.question.question;
-  if (answeredCountId) {
-    document.getElementById(answeredCountId).textContent = `${room.answered_count} / ${room.total_players} 人が回答`;
-  }
+  document.getElementById(answeredCountId).textContent = `${room.answered_count} / ${room.total_players} 人が回答`;
 
   const revealed = room.state === 'reveal';
   const yourAnswer = room.your_answer;
@@ -632,7 +645,6 @@ function renderPlayScreen(room, opts) {
 
   const feedbackEl = document.getElementById(feedbackId);
   const waitingNote = document.getElementById(waitingNoteId);
-  const nextNote = nextNoteId ? document.getElementById(nextNoteId) : null;
   if (revealed && yourAnswer !== undefined) {
     feedbackEl.style.display = '';
     if (room.your_correct) {
@@ -656,29 +668,22 @@ function renderPlayScreen(room, opts) {
     feedbackEl.style.display = 'none';
     waitingNote.style.display = 'none';
   }
-  if (nextNote) nextNote.style.display = revealed ? '' : 'none';
 
-  updateTimerBarFor(room, timerbarId);
-}
-
-function renderHostPlay(room) {
-  showScreenQ('host-play');
-  renderPlayScreen(room, {
-    progressId: 'hp-progress', scoreId: 'hp-score', questionId: 'hp-question',
-    choicesId: 'hp-choices', feedbackId: 'hp-feedback', waitingNoteId: 'hp-waiting-note',
-    timerbarId: 'hp-timerbar', answeredCountId: 'hp-answered',
-  });
-
-  const revealPanel = document.getElementById('hp-reveal');
+  // ★ 修正：以前はホスト画面（hp-reveal）だけに「一番早く正解した人」と
+  //   ミニ順位表を表示していた。参加者にはホストと同じ情報を見せていなかった
+  //   ため、ホスト・参加者共通のこの関数から両方の画面を描画するようにする。
+  const revealPanel = document.getElementById(revealPanelId);
   if (room.state === 'reveal') {
     revealPanel.style.display = '';
-    document.getElementById('hp-first-badge').textContent = room.first_correct_nickname
+    document.getElementById(firstBadgeId).textContent = room.first_correct_nickname
       ? `⚡ 一番早く正解：${room.first_correct_nickname} さん（+2点ボーナス）`
       : '⚡ 正解者はいませんでした';
-    document.getElementById('hp-leaderboard').innerHTML = miniLeaderboardHtml(room.players);
+    document.getElementById(leaderboardId).innerHTML = miniLeaderboardHtml(room.players);
   } else {
     revealPanel.style.display = 'none';
   }
+
+  updateTimerBarFor(room, timerbarId);
 }
 
 function miniLeaderboardHtml(players) {
@@ -691,12 +696,23 @@ function miniLeaderboardHtml(players) {
     </div>`).join('');
 }
 
+function renderHostPlay(room) {
+  showScreenQ('host-play');
+  renderPlayScreen(room, {
+    progressId: 'hp-progress', scoreId: 'hp-score', questionId: 'hp-question',
+    choicesId: 'hp-choices', feedbackId: 'hp-feedback', waitingNoteId: 'hp-waiting-note',
+    timerbarId: 'hp-timerbar', answeredCountId: 'hp-answered',
+    revealPanelId: 'hp-reveal', firstBadgeId: 'hp-first-badge', leaderboardId: 'hp-leaderboard',
+  });
+}
+
 function renderPlayerPlay(room) {
   showScreenQ('player-play');
   renderPlayScreen(room, {
     progressId: 'pp-progress', scoreId: 'pp-score', questionId: 'pp-question',
     choicesId: 'pp-choices', feedbackId: 'pp-feedback', waitingNoteId: 'pp-waiting-note',
-    nextNoteId: 'pp-next-note', timerbarId: 'pp-timerbar',
+    timerbarId: 'pp-timerbar', answeredCountId: 'pp-answered',
+    revealPanelId: 'pp-reveal', firstBadgeId: 'pp-first-badge', leaderboardId: 'pp-leaderboard',
   });
 }
 
@@ -715,12 +731,17 @@ function updateTimerBarFor(room, elId) {
   }
 }
 function tickTimerBars() {
+  // ★ 修正：Date.now()をそのまま使うと端末の時計のズレがそのまま
+  //   タイマーバーのズレになる（ホストと参加者で進み方が食い違って見える
+  //   原因だった）。quizClockOffsetMsで補正した「サーバー時計での現在時刻」
+  //   を使って計算する。
+  const serverNow = Date.now() + quizClockOffsetMs;
   ['hp-timerbar', 'pp-timerbar'].forEach(id => {
     const el = document.getElementById(id);
     if (!el || !el.dataset.startedAt || !el.dataset.limit) return;
     const started = Number(el.dataset.startedAt) * 1000;
     const limit = Number(el.dataset.limit) * 1000;
-    const remain = Math.max(0, limit - (Date.now() - started));
+    const remain = Math.max(0, limit - (serverNow - started));
     el.style.transform = `scaleX(${remain / limit})`;
   });
 }
@@ -749,6 +770,7 @@ async function hostStart() {
   btn.disabled = true;
   const data = await apiPost('quiz_start', withAuth({ code: roomCode }));
   if (!data.ok) { btn.disabled = false; alert(quizErrorText(data.error)); return; }
+  applyServerNow(data);
   renderRoom(data.room);
 }
 async function confirmQuitHost() {
