@@ -28,6 +28,7 @@
 html {
   overflow-x: hidden;
   overscroll-behavior-y: none;
+  scroll-behavior: smooth;
 }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
@@ -962,6 +963,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  scroll-margin-top: 66px; /* ドロワーからのアンカー遷移時、ヘッダーに隠れないように */
 }
 
 .service-info-head {
