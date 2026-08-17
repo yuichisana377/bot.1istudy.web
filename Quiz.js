@@ -101,6 +101,7 @@ let roomCode = null;
 let isHost = false;
 let pollHandle = null;
 let tickHandle = null;
+let roomListHandle = null; // 参加ルーム一覧のポーリング（screen-join を表示中だけ動かす）
 let lastRoomSnapshot = null;
 let renderedQIndex = -1;   // 直近に描画した問題番号（変わったら回答UIをリセットする）
 let renderedState = null;  // 直近に描画した room.state
@@ -125,10 +126,14 @@ async function initQuizApp() {
     };
     showScreenQ('home');
     goHostSetupScreen();
-  } else if (mode === 'join' || codeParam) {
+  } else if (codeParam) {
+    // ★ 共有リンク等、コード付きURLで直接開かれた場合はそのまま参加を試みる
+    //   （参加者は普段コードを意識しなくてよいが、リンク共有自体は引き続き使える）。
+    showScreenQ('home');
+    joinRoomByCode(codeParam);
+  } else if (mode === 'join') {
     showScreenQ('home');
     goJoinScreen();
-    if (codeParam) document.getElementById('join-code-input').value = codeParam;
   } else {
     showScreenQ('home');
   }
@@ -142,43 +147,82 @@ function backToHomeFromResult() {
 }
 
 // ============================================================
-//  参加する（プレイヤー）
+//  参加する（プレイヤー）：コード入力の代わりに、参加できるルームを一覧から選ぶ
 // ============================================================
 function goJoinScreen() {
-  document.getElementById('join-error').textContent = '';
   showScreenQ('join');
-  setTimeout(() => document.getElementById('join-code-input').focus(), 50);
+  loadRoomList();
+  startRoomListPolling();
 }
 
-async function submitJoin() {
-  const code = document.getElementById('join-code-input').value.trim().toUpperCase();
-  const errEl = document.getElementById('join-error');
-  errEl.textContent = '';
-  if (code.length < 4) { errEl.textContent = 'コードを入力してください'; return; }
-  const btn = document.getElementById('join-submit-btn');
-  btn.disabled = true; btn.textContent = '参加中…';
-  const data = await apiPost('quiz_join', withAuth({ code }));
-  btn.disabled = false; btn.textContent = '参加する';
+function backFromJoinScreen() {
+  stopRoomListPolling();
+  showScreenQ('home');
+}
+
+async function loadRoomList() {
+  const listEl = document.getElementById('join-room-list');
+  const data = await apiGet('quiz_list_rooms', withAuth());
   if (!data.ok) {
-    errEl.textContent = quizErrorText(data.error);
+    listEl.innerHTML = `<p class="qz-label">読み込みに失敗しました（${quizErrorText(data.error)}）</p>`;
+    return;
+  }
+  const rooms = data.rooms || [];
+  if (!rooms.length) {
+    listEl.innerHTML = `<p class="qz-label">現在参加できるクイズはありません。ホストが作成すると、ここに表示されます。</p>`;
+    return;
+  }
+  listEl.innerHTML = rooms.map(r => `
+    <button type="button" class="qz-room-row" onclick="joinRoomByCode('${r.code}')">
+      <div class="qz-room-row-main">
+        <div class="qz-room-row-title">${escapeHtml(r.title)}</div>
+        <div class="qz-room-row-sub">${escapeHtml(r.host_nickname)} さん・${r.question_count}問</div>
+      </div>
+      <div class="qz-room-row-count">👥 ${r.player_count}</div>
+    </button>`).join('');
+}
+
+// ★ 参加できるルームは一覧表示中に増えたり（新規作成）消えたり（開始・終了）するため、
+//   一覧画面を見ている間だけ定期的に取り直す（他の画面に移ったら止める）。
+function startRoomListPolling() {
+  stopRoomListPolling();
+  roomListHandle = setInterval(loadRoomList, 3000);
+}
+function stopRoomListPolling() {
+  if (roomListHandle) clearInterval(roomListHandle);
+  roomListHandle = null;
+}
+
+async function joinRoomByCode(code) {
+  code = (code || '').trim().toUpperCase();
+  if (!code) return;
+  stopRoomListPolling();
+  const data = await apiPost('quiz_join', withAuth({ code }));
+  if (!data.ok) {
+    await showConfirm({
+      title: '参加できませんでした', desc: quizErrorText(data.error),
+      okLabel: 'OK', cancelLabel: '閉じる',
+    });
+    // ★ 開始されてしまった等で失敗した場合は、一覧画面に戻って表示し直す
+    //   （その部屋はもう一覧から消えているはず）。共有リンクからの直接参加で
+    //   失敗した場合の受け皿にもなる。
+    showScreenQ('join');
+    loadRoomList();
+    startRoomListPolling();
     return;
   }
   roomCode = code;
   isHost = !!data.is_host;
   renderedQIndex = -1; renderedState = null;
   history.replaceState(null, '', `${location.pathname}?code=${code}`);
-  if (isHost) {
-    // 自分が作ったルームに自分のコードでもう一度入った場合など
-    renderRoom(data.room);
-  } else {
-    renderRoom(data.room);
-  }
+  renderRoom(data.room);
   startPolling();
 }
 
 function quizErrorText(code) {
   return {
     room_not_found: 'そのコードのクイズは見つかりませんでした',
+    quiz_already_started: 'このクイズはもう始まっています',
     not_logged_in: 'ログインが切れています。ログインし直してください',
     network: '通信に失敗しました。もう一度お試しください',
   }[code] || (code ? `エラー: ${code}` : '不明なエラーが発生しました');

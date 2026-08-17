@@ -32,8 +32,8 @@
 
     <div class="qz-home-actions">
       <button class="qz-big-btn qz-big-btn-join" onclick="goJoinScreen()">
-        <span class="qz-big-btn-icon">🔑</span>
-        <span class="qz-big-btn-label">コードで参加する</span>
+        <span class="qz-big-btn-icon">👥</span>
+        <span class="qz-big-btn-label">参加する</span>
       </button>
       <button class="qz-big-btn qz-big-btn-host" onclick="goHostSetupScreen()">
         <span class="qz-big-btn-icon">🎬</span>
@@ -43,20 +43,18 @@
   </div>
 </section>
 
-<!-- ============ 参加：コード入力 ============ -->
+<!-- ============ 参加：ルームを選ぶ ============ -->
 <section class="screen" id="screen-join">
   <header class="qz-header">
-    <button class="qz-back" onclick="showScreenQ('home')">←</button>
+    <button class="qz-back" onclick="backFromJoinScreen()">←</button>
     <div class="qz-brand-sm">参加する</div>
-    <span></span>
+    <button class="qz-icon-btn" onclick="loadRoomList()" title="更新">🔄</button>
   </header>
-  <div class="qz-body qz-body-center">
-    <p class="qz-label">ホストから伝えられた5文字のコードを入力してください</p>
-    <input id="join-code-input" class="qz-code-input" maxlength="5" autocomplete="off"
-           autocapitalize="characters" placeholder="ABCDE"
-           oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
-    <div class="qz-error" id="join-error"></div>
-    <button class="qz-cta" id="join-submit-btn" onclick="submitJoin()">参加する</button>
+  <div class="qz-body">
+    <p class="qz-label">参加できるクイズから選んでください</p>
+    <div class="qz-room-list" id="join-room-list">
+      <p class="qz-label">読み込み中…</p>
+    </div>
   </div>
 </section>
 
@@ -121,8 +119,9 @@
     <button class="qz-icon-btn" onclick="confirmQuitHost()">✕</button>
   </header>
   <div class="qz-body qz-body-center">
-    <p class="qz-label">このコードをみんなに伝えてください</p>
+    <p class="qz-label">参加者は「参加する」からこのクイズを選べます</p>
     <div class="qz-code-display" id="hl-code">------</div>
+    <p class="qz-hint">（リンクで直接招待したい場合はこのコードを使えます）</p>
     <p class="qz-hint" id="hl-count">参加者 0人</p>
     <div class="qz-player-grid" id="hl-players"></div>
     <button class="qz-cta" id="hl-start-btn" onclick="hostStart()" disabled>クイズを始める</button>

@@ -153,6 +153,26 @@ input, select{ font-family:inherit; }
 }
 .qz-code-input:focus{ border-color:var(--accent); }
 
+/* ── 参加：ルーム一覧（コード入力の代わりに、タイトルを見て選ぶ） ───────────────────────── */
+.qz-room-list{ display:flex; flex-direction:column; gap:8px; width:100%; }
+.qz-room-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  width:100%; text-align:left; padding:14px 16px; border-radius:var(--r-lg);
+  background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow);
+  transition:transform .1s, opacity .12s;
+}
+.qz-room-row:active{ transform:scale(.98); opacity:.85; }
+.qz-room-row-main{ min-width:0; }
+.qz-room-row-title{
+  font-weight:700; font-size:15px; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.qz-room-row-sub{ font-size:12.5px; color:var(--text-secondary); margin-top:2px; }
+.qz-room-row-count{
+  flex:none; display:flex; align-items:center; gap:4px; font-weight:700; font-size:13px;
+  color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:5px 10px;
+}
+
 /* ── ボタン（CardMakerの .btn と同じ規格：高さ48px・角丸var(--r-md)） ───────────────────────── */
 .qz-cta{
   width:100%; height:48px; padding:0 1.25rem; border:none; border-radius:var(--r-md);
