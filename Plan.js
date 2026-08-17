@@ -65,6 +65,24 @@ function todayLocalStr() {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * ★ 予定リストの重複除去（date+subject+content が同じものは先勝ちで1つに）。
+ *   サーバー側が scope パラメータ未対応（再デプロイ前など）だと、未来分・
+ *   過去分の取得が両方とも「全件」を返してしまい、それを連結すると全予定が
+ *   2重に表示されてしまう。読み込みを合成する箇所では必ずこれを通す。
+ */
+function dedupePlans(list) {
+  const seen = new Set();
+  const out = [];
+  for (const p of list) {
+    const key = `${p.date}/${p.subject}${p.content}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
 // ============================================================
 //  起動
 // ============================================================
@@ -152,7 +170,7 @@ async function loadPlans() {
   // ① これからの予定（未来分）を先に読み込んで表示する
   try {
     const data = await api(`/list_schedule?guild_id=${GUILD_ID}&scope=future`);
-    plans = data.ok ? data.plans : [];
+    plans = data.ok ? dedupePlans(data.plans) : [];
   } catch(e) { plans = []; }
   document.getElementById('plan-loading').style.display = 'none';
   renderPlans();
@@ -173,7 +191,7 @@ async function loadMorePastPlans() {
   try {
     const data = await api(`/list_schedule?guild_id=${GUILD_ID}&scope=past&offset=${pastPlansOffset}&limit=${PAST_PLANS_PAGE_SIZE}`);
     if (data.ok) {
-      plans = plans.concat(data.plans);
+      plans = dedupePlans(plans.concat(data.plans));
       pastPlansOffset += data.plans.length;
       pastPlansHasMore = !!data.has_more;
     } else {
@@ -971,7 +989,7 @@ async function checkScheduleUpdate() {
     if (!data.ok) return;
     const today = todayLocalStr();
     const pastLoaded = plans.filter(p => p.date < today);
-    plans = data.plans.concat(pastLoaded);
+    plans = dedupePlans(data.plans.concat(pastLoaded));
 
     // スクロール位置を保ったまま予定一覧を再描画
     const scrollY = window.scrollY;
