@@ -148,17 +148,13 @@
         <input type="checkbox" id="new-plan-publish" checked>
       </label>
       <!-- ★ 追加：多肢選択（選択式）デッキにするかどうか。ONの場合、中の問題は
-           問題文＋解答/解説ではなく、問題文＋選択肢（2〜5個）＋正解の形式で作る。 -->
+           問題文＋解答/解説ではなく、問題文＋選択肢（2〜5個）＋正解の形式で作る。
+           単一正解/複数正解は問題ごとに正解チェックの数で自動的に決まる
+           （デッキ全体では統一しない）。 -->
       <label class="reverse-toggle-row" style="width:100%;max-width:360px" onclick="event.stopPropagation()">
         <span>🔘 多肢選択デッキにする</span>
-        <input type="checkbox" id="new-choice-mode-enabled" onchange="onNewChoiceModeToggle()">
+        <input type="checkbox" id="new-choice-mode-enabled">
       </label>
-      <div id="new-choice-mode-type-wrap" style="width:100%;max-width:360px;display:none;margin-bottom:.75rem">
-        <select id="new-choice-mode-type" style="width:100%;padding:12px 14px;border:2px solid var(--border);border-radius:var(--r-md);font-family:inherit;font-size:15px;color:var(--text);background:var(--surface);outline:none;-webkit-appearance:none">
-          <option value="single">単一正解（1つだけ選ぶ）</option>
-          <option value="multi">複数正解（複数選べる）</option>
-        </select>
-      </div>
       <input class="set-name-input" id="new-set-name" type="text"
              placeholder="セット名を入力" maxlength="60"
              onkeydown="if(event.key==='Enter')startEdit()">
@@ -206,6 +202,8 @@
         <div class="block-header">
           <span class="block-label">選択肢 <span class="block-label-sub">Choices</span></span>
         </div>
+        <!-- ★ 単一正解/複数正解は問題ごとにチェック数で自動的に決まる（1個＝択一、2個以上＝複数回答） -->
+        <p class="csv-import-hint" style="margin-top:-.25rem">左のチェックボックスで正解を選んでください。1つだけ選べば択一問題、2つ以上選べば複数回答問題になります。</p>
         <div id="ta-choice-rows"></div>
       </div>
 
@@ -570,7 +568,7 @@
 
     <!-- ★ 選択式デッキ（多肢選択デッキ／クイズ過去問）の問題を編集する場合はこちらを使う -->
     <div id="modal-edit-choices-block" style="display:none">
-      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px" id="modal-edit-choices-label">選択肢（左のラジオボタンで正解を選ぶ）</label>
+      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">選択肢（左のチェックボックスで正解を選ぶ。1つだけ選べば択一問題、2つ以上選べば複数回答問題になります）</label>
       <div id="modal-edit-choice-rows" style="margin-bottom:1rem"></div>
     </div>
 

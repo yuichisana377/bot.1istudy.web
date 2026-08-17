@@ -331,8 +331,11 @@ function cardToServerPayload(c) {
 //  ─────────────────────────────────────────────
 //  カード新規作成フォーム（ta-choice-rows）・カード編集モーダル
 //  （modal-edit-choice-rows）の両方から、同じ prefix ベースの
-//  関数群で使い回す。選択肢は2〜5個、正解は単一（ラジオ）/
-//  複数（チェックボックス）の両モードに対応する。
+//  関数群で使い回す。選択肢は2〜5個。
+//  ★ 単一正解/複数正解はデッキ単位やカード単位のモード切り替えを持たず、
+//    常にチェックボックスで正解を選ばせ、チェックした個数だけで自動的に
+//    決まる（1個＝択一問題、2個以上＝複数回答問題）。これにより「この問題は
+//    複数回答にする」という設定を問題ごとに個別に意識せずに済む。
 // ============================================================
 const CHOICE_LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const CHOICE_MIN = 2;
@@ -351,14 +354,12 @@ function readChoiceEditorState(prefix) {
   return { choices, correct };
 }
 
-// choices/correctIdx の内容で #${prefix}-rows を描き直す（単一=radio / 複数=checkbox）
-function renderChoiceEditorRows(prefix, choices, correctIdx, mode) {
-  const inputType = mode === 'multi' ? 'checkbox' : 'radio';
-  const groupAttr = mode === 'multi' ? '' : `name="${prefix}-correct-group"`;
+// choices/correctIdx の内容で #${prefix}-rows を描き直す
+function renderChoiceEditorRows(prefix, choices, correctIdx) {
   const n = choices.length;
   const rowsHtml = choices.map((val, i) => `
     <div class="modal-choice-row" data-idx="${i}">
-      <input type="${inputType}" ${groupAttr} id="${prefix}-correct-${i}" value="${i}">
+      <input type="checkbox" id="${prefix}-correct-${i}" value="${i}">
       <input type="text" class="modal-input" id="${prefix}-choice-${i}" placeholder="選択肢 ${CHOICE_LETTERS[i] || ''}" maxlength="80" style="margin-bottom:0">
       ${n > CHOICE_MIN ? `<button type="button" class="choice-remove-btn" data-ridx="${i}" title="この選択肢を削除">✕</button>` : ''}
     </div>`).join('');
@@ -373,26 +374,26 @@ function renderChoiceEditorRows(prefix, choices, correctIdx, mode) {
   correctIdx.forEach(i => { const el = document.getElementById(`${prefix}-correct-${i}`); if (el) el.checked = true; });
 
   const addBtn = document.getElementById(`${prefix}-add-btn`);
-  if (addBtn) addBtn.onclick = () => addChoiceRow(prefix, mode);
+  if (addBtn) addBtn.onclick = () => addChoiceRow(prefix);
   container.querySelectorAll('.choice-remove-btn').forEach(btn => {
-    btn.onclick = () => removeChoiceRow(prefix, Number(btn.dataset.ridx), mode);
+    btn.onclick = () => removeChoiceRow(prefix, Number(btn.dataset.ridx));
   });
 }
 
-function addChoiceRow(prefix, mode) {
+function addChoiceRow(prefix) {
   const { choices, correct } = readChoiceEditorState(prefix);
   if (choices.length >= CHOICE_MAX) return;
   choices.push('');
-  renderChoiceEditorRows(prefix, choices, correct, mode);
+  renderChoiceEditorRows(prefix, choices, correct);
   document.getElementById(`${prefix}-choice-${choices.length - 1}`).focus();
 }
 
-function removeChoiceRow(prefix, idx, mode) {
+function removeChoiceRow(prefix, idx) {
   const { choices, correct } = readChoiceEditorState(prefix);
   if (choices.length <= CHOICE_MIN) return;
   choices.splice(idx, 1);
   const newCorrect = correct.filter(i => i !== idx).map(i => i > idx ? i - 1 : i);
-  renderChoiceEditorRows(prefix, choices, newCorrect, mode);
+  renderChoiceEditorRows(prefix, choices, newCorrect);
 }
 
 // ── ログインセッション ─────────────────────
@@ -707,8 +708,9 @@ function renderDeckListUI() {
     // ★ 追加：多肢選択デッキ（choiceMode有り）にも、同じ理由で分かるようにバッジを付ける
     //   （「クイズ過去問」フォルダの中でなくてもプレイ時は一人用選択式モードになるため）
     //   ★ quizArchiveBadge と意味が重複するため、そちらが出る場合はこちらは出さない。
-    const choiceModeBadge = (!quizArchiveBadge && (d.choiceMode === 'single' || d.choiceMode === 'multi'))
-      ? `<span class="pub-badge archive">🔘 ${d.choiceMode === 'multi' ? '複数選択' : '選択式'}</span>` : '';
+    //   ★ 単一/複数は問題ごとに違いうるためデッキ単位では区別せず、常に「選択式」とだけ表示する。
+    const choiceModeBadge = (!quizArchiveBadge && d.choiceMode)
+      ? `<span class="pub-badge archive">🔘 選択式</span>` : '';
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
@@ -1362,7 +1364,7 @@ async function fetchAndMergeDecks() {
       cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
-      choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（null / "single" / "multi"）
+      choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（旧データの互換のため "single"/"multi" 文字列も truthy として扱う）
       subject: s.subject || (existing && existing.subject) || null,
       published_by: s.published_by || (existing && existing.published_by) || null,
       // ★ 未完成フラグはサーバー側の索引（list_cards）にも保存されるようになったため、
@@ -1688,17 +1690,9 @@ function openNewSet() {
   document.getElementById('new-plan-publish').checked = true; // ★ 追加：毎回デフォルトで「公開予定」に戻す
   // ★ 追加：多肢選択デッキのトグルも毎回OFFへ戻す
   document.getElementById('new-choice-mode-enabled').checked = false;
-  document.getElementById('new-choice-mode-type').value = 'single';
-  document.getElementById('new-choice-mode-type-wrap').style.display = 'none';
   showScreen('new');
   loadSubjects();
   setTimeout(() => document.getElementById('new-set-name').focus(), 200);
-}
-
-// ★ 追加：「多肢選択デッキにする」トグルに応じて、単一/複数正解の選択肢を出し分ける
-function onNewChoiceModeToggle() {
-  const enabled = document.getElementById('new-choice-mode-enabled').checked;
-  document.getElementById('new-choice-mode-type-wrap').style.display = enabled ? '' : 'none';
 }
 
 async function loadSubjects() {
@@ -1729,9 +1723,9 @@ async function startEdit() {
   const name = subject ? `${subject} ${input}` : input;
   // ★ 追加：このデッキを公開予定として作成するかどうか（デフォルトtrue＝公開予定）
   const planPublish = document.getElementById('new-plan-publish').checked;
-  // ★ 追加：多肢選択デッキにするか（null=通常のフラッシュカードデッキ / "single" / "multi"）
-  const choiceModeEnabled = document.getElementById('new-choice-mode-enabled').checked;
-  const choiceMode = choiceModeEnabled ? document.getElementById('new-choice-mode-type').value : null;
+  // ★ 追加：多肢選択デッキにするか（null=通常のフラッシュカードデッキ / true=選択式デッキ）。
+  //   単一正解/複数正解はデッキ単位では決めず、問題ごとに正解チェックの数で自動的に決まる。
+  const choiceMode = document.getElementById('new-choice-mode-enabled').checked ? true : null;
   // ★ notYetPublished: まだ一度も「公開して保存」（完成／未完成の選択）を経ていないことを表す。
   //   これが true の間は、カードが何枚あっても常に「作成中」バッジとして扱う（プレイ不可・編集は可）。
   const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true, choiceMode };
@@ -1847,13 +1841,13 @@ async function openEditDeck(deckId) {
 //   多肢選択デッキ用（選択肢）のどちらの見た目にするか切り替える。
 //   CSV読み込みも「問題,解答,解説」形式専用なので選択式デッキでは隠す。
 function applyCardFormChoiceMode(choiceMode) {
-  const isChoice = choiceMode === 'single' || choiceMode === 'multi';
+  const isChoice = !!choiceMode;
   document.getElementById('qa-csv-block').style.display         = isChoice ? 'none' : '';
   document.getElementById('qa-answer-block').style.display      = isChoice ? 'none' : '';
   document.getElementById('qa-explanation-block').style.display = isChoice ? 'none' : '';
   document.getElementById('qa-choices-block').style.display     = isChoice ? '' : 'none';
   if (isChoice) {
-    renderChoiceEditorRows('ta-choice', ['', ''], [], choiceMode);
+    renderChoiceEditorRows('ta-choice', ['', ''], []);
   }
 }
 
@@ -1868,8 +1862,8 @@ function clearEditor() {
   });
   // ★ 追加：多肢選択デッキの選択肢入力欄も、カードを1枚保存するたびに空へ戻す
   const deck = decks.find(d => d.id === currentDeckId);
-  if (deck && (deck.choiceMode === 'single' || deck.choiceMode === 'multi')) {
-    renderChoiceEditorRows('ta-choice', ['', ''], [], deck.choiceMode);
+  if (deck && deck.choiceMode) {
+    renderChoiceEditorRows('ta-choice', ['', ''], []);
   }
 }
 
@@ -2012,12 +2006,10 @@ async function addChoiceCardFromForm(deck, q) {
   if (!q) { shake('ta-q'); return 'invalid'; }
   const emptyIdx = choices.findIndex(c => !c);
   if (emptyIdx !== -1) { shake(`ta-choice-choice-${emptyIdx}`); return 'invalid'; }
-  if (deck.choiceMode === 'single' && correct.length !== 1) {
-    await showCmAlert({ title: '正解を1つ選んでください', desc: '選択肢の左のラジオボタンで、正解を1つだけ選んでください。' });
-    return 'invalid';
-  }
-  if (deck.choiceMode === 'multi' && correct.length === 0) {
-    await showCmAlert({ title: '正解を1つ以上選んでください', desc: '選択肢の左のチェックボックスで、正解をすべて選んでください。' });
+  // ★ 単一/複数正解は問題ごとに正解チェックの数で自動的に決まる（1個＝択一、2個以上＝複数回答）。
+  //   ここでは「1つも選ばれていない」ことだけをエラーにする。
+  if (correct.length === 0) {
+    await showCmAlert({ title: '正解を1つ以上選んでください', desc: '選択肢の左のチェックボックスで、正解を選んでください。1つだけ選べば択一問題、2つ以上選べば複数回答問題になります。' });
     return 'invalid';
   }
   if (await warnIfBugChars(q, 'ta-q')) return 'invalid';
@@ -2044,7 +2036,7 @@ async function addChoiceCardFromForm(deck, q) {
 async function saveCard(mode) {
   const q = document.getElementById('ta-q').value.trim();
   const deck = decks.find(d => d.id === currentDeckId);
-  const isChoiceDeck = deck && (deck.choiceMode === 'single' || deck.choiceMode === 'multi');
+  const isChoiceDeck = deck && !!deck.choiceMode;
 
   if (isChoiceDeck) {
     const added = await addChoiceCardFromForm(deck, q);
@@ -3124,19 +3116,15 @@ async function editCurrentStudyCard() {
 }
 
 let editingIsQuizChoice = false; // ★ 選択式カード（多肢選択デッキ／クイズ過去問デッキ）を編集中かどうか
-let editingChoiceMode   = 'single'; // ★ 追加：編集中の選択式カードが単一/複数正解のどちらか
 
 function openCardEditModalCommon(deckId, c, context) {
   editingDeckId  = deckId;
   editingCardKey = cardKey(c);
   editingContext = context;
-  const deck = decks.find(d => d.id === deckId);
   // ★ choices を持つカードは、通常の解答/解説欄の代わりに選択肢入力欄を表示する。
-  //   モード（単一/複数）はデッキ側の choiceMode を優先し、それが無い
-  //   （choice_mode 追加より前に作られた「クイズ過去問」の古いデッキ）場合は
-  //   従来通り単一正解として扱う。
+  //   単一/複数正解はデッキ／カードのどちらにもモードを持たせず、常にチェックボックスで
+  //   表示し、チェックした個数だけで自動的に決まる。
   editingIsQuizChoice = Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN;
-  editingChoiceMode = (deck && deck.choiceMode) || 'single';
 
   document.getElementById('modal-edit-q').value = mathToPlainText(c.question);
   autoResize(document.getElementById('modal-edit-q'));
@@ -3147,12 +3135,10 @@ function openCardEditModalCommon(deckId, c, context) {
   document.getElementById('modal-edit-explanation-block').style.display = editingIsQuizChoice ? 'none' : '';
 
   if (editingIsQuizChoice) {
-    document.getElementById('modal-edit-choices-label').textContent =
-      editingChoiceMode === 'multi' ? '選択肢（左のチェックボックスで正解を全て選ぶ）' : '選択肢（左のラジオボタンで正解を選ぶ）';
     // ★ 旧形式（correct_index単数）のカードにも対応する
     const correctIndices = Array.isArray(c.correct_indices) ? c.correct_indices
       : (typeof c.correct_index === 'number' ? [c.correct_index] : []);
-    renderChoiceEditorRows('modal-edit-choice', c.choices, correctIndices, editingChoiceMode);
+    renderChoiceEditorRows('modal-edit-choice', c.choices, correctIndices);
     // ★ 問題文の画像だけはこのモードでも使う（imgs_q）
     editImgBuf = { q: [...(c.imgs_q || [])], a: [], e: [] };
     renderModalImgStrip('q');
@@ -3260,10 +3246,10 @@ async function saveCardEdit() {
 async function saveQuizChoiceCardEdit(q, errBar) {
   const { choices: rawChoices, correct } = readChoiceEditorState('modal-edit-choice');
   const choices = rawChoices.map(c => c.trim());
-  const needCountLabel = editingChoiceMode === 'multi' ? '正解を1つ以上選ぶこと' : '正解を1つだけ選ぶこと';
-  const validCorrectCount = editingChoiceMode === 'multi' ? correct.length >= 1 : correct.length === 1;
-  if (!q || choices.some(c => !c) || !validCorrectCount) {
-    errBar.textContent = `✕ 問題文・すべての選択肢・${needCountLabel}はすべて必須です`;
+  // ★ 単一/複数正解は問題ごとに正解チェックの数で自動的に決まる（1個＝択一、2個以上＝複数回答）。
+  //   ここでは「1つも選ばれていない」ことだけをエラーにする。
+  if (!q || choices.some(c => !c) || correct.length === 0) {
+    errBar.textContent = '✕ 問題文・すべての選択肢・正解を1つ以上選ぶことはすべて必須です';
     errBar.style.display = 'block';
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
@@ -3713,7 +3699,6 @@ let soloQuizCards   = [];
 let soloQuizIdx     = 0;
 let soloQuizScore   = 0;
 let soloQuizAnswered = false;
-let soloQuizChoiceMode = 'single'; // ★ 追加：このデッキが単一/複数正解のどちらか
 let soloQuizSelected = new Set();  // ★ 追加：複数正解モードで、まだ回答確定前に選んでいる選択肢
 
 async function startSoloQuiz(deckId) {
@@ -3749,7 +3734,6 @@ async function startSoloQuiz(deckId) {
   }
 
   soloQuizDeckId = deckId;
-  soloQuizChoiceMode = freshDeck.choiceMode || 'single';
   soloQuizCards  = [...playable];
   // 出題順をシャッフル（Fisher-Yates。shuffleStudy()と同じやり方）
   for (let i = soloQuizCards.length - 1; i > 0; i--) {
@@ -3778,8 +3762,10 @@ function renderQuizPlayQuestion() {
   document.getElementById('qp-q-imgs').innerHTML = (card.imgs_q || []).map(s =>
     `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
 
-  // ★ 修正：4択固定だったのを、カードの選択肢数（2〜5）に合わせて描画する
-  const isMulti = soloQuizChoiceMode === 'multi';
+  // ★ 修正：4択固定だったのを、カードの選択肢数（2〜5）に合わせて描画する。
+  //   単一/複数正解はデッキ単位ではなく、この問題の正解が何個あるか（correct_indices.length）
+  //   で問題ごとに自動的に決まる。
+  const isMulti = card.correct_indices.length > 1;
   const choicesEl = document.getElementById('qp-choices');
   choicesEl.innerHTML = card.choices.map((c, i) => `
     <button type="button" class="qp-choice-btn" onclick="${isMulti ? `toggleQuizPlayMultiChoice(${i})` : `answerQuizPlay(${i})`}">
@@ -3920,7 +3906,7 @@ async function openPlayMode(deckId) {
   // ★「クイズ過去問」フォルダの中のデッキ、および多肢選択デッキ（choiceMode有り）は、
   //   通常のフラッシュカード（すべて/わからないだけ/続きから の選択モーダル）
   //   ではなく、一人用選択式モードでプレイする。
-  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode === 'single' || deck.choiceMode === 'multi') {
+  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode) {
     return startSoloQuiz(deckId);
   }
   studyIsFolder = false;

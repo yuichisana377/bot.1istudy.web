@@ -382,8 +382,8 @@ html, body {
 .pub-badge.archive    { background: #EFF4FF; color: #2563EB; border: 1px solid #bfdbfe; }
 
 /* ── カード編集/作成フォームの選択式入力欄（choice-mode） ── */
+/* ★ 正解は常にチェックボックスで選ぶ（チェック数で択一/複数回答が自動的に決まる） */
 .modal-choice-row { display: flex; align-items: center; gap: 8px; margin-bottom: .5rem; }
-.modal-choice-row input[type=radio],
 .modal-choice-row input[type=checkbox] { accent-color: #16a34a; width: 18px; height: 18px; flex-shrink: 0; }
 /* ★ 追加：選択肢の削除ボタン（2択以上を維持するため、選択肢が3つ以上あるときだけ表示） */
 .choice-remove-btn {
