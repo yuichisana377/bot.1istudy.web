@@ -381,11 +381,19 @@ html, body {
 /* ★ 追加：「クイズ過去問」フォルダ内（一人用4択モードでプレイする）デッキ用バッジ */
 .pub-badge.archive    { background: #EFF4FF; color: #2563EB; border: 1px solid #bfdbfe; }
 
-/* ── カード編集モーダルの4択入力欄（modal-edit-choices-block） ── */
+/* ── カード編集/作成フォームの選択式入力欄（choice-mode） ── */
 .modal-choice-row { display: flex; align-items: center; gap: 8px; margin-bottom: .5rem; }
-.modal-choice-row input[type=radio] { accent-color: #16a34a; width: 18px; height: 18px; flex-shrink: 0; }
+.modal-choice-row input[type=radio],
+.modal-choice-row input[type=checkbox] { accent-color: #16a34a; width: 18px; height: 18px; flex-shrink: 0; }
+/* ★ 追加：選択肢の削除ボタン（2択以上を維持するため、選択肢が3つ以上あるときだけ表示） */
+.choice-remove-btn {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 999px; border: none;
+  background: var(--bg-alt, #f1f5f9); color: var(--text-secondary); font-size: 14px;
+  cursor: pointer; line-height: 1;
+}
+.choice-remove-btn:hover { background: #fee2e2; color: #991b1b; }
 
-/* ── 一人用4択クイズ（screen-quiz-play） ── */
+/* ── 一人用選択式クイズ（screen-quiz-play） ── */
 .qp-choices { display: flex; flex-direction: column; gap: .6rem; margin-top: 1.25rem; }
 .qp-choice-btn {
   width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r-md);
@@ -395,10 +403,12 @@ html, body {
 }
 .qp-choice-btn:active:not(:disabled) { opacity: .85; }
 .qp-choice-btn:disabled { cursor: not-allowed; }
-.qp-choice-btn.qp-correct { background: #dcfce7; border-color: #16a34a; color: #166534; }
-.qp-choice-btn.qp-wrong   { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
-.qp-choice-btn.qp-dim     { opacity: .45; }
-.qp-next-wrap { margin-top: 1.25rem; }
+.qp-choice-btn.qp-correct  { background: #dcfce7; border-color: #16a34a; color: #166534; }
+.qp-choice-btn.qp-wrong    { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
+.qp-choice-btn.qp-dim      { opacity: .45; }
+/* ★ 追加：複数正解モードで、まだ回答確定前に選んでいる選択肢の見た目 */
+.qp-choice-btn.qp-selected { background: #EFF4FF; border-color: #2563EB; color: #1d4ed8; }
+.qp-next-wrap, .qp-submit-wrap { margin-top: 1.25rem; }
 
 .qp-leaderboard { display: flex; flex-direction: column; gap: .5rem; margin: 1.5rem 0; text-align: left; }
 .qp-lb-row {

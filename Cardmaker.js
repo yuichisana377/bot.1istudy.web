@@ -309,6 +309,92 @@ function resolveDeckIdFromDragKey(key) {
   return d ? d.id : null;
 }
 
+// ★ カードをサーバー送信用のプレーンなオブジェクトに変換する共通ヘルパー。
+//   announceNewDeckToServer / syncDeckToServer の両方で使う。
+//   choices/correct_indices（選択式デッキのカード）が存在する場合はそれも含めて送る。
+//   これを含めずに固定7フィールドだけ送ってしまうと、選択式デッキを1回でも
+//   同期した瞬間に選択肢データがサーバー側から失われてしまう。
+function cardToServerPayload(c) {
+  const base = {
+    id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
+    imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [],
+  };
+  if (Array.isArray(c.choices)) {
+    base.choices = c.choices;
+    base.correct_indices = Array.isArray(c.correct_indices) ? c.correct_indices : [];
+  }
+  return base;
+}
+
+// ============================================================
+//  ★ 選択式デッキ共通の「選択肢入力欄」ウィジェット
+//  ─────────────────────────────────────────────
+//  カード新規作成フォーム（ta-choice-rows）・カード編集モーダル
+//  （modal-edit-choice-rows）の両方から、同じ prefix ベースの
+//  関数群で使い回す。選択肢は2〜5個、正解は単一（ラジオ）/
+//  複数（チェックボックス）の両モードに対応する。
+// ============================================================
+const CHOICE_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+const CHOICE_MIN = 2;
+const CHOICE_MAX = 5;
+
+// 今 #${prefix}-rows に入力されている内容を読み出す
+function readChoiceEditorState(prefix) {
+  const rows = document.querySelectorAll(`#${prefix}-rows .modal-choice-row`);
+  const choices = [];
+  const correct = [];
+  rows.forEach((row, i) => {
+    choices.push(document.getElementById(`${prefix}-choice-${i}`).value);
+    const inp = document.getElementById(`${prefix}-correct-${i}`);
+    if (inp && inp.checked) correct.push(i);
+  });
+  return { choices, correct };
+}
+
+// choices/correctIdx の内容で #${prefix}-rows を描き直す（単一=radio / 複数=checkbox）
+function renderChoiceEditorRows(prefix, choices, correctIdx, mode) {
+  const inputType = mode === 'multi' ? 'checkbox' : 'radio';
+  const groupAttr = mode === 'multi' ? '' : `name="${prefix}-correct-group"`;
+  const n = choices.length;
+  const rowsHtml = choices.map((val, i) => `
+    <div class="modal-choice-row" data-idx="${i}">
+      <input type="${inputType}" ${groupAttr} id="${prefix}-correct-${i}" value="${i}">
+      <input type="text" class="modal-input" id="${prefix}-choice-${i}" placeholder="選択肢 ${CHOICE_LETTERS[i] || ''}" maxlength="80" style="margin-bottom:0">
+      ${n > CHOICE_MIN ? `<button type="button" class="choice-remove-btn" data-ridx="${i}" title="この選択肢を削除">✕</button>` : ''}
+    </div>`).join('');
+  const addBtnHtml = n < CHOICE_MAX
+    ? `<button type="button" class="block-action-btn" id="${prefix}-add-btn" style="margin-top:.25rem">＋ 選択肢を追加</button>` : '';
+  const container = document.getElementById(`${prefix}-rows`);
+  container.innerHTML = rowsHtml + addBtnHtml;
+
+  // ★ value属性への直接埋め込みはエスケープ事故（クォート等）の元になるため、
+  //   空要素を描画してから .value / .checked をJSで設定する
+  choices.forEach((val, i) => { document.getElementById(`${prefix}-choice-${i}`).value = val; });
+  correctIdx.forEach(i => { const el = document.getElementById(`${prefix}-correct-${i}`); if (el) el.checked = true; });
+
+  const addBtn = document.getElementById(`${prefix}-add-btn`);
+  if (addBtn) addBtn.onclick = () => addChoiceRow(prefix, mode);
+  container.querySelectorAll('.choice-remove-btn').forEach(btn => {
+    btn.onclick = () => removeChoiceRow(prefix, Number(btn.dataset.ridx), mode);
+  });
+}
+
+function addChoiceRow(prefix, mode) {
+  const { choices, correct } = readChoiceEditorState(prefix);
+  if (choices.length >= CHOICE_MAX) return;
+  choices.push('');
+  renderChoiceEditorRows(prefix, choices, correct, mode);
+  document.getElementById(`${prefix}-choice-${choices.length - 1}`).focus();
+}
+
+function removeChoiceRow(prefix, idx, mode) {
+  const { choices, correct } = readChoiceEditorState(prefix);
+  if (choices.length <= CHOICE_MIN) return;
+  choices.splice(idx, 1);
+  const newCorrect = correct.filter(i => i !== idx).map(i => i > idx ? i - 1 : i);
+  renderChoiceEditorRows(prefix, choices, newCorrect, mode);
+}
+
 // ── ログインセッション ─────────────────────
 //   SESSION_KEY / getLoginSession はファイル冒頭（強制ログインチェックの
 //   ところ）に定義済みなのでここでは何もしない。
@@ -615,9 +701,14 @@ function renderDeckListUI() {
           ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
           : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
     // ★ 「クイズ過去問」フォルダの中のデッキだと分かるようにバッジを付ける
-    //   （プレイ時の挙動が通常のフラッシュカードと違う＝一人用4択モードになるため）
+    //   （プレイ時の挙動が通常のフラッシュカードと違う＝一人用選択式モードになるため）
     const quizArchiveBadge = isDeckInFolderScope(d.id, QUIZ_ARCHIVE_FOLDER_ID)
       ? `<span class="pub-badge archive">🎯 過去問</span>` : '';
+    // ★ 追加：多肢選択デッキ（choiceMode有り）にも、同じ理由で分かるようにバッジを付ける
+    //   （「クイズ過去問」フォルダの中でなくてもプレイ時は一人用選択式モードになるため）
+    //   ★ quizArchiveBadge と意味が重複するため、そちらが出る場合はこちらは出さない。
+    const choiceModeBadge = (!quizArchiveBadge && (d.choiceMode === 'single' || d.choiceMode === 'multi'))
+      ? `<span class="pub-badge archive">🔘 ${d.choiceMode === 'multi' ? '複数選択' : '選択式'}</span>` : '';
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
@@ -644,6 +735,7 @@ function renderDeckListUI() {
           ${questionCount} 問
           ${pubBadge}
           ${quizArchiveBadge}
+          ${choiceModeBadge}
           ${unsureBadge}
         </div>
       </div>
@@ -1270,6 +1362,7 @@ async function fetchAndMergeDecks() {
       cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
+      choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（null / "single" / "multi"）
       subject: s.subject || (existing && existing.subject) || null,
       published_by: s.published_by || (existing && existing.published_by) || null,
       // ★ 未完成フラグはサーバー側の索引（list_cards）にも保存されるようになったため、
@@ -1593,9 +1686,19 @@ async function menuDelete() {
 function openNewSet() {
   document.getElementById('new-set-name').value = '';
   document.getElementById('new-plan-publish').checked = true; // ★ 追加：毎回デフォルトで「公開予定」に戻す
+  // ★ 追加：多肢選択デッキのトグルも毎回OFFへ戻す
+  document.getElementById('new-choice-mode-enabled').checked = false;
+  document.getElementById('new-choice-mode-type').value = 'single';
+  document.getElementById('new-choice-mode-type-wrap').style.display = 'none';
   showScreen('new');
   loadSubjects();
   setTimeout(() => document.getElementById('new-set-name').focus(), 200);
+}
+
+// ★ 追加：「多肢選択デッキにする」トグルに応じて、単一/複数正解の選択肢を出し分ける
+function onNewChoiceModeToggle() {
+  const enabled = document.getElementById('new-choice-mode-enabled').checked;
+  document.getElementById('new-choice-mode-type-wrap').style.display = enabled ? '' : 'none';
 }
 
 async function loadSubjects() {
@@ -1626,9 +1729,12 @@ async function startEdit() {
   const name = subject ? `${subject} ${input}` : input;
   // ★ 追加：このデッキを公開予定として作成するかどうか（デフォルトtrue＝公開予定）
   const planPublish = document.getElementById('new-plan-publish').checked;
+  // ★ 追加：多肢選択デッキにするか（null=通常のフラッシュカードデッキ / "single" / "multi"）
+  const choiceModeEnabled = document.getElementById('new-choice-mode-enabled').checked;
+  const choiceMode = choiceModeEnabled ? document.getElementById('new-choice-mode-type').value : null;
   // ★ notYetPublished: まだ一度も「公開して保存」（完成／未完成の選択）を経ていないことを表す。
   //   これが true の間は、カードが何枚あっても常に「作成中」バッジとして扱う（プレイ不可・編集は可）。
-  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true };
+  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true, choiceMode };
   decks.push(deck); saveDecks(decks);
   // ★ 追加：公開予定なら、この時点（作成ボタンを押した直後）でサーバーにも
   //   「まだ中身は空・作成中」として登録し、他の人の一覧にもすぐ表示されるようにする。
@@ -1662,10 +1768,7 @@ async function announceNewDeckToServer(deckId) {
     //   上書きされて消えてしまう、という重大な不具合につながっていた。
     //   ここでは必ず「今ローカルにある実際のカード」をそのまま送る
     //   （まだ1枚も無ければ結果的に空配列になるだけで、これまで通り）。
-    const cards = deck.cards.map(c => ({
-      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
-      imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [],
-    }));
+    const cards = deck.cards.map(cardToServerPayload);
     const res = await fetch(`${API_BASE}save_cards`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1678,6 +1781,7 @@ async function announceNewDeckToServer(deckId) {
         publisher_nickname: session ? session.nickname : '匿名',
         silent: true,      // ★ 作成しただけなのでDiscord通知はしない
         incomplete: true,  // ★ まだ「保存して公開」を経ていないので「未完成（作成中）」扱いにする
+        choice_mode: deck.choiceMode || null, // ★ 多肢選択デッキかどうか
       }),
       signal: controller.signal,
     });
@@ -1733,9 +1837,26 @@ async function openEditDeck(deckId) {
   //     静かにサーバーへも反映するよう修正済み）
   document.getElementById('btn-save-local').style.display = '';
   document.getElementById('btn-done').textContent = deck.filename ? '公開して保存' : '保存して公開';
+  // ★ 追加：多肢選択デッキかどうかで「解答/解説」欄と「選択肢」欄を出し分ける
+  applyCardFormChoiceMode(deck.choiceMode);
   clearEditor(); renderCreatedList(); showScreen('edit');
   setTimeout(() => document.getElementById('ta-q').focus(), 200);
 }
+
+// ★ 追加：カード新規作成フォームを、通常デッキ用（解答/解説）と
+//   多肢選択デッキ用（選択肢）のどちらの見た目にするか切り替える。
+//   CSV読み込みも「問題,解答,解説」形式専用なので選択式デッキでは隠す。
+function applyCardFormChoiceMode(choiceMode) {
+  const isChoice = choiceMode === 'single' || choiceMode === 'multi';
+  document.getElementById('qa-csv-block').style.display         = isChoice ? 'none' : '';
+  document.getElementById('qa-answer-block').style.display      = isChoice ? 'none' : '';
+  document.getElementById('qa-explanation-block').style.display = isChoice ? 'none' : '';
+  document.getElementById('qa-choices-block').style.display     = isChoice ? '' : 'none';
+  if (isChoice) {
+    renderChoiceEditorRows('ta-choice', ['', ''], [], choiceMode);
+  }
+}
+
 function clearEditor() {
   ['q','a','e'].forEach(k => {
     const el = document.getElementById('ta-'+k);
@@ -1745,6 +1866,11 @@ function clearEditor() {
     imgBuf[k] = [];
     document.getElementById('imgs-'+k).innerHTML = '';
   });
+  // ★ 追加：多肢選択デッキの選択肢入力欄も、カードを1枚保存するたびに空へ戻す
+  const deck = decks.find(d => d.id === currentDeckId);
+  if (deck && (deck.choiceMode === 'single' || deck.choiceMode === 'multi')) {
+    renderChoiceEditorRows('ta-choice', ['', ''], [], deck.choiceMode);
+  }
 }
 
 // ============================================================
@@ -1873,29 +1999,78 @@ async function handleCsvImport(event) {
   await showCmAlert({ title: 'CSVの読み込みが完了しました', desc: parts.join('\n') });
 }
 
+// ★ 追加：多肢選択デッキの「カードを追加」フォーム（ta-choice-rows）から1枚追加する。
+//   通常デッキの inline 追加（saveCard内、ta-a/ta-e使用）と役割は同じ。
+//   戻り値：'added'（追加した）／'skip'（何も入力されておらず何もしなかった。
+//   通常デッキと同じく空のまま「次へ／保存」を押した場合はこれ）／'invalid'（入力不備で中断）。
+async function addChoiceCardFromForm(deck, q) {
+  const { choices: rawChoices, correct } = readChoiceEditorState('ta-choice');
+  const choices = rawChoices.map(c => c.trim());
+  const anyInput = !!q || choices.some(c => c);
+  if (!anyInput) return 'skip';
+
+  if (!q) { shake('ta-q'); return 'invalid'; }
+  const emptyIdx = choices.findIndex(c => !c);
+  if (emptyIdx !== -1) { shake(`ta-choice-choice-${emptyIdx}`); return 'invalid'; }
+  if (deck.choiceMode === 'single' && correct.length !== 1) {
+    await showCmAlert({ title: '正解を1つ選んでください', desc: '選択肢の左のラジオボタンで、正解を1つだけ選んでください。' });
+    return 'invalid';
+  }
+  if (deck.choiceMode === 'multi' && correct.length === 0) {
+    await showCmAlert({ title: '正解を1つ以上選んでください', desc: '選択肢の左のチェックボックスで、正解をすべて選んでください。' });
+    return 'invalid';
+  }
+  if (await warnIfBugChars(q, 'ta-q')) return 'invalid';
+  for (let i = 0; i < choices.length; i++) {
+    if (await warnIfBugChars(choices[i], `ta-choice-choice-${i}`)) return 'invalid';
+  }
+
+  // ★ answer は正解の選択肢文言をまとめたもの。単語検索・一覧表示など
+  //   「answerは文字列である」という前提の既存コードをそのまま動かすため。
+  const answerText = correct.map(i => choices[i]).join(' / ');
+  if (await warnIfDuplicateOrSameCard(deck, q, answerText, '')) return 'invalid';
+
+  deck.cards.push({
+    id: genId(), question: q, answer: answerText, explanation: '',
+    choices, correct_indices: correct.slice().sort((x, y) => x - y),
+    imgs_q: [...imgBuf.q], imgs_a: [], imgs_e: [],
+  });
+  saveDecks(decks);
+  document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+  if (deck.filename) queueSyncDeckToServer(deck);
+  return 'added';
+}
+
 async function saveCard(mode) {
   const q = document.getElementById('ta-q').value.trim();
-  const a = document.getElementById('ta-a').value.trim();
-  const e = document.getElementById('ta-e').value.trim();
   const deck = decks.find(d => d.id === currentDeckId);
-  if (q || a) {
-    if (!q || !a) { shake(!q ? 'ta-q' : 'ta-a'); return; }
-    if (await warnIfBugChars(q, 'ta-q')) return;
-    if (await warnIfBugChars(a, 'ta-a')) return;
-    if (await warnIfBugChars(e, 'ta-e')) return;
-    if (await warnIfDuplicateOrSameCard(deck, q, a, e)) return;
-    deck.cards.push({ id:genId(), question:q, answer:a,
-      explanation: e,
-      imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
-    saveDecks(decks);
-    document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
-    // ★ 修正：サーバー登録済み（filenameあり＝「作成中」含む）のデッキは、
-    //   カードを1枚追加するたびに必ずサーバーへも反映しておく。
-    //   ここで反映しないと、編集画面を出てもう一度開いたときの強制リロード
-    //   （openEditDeck → loadDeckCardsWithRecovery）でサーバー側の
-    //   古い（まだこのカードを知らない）データに上書きされ、
-    //   せっかく追加したカードがローカルごと消えてしまう不具合があった。
-    if (deck.filename) queueSyncDeckToServer(deck);
+  const isChoiceDeck = deck && (deck.choiceMode === 'single' || deck.choiceMode === 'multi');
+
+  if (isChoiceDeck) {
+    const added = await addChoiceCardFromForm(deck, q);
+    if (added === 'invalid') return; // 入力不備。編集を続けさせる
+  } else {
+    const a = document.getElementById('ta-a').value.trim();
+    const e = document.getElementById('ta-e').value.trim();
+    if (q || a) {
+      if (!q || !a) { shake(!q ? 'ta-q' : 'ta-a'); return; }
+      if (await warnIfBugChars(q, 'ta-q')) return;
+      if (await warnIfBugChars(a, 'ta-a')) return;
+      if (await warnIfBugChars(e, 'ta-e')) return;
+      if (await warnIfDuplicateOrSameCard(deck, q, a, e)) return;
+      deck.cards.push({ id:genId(), question:q, answer:a,
+        explanation: e,
+        imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
+      saveDecks(decks);
+      document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+      // ★ 修正：サーバー登録済み（filenameあり＝「作成中」含む）のデッキは、
+      //   カードを1枚追加するたびに必ずサーバーへも反映しておく。
+      //   ここで反映しないと、編集画面を出てもう一度開いたときの強制リロード
+      //   （openEditDeck → loadDeckCardsWithRecovery）でサーバー側の
+      //   古い（まだこのカードを知らない）データに上書きされ、
+      //   せっかく追加したカードがローカルごと消えてしまう不具合があった。
+      if (deck.filename) queueSyncDeckToServer(deck);
+    }
   }
   if (mode === 'publish') {
     // ★ 未ログインチェック（公開ボタンを押した時だけ）／自前UIで確認する
@@ -1967,11 +2142,11 @@ async function publishDeck(deckId, isComplete = true) {
   if (!deck) return;
 
   const session = getLoginSession();
-  const cards = deck.cards.map(c => ({
-    id: c.id, // サーバーが対応していれば id を保持したまま返してもらうため付与
-    question: c.question, answer: c.answer, explanation: c.explanation || '',
-    imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [], // ★ 画像も公開する
-  }));
+  // ★ 修正：choices/correct_indices（多肢選択デッキのカード）も含めて送るよう、
+  //   他の同期経路と同じ cardToServerPayload を使う。以前はここだけ独自に
+  //   固定6フィールドへ詰め替えていたため、多肢選択デッキを初めて
+  //   「公開して保存」した瞬間に選択肢データが失われてしまっていた。
+  const cards = deck.cards.map(cardToServerPayload);
   // ★ 追加：サーバー側の is_update（＝filenameが既に存在するか）だけでは、
   //   「作成中（作成時にannounceNewDeckToServerで登録済み）」のデッキが
   //   初めて『公開して保存』されたときも filename が既に存在するため
@@ -1992,6 +2167,7 @@ async function publishDeck(deckId, isComplete = true) {
     silent: !isComplete, // ★ 未完成として公開する場合は通知しない
     incomplete: !isComplete, // ★ 未完成フラグをサーバーに保存し、他の人の端末にも表示させる
     first_publish: isFirstPublish, // ★ 追加：通知文言を「公開」/「更新」どちらにするか判定するためのヒント
+    choice_mode: deck.choiceMode || null, // ★ 追加：多肢選択デッキかどうか
   };
   if (deck.filename) body.filename = deck.filename;
   try {
@@ -2947,15 +3123,20 @@ async function editCurrentStudyCard() {
   openCardEditModalCommon(deckId, freshCard, 'study');
 }
 
-let editingIsQuizChoice = false; // ★ 追加：4択カード（クイズ過去問デッキ）を編集中かどうか
+let editingIsQuizChoice = false; // ★ 選択式カード（多肢選択デッキ／クイズ過去問デッキ）を編集中かどうか
+let editingChoiceMode   = 'single'; // ★ 追加：編集中の選択式カードが単一/複数正解のどちらか
 
 function openCardEditModalCommon(deckId, c, context) {
   editingDeckId  = deckId;
   editingCardKey = cardKey(c);
   editingContext = context;
-  // ★「クイズ過去問」デッキのカード（choices/correct_indexを持つ）は、
-  //   通常の解答/解説欄の代わりに4択入力欄を表示する。
-  editingIsQuizChoice = Array.isArray(c.choices) && c.choices.length === 4;
+  const deck = decks.find(d => d.id === deckId);
+  // ★ choices を持つカードは、通常の解答/解説欄の代わりに選択肢入力欄を表示する。
+  //   モード（単一/複数）はデッキ側の choiceMode を優先し、それが無い
+  //   （choice_mode 追加より前に作られた「クイズ過去問」の古いデッキ）場合は
+  //   従来通り単一正解として扱う。
+  editingIsQuizChoice = Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN;
+  editingChoiceMode = (deck && deck.choiceMode) || 'single';
 
   document.getElementById('modal-edit-q').value = mathToPlainText(c.question);
   autoResize(document.getElementById('modal-edit-q'));
@@ -2966,11 +3147,12 @@ function openCardEditModalCommon(deckId, c, context) {
   document.getElementById('modal-edit-explanation-block').style.display = editingIsQuizChoice ? 'none' : '';
 
   if (editingIsQuizChoice) {
-    c.choices.forEach((choice, i) => {
-      document.getElementById(`modal-edit-choice-${i}`).value = choice;
-    });
-    const radio = document.getElementById(`modal-edit-correct-${c.correct_index}`);
-    if (radio) radio.checked = true;
+    document.getElementById('modal-edit-choices-label').textContent =
+      editingChoiceMode === 'multi' ? '選択肢（左のチェックボックスで正解を全て選ぶ）' : '選択肢（左のラジオボタンで正解を選ぶ）';
+    // ★ 旧形式（correct_index単数）のカードにも対応する
+    const correctIndices = Array.isArray(c.correct_indices) ? c.correct_indices
+      : (typeof c.correct_index === 'number' ? [c.correct_index] : []);
+    renderChoiceEditorRows('modal-edit-choice', c.choices, correctIndices, editingChoiceMode);
     // ★ 問題文の画像だけはこのモードでも使う（imgs_q）
     editImgBuf = { q: [...(c.imgs_q || [])], a: [], e: [] };
     renderModalImgStrip('q');
@@ -3074,21 +3256,22 @@ async function saveCardEdit() {
   }
 }
 
-// ★「クイズ過去問」デッキの4択カード編集を保存する（saveCardEditから分岐して呼ばれる）
+// ★ 選択式カード（多肢選択デッキ／クイズ過去問デッキ）の編集を保存する（saveCardEditから分岐して呼ばれる）
 async function saveQuizChoiceCardEdit(q, errBar) {
-  const choices = [0, 1, 2, 3].map(i => document.getElementById(`modal-edit-choice-${i}`).value.trim());
-  const checkedRadio = document.querySelector('input[name="modal-edit-correct"]:checked');
-  if (!q || choices.some(c => !c) || !checkedRadio) {
-    errBar.textContent = '✕ 問題文・4つの選択肢・正解の選択はすべて必須です';
+  const { choices: rawChoices, correct } = readChoiceEditorState('modal-edit-choice');
+  const choices = rawChoices.map(c => c.trim());
+  const needCountLabel = editingChoiceMode === 'multi' ? '正解を1つ以上選ぶこと' : '正解を1つだけ選ぶこと';
+  const validCorrectCount = editingChoiceMode === 'multi' ? correct.length >= 1 : correct.length === 1;
+  if (!q || choices.some(c => !c) || !validCorrectCount) {
+    errBar.textContent = `✕ 問題文・すべての選択肢・${needCountLabel}はすべて必須です`;
     errBar.style.display = 'block';
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
   }
   if (await warnIfBugChars(q, 'modal-edit-q')) return;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < choices.length; i++) {
     if (await warnIfBugChars(choices[i], `modal-edit-choice-${i}`)) return;
   }
-  const correctIndex = Number(checkedRadio.value);
 
   const deck = decks.find(d => d.id === editingDeckId);
   if (!deck) { closeModal('modal-card-edit'); return; }
@@ -3098,9 +3281,10 @@ async function saveQuizChoiceCardEdit(q, errBar) {
   const card = deck.cards[idx];
   card.question = q;
   card.choices = choices;
-  card.correct_index = correctIndex;
+  card.correct_indices = correct.slice().sort((x, y) => x - y);
+  delete card.correct_index; // ★ 旧形式（単数）のフィールドが残っていれば片付ける
   // ★ answer も正解の選択肢文言で更新しておく（検索・一覧表示など既存コードのため）
-  card.answer = choices[correctIndex];
+  card.answer = card.correct_indices.map(i => choices[i]).join(' / ');
   card.imgs_q = [...editImgBuf.q];
 
   saveDecks(decks);
@@ -3257,10 +3441,7 @@ async function waitForPendingSync(deckId) {
 // ★ 公開済みデッキの内容をサーバーに反映する共通処理（通知なし）
 async function syncDeckToServer(deck) {
   try {
-    const cards = deck.cards.map(c => ({
-      id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
-      imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [], // ★ 画像も同期する
-    }));
+    const cards = deck.cards.map(cardToServerPayload); // ★ choices/correct_indicesも含めて画像も同期する
     const session = getLoginSession();
     const res = await fetch(`${API_BASE}save_cards`, {
       method: 'POST',
@@ -3276,6 +3457,7 @@ async function syncDeckToServer(deck) {
         publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
         silent: true, // ★ 通知しない
         incomplete: !!deck.incomplete, // ★ 未完成フラグを維持したままサーバーへ反映する
+        choice_mode: deck.choiceMode || null, // ★ 多肢選択デッキかどうかを維持したまま反映する
       }),
       signal: AbortSignal.timeout(10000),
     });
@@ -3515,11 +3697,13 @@ async function openFolderPlayMode(folderId) {
 //   といったすれ違いが起きやすかった。プレイのたびに読み込み直すことで、
 //   誰かが編集した直後でも次にプレイした人にはほぼ即座に反映される。
 // ============================================================
-//  ★ 一人用4択クイズ（「クイズ過去問」フォルダのデッキ専用）
+//  ★ 一人用選択式クイズ（choice_modeを持つ選択式デッキ全般で使う）
 //  ─────────────────────────────────────────────
 //  みんなでクイズ（Quiz.js）でホストが作ったオリジナル4択クイズは、
-//  bot.py側で自動的にこのフォルダへデッキとしてアーカイブされる
-//  （各カードに choices/correct_index が入っている）。
+//  bot.py側で自動的に「クイズ過去問」フォルダへデッキとしてアーカイブされる
+//  （各カードに choices/correct_indices が入る単一正解デッキとして）。
+//  ユーザーがCardMakerで自作する多肢選択デッキ（2〜5択・単一/複数正解）も
+//  同じ画面・同じデータ形式（choices/correct_indices）でここから遊べる。
 //  ライブルームには接続せず、この画面の中だけで完結する一人用モード。
 //  プレイ後はサーバーにスコアを送り、そのデッキの過去の挑戦者全員の中での
 //  順位（ランキング）を取得して表示する。
@@ -3529,6 +3713,8 @@ let soloQuizCards   = [];
 let soloQuizIdx     = 0;
 let soloQuizScore   = 0;
 let soloQuizAnswered = false;
+let soloQuizChoiceMode = 'single'; // ★ 追加：このデッキが単一/複数正解のどちらか
+let soloQuizSelected = new Set();  // ★ 追加：複数正解モードで、まだ回答確定前に選んでいる選択肢
 
 async function startSoloQuiz(deckId) {
   const deck = decks.find(d => d.id === deckId);
@@ -3547,13 +3733,23 @@ async function startSoloQuiz(deckId) {
   }
 
   const freshDeck = decks.find(d => d.id === deckId);
-  const playable = freshDeck.cards.filter(c => Array.isArray(c.choices) && c.choices.length === 4);
+  // ★ 修正：4択固定だったのを2〜5択に一般化。旧形式（correct_index単数）の
+  //   カードも correct_indices（配列）へ正規化してから使う（元の配列は書き換えない）。
+  const playable = freshDeck.cards
+    .filter(c => Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN)
+    .map(c => ({
+      ...c,
+      correct_indices: Array.isArray(c.correct_indices) ? c.correct_indices
+        : (typeof c.correct_index === 'number' ? [c.correct_index] : []),
+    }))
+    .filter(c => c.correct_indices.length >= 1);
   if (!playable.length) {
-    await showCmAlert({ title: '4択の問題がありません', desc: 'このデッキには4択形式の問題がまだありません。' });
+    await showCmAlert({ title: '選択式の問題がありません', desc: 'このデッキには選択式の問題がまだありません。' });
     return;
   }
 
   soloQuizDeckId = deckId;
+  soloQuizChoiceMode = freshDeck.choiceMode || 'single';
   soloQuizCards  = [...playable];
   // 出題順をシャッフル（Fisher-Yates。shuffleStudy()と同じやり方）
   for (let i = soloQuizCards.length - 1; i > 0; i--) {
@@ -3573,6 +3769,7 @@ async function startSoloQuiz(deckId) {
 function renderQuizPlayQuestion() {
   const card = soloQuizCards[soloQuizIdx];
   soloQuizAnswered = false;
+  soloQuizSelected = new Set();
   document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
   const pct = soloQuizCards.length > 1 ? (soloQuizIdx / soloQuizCards.length) * 100 : 0;
   document.getElementById('qp-prog-fill').style.width = pct + '%';
@@ -3581,29 +3778,72 @@ function renderQuizPlayQuestion() {
   document.getElementById('qp-q-imgs').innerHTML = (card.imgs_q || []).map(s =>
     `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
 
-  const letters = ['A', 'B', 'C', 'D'];
+  // ★ 修正：4択固定だったのを、カードの選択肢数（2〜5）に合わせて描画する
+  const isMulti = soloQuizChoiceMode === 'multi';
   const choicesEl = document.getElementById('qp-choices');
-  choicesEl.innerHTML = letters.map((l, i) => `
-    <button type="button" class="qp-choice-btn" onclick="answerQuizPlay(${i})">
-      <b>${l}.</b> <span id="qp-choice-text-${i}"></span>
+  choicesEl.innerHTML = card.choices.map((c, i) => `
+    <button type="button" class="qp-choice-btn" onclick="${isMulti ? `toggleQuizPlayMultiChoice(${i})` : `answerQuizPlay(${i})`}">
+      <b>${CHOICE_LETTERS[i]}.</b> <span id="qp-choice-text-${i}"></span>
     </button>`).join('');
   card.choices.forEach((c, i) => setMathText(document.getElementById(`qp-choice-text-${i}`), c));
 
   document.getElementById('qp-next-wrap').style.display = 'none';
+  // ★ 追加：複数正解モードは選び終えてから送信ボタンで確定する
+  document.getElementById('qp-submit-wrap').style.display = isMulti ? '' : 'none';
 }
 
-function answerQuizPlay(idx) {
+// ★ 追加：複数正解モードで、選択肢のON/OFFを切り替える（まだ回答は確定しない）
+function toggleQuizPlayMultiChoice(idx) {
   if (soloQuizAnswered) return;
+  const btn = document.querySelectorAll('#qp-choices .qp-choice-btn')[idx];
+  if (soloQuizSelected.has(idx)) {
+    soloQuizSelected.delete(idx);
+    btn.classList.remove('qp-selected');
+  } else {
+    soloQuizSelected.add(idx);
+    btn.classList.add('qp-selected');
+  }
+}
+
+// ★ 追加：複数正解モードの回答を確定する（qp-submit-btnから呼ばれる）
+function submitQuizPlayMulti() {
+  if (soloQuizAnswered || soloQuizSelected.size === 0) return;
   soloQuizAnswered = true;
   const card = soloQuizCards[soloQuizIdx];
-  if (idx === card.correct_index) {
+  const correctSet = new Set(card.correct_indices);
+  // ★ 選んだ選択肢の集合が正解の集合と完全に一致していれば正解とする
+  const isCorrect = correctSet.size === soloQuizSelected.size && [...correctSet].every(i => soloQuizSelected.has(i));
+  if (isCorrect) {
     soloQuizScore++;
     document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
   }
 
   [...document.querySelectorAll('#qp-choices .qp-choice-btn')].forEach((btn, i) => {
     btn.disabled = true;
-    if (i === card.correct_index) btn.classList.add('qp-correct');
+    btn.classList.remove('qp-selected');
+    if (correctSet.has(i)) btn.classList.add('qp-correct');
+    else if (soloQuizSelected.has(i)) btn.classList.add('qp-wrong');
+    else btn.classList.add('qp-dim');
+  });
+
+  document.getElementById('qp-submit-wrap').style.display = 'none';
+  document.getElementById('qp-next-wrap').style.display = '';
+  document.getElementById('qp-next-btn').textContent =
+    soloQuizIdx === soloQuizCards.length - 1 ? '結果を見る →' : '次へ →';
+}
+
+function answerQuizPlay(idx) {
+  if (soloQuizAnswered) return;
+  soloQuizAnswered = true;
+  const card = soloQuizCards[soloQuizIdx];
+  if (card.correct_indices.includes(idx)) {
+    soloQuizScore++;
+    document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
+  }
+
+  [...document.querySelectorAll('#qp-choices .qp-choice-btn')].forEach((btn, i) => {
+    btn.disabled = true;
+    if (card.correct_indices.includes(i)) btn.classList.add('qp-correct');
     else if (i === idx) btn.classList.add('qp-wrong');
     else btn.classList.add('qp-dim');
   });
@@ -3677,10 +3917,10 @@ function renderQuizLeaderboard(rows, myStudentId) {
 async function openPlayMode(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
-  // ★「クイズ過去問」フォルダの中のデッキは、通常のフラッシュカード（すべて/
-  //   わからないだけ/続きから の選択モーダル）ではなく、一人用4択モードで
-  //   プレイする。
-  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID)) {
+  // ★「クイズ過去問」フォルダの中のデッキ、および多肢選択デッキ（choiceMode有り）は、
+  //   通常のフラッシュカード（すべて/わからないだけ/続きから の選択モーダル）
+  //   ではなく、一人用選択式モードでプレイする。
+  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode === 'single' || deck.choiceMode === 'multi') {
     return startSoloQuiz(deckId);
   }
   studyIsFolder = false;

@@ -147,6 +147,18 @@
         <span>🌐 公開予定のデッキにする</span>
         <input type="checkbox" id="new-plan-publish" checked>
       </label>
+      <!-- ★ 追加：多肢選択（選択式）デッキにするかどうか。ONの場合、中の問題は
+           問題文＋解答/解説ではなく、問題文＋選択肢（2〜5個）＋正解の形式で作る。 -->
+      <label class="reverse-toggle-row" style="width:100%;max-width:360px" onclick="event.stopPropagation()">
+        <span>🔘 多肢選択デッキにする</span>
+        <input type="checkbox" id="new-choice-mode-enabled" onchange="onNewChoiceModeToggle()">
+      </label>
+      <div id="new-choice-mode-type-wrap" style="width:100%;max-width:360px;display:none;margin-bottom:.75rem">
+        <select id="new-choice-mode-type" style="width:100%;padding:12px 14px;border:2px solid var(--border);border-radius:var(--r-md);font-family:inherit;font-size:15px;color:var(--text);background:var(--surface);outline:none;-webkit-appearance:none">
+          <option value="single">単一正解（1つだけ選ぶ）</option>
+          <option value="multi">複数正解（複数選べる）</option>
+        </select>
+      </div>
       <input class="set-name-input" id="new-set-name" type="text"
              placeholder="セット名を入力" maxlength="60"
              onkeydown="if(event.key==='Enter')startEdit()">
@@ -165,7 +177,7 @@
   <div class="cm-scroll-body" id="edit-scroll">
     <div class="inner">
 
-      <div class="card-block">
+      <div class="card-block" id="qa-csv-block">
         <div class="block-header">
           <span class="block-label">CSVから読み込む <span class="block-label-sub">Import</span></span>
         </div>
@@ -189,7 +201,15 @@
         <div class="math-pad" id="mathpad-q" data-target="ta-q" data-btn="mathbtn-q" style="display:none"></div>
       </div>
 
-      <div class="card-block">
+      <!-- ★ 追加：多肢選択デッキ用の選択肢入力欄（通常デッキでは非表示） -->
+      <div class="card-block" id="qa-choices-block" style="display:none">
+        <div class="block-header">
+          <span class="block-label">選択肢 <span class="block-label-sub">Choices</span></span>
+        </div>
+        <div id="ta-choice-rows"></div>
+      </div>
+
+      <div class="card-block" id="qa-answer-block">
         <div class="block-header">
           <span class="block-label">解答 <span class="block-label-sub">Answer</span></span>
         </div>
@@ -202,7 +222,7 @@
         <div class="math-pad" id="mathpad-a" data-target="ta-a" data-btn="mathbtn-a" style="display:none"></div>
       </div>
 
-      <div class="card-block">
+      <div class="card-block" id="qa-explanation-block">
         <div class="block-header">
           <span class="block-label">解説 <span class="block-label-sub">Explanation</span></span>
         </div>
@@ -319,6 +339,10 @@
         <div class="study-q-text" id="qp-q-text" style="margin-top:1rem"></div>
         <div class="study-q-imgs" id="qp-q-imgs"></div>
         <div class="qp-choices" id="qp-choices"></div>
+        <!-- ★ 追加：複数正解モードだけ、選び終えてから確定するための送信ボタンを出す -->
+        <div class="qp-submit-wrap" id="qp-submit-wrap" style="display:none">
+          <button class="btn btn-blue" style="width:100%" onclick="submitQuizPlayMulti()" id="qp-submit-btn">この内容で回答する</button>
+        </div>
         <div class="qp-next-wrap" id="qp-next-wrap" style="display:none">
           <button class="btn btn-blue" style="width:100%" onclick="quizPlayNext()" id="qp-next-btn">次へ →</button>
         </div>
@@ -544,25 +568,10 @@
       <div class="math-pad" id="mathpad-modal-a" data-target="modal-edit-a" data-btn="mathbtn-modal-a" style="display:none;margin-bottom:.75rem"></div>
     </div>
 
-    <!-- ★「クイズ過去問」デッキ（4択）の問題を編集する場合はこちらを使う -->
+    <!-- ★ 選択式デッキ（多肢選択デッキ／クイズ過去問）の問題を編集する場合はこちらを使う -->
     <div id="modal-edit-choices-block" style="display:none">
-      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">選択肢（左のラジオボタンで正解を選ぶ）</label>
-      <div class="modal-choice-row">
-        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-0" value="0">
-        <input type="text" class="modal-input" id="modal-edit-choice-0" placeholder="選択肢 A" maxlength="80" style="margin-bottom:0">
-      </div>
-      <div class="modal-choice-row">
-        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-1" value="1">
-        <input type="text" class="modal-input" id="modal-edit-choice-1" placeholder="選択肢 B" maxlength="80" style="margin-bottom:0">
-      </div>
-      <div class="modal-choice-row">
-        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-2" value="2">
-        <input type="text" class="modal-input" id="modal-edit-choice-2" placeholder="選択肢 C" maxlength="80" style="margin-bottom:0">
-      </div>
-      <div class="modal-choice-row" style="margin-bottom:1rem">
-        <input type="radio" name="modal-edit-correct" id="modal-edit-correct-3" value="3">
-        <input type="text" class="modal-input" id="modal-edit-choice-3" placeholder="選択肢 D" maxlength="80" style="margin-bottom:0">
-      </div>
+      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px" id="modal-edit-choices-label">選択肢（左のラジオボタンで正解を選ぶ）</label>
+      <div id="modal-edit-choice-rows" style="margin-bottom:1rem"></div>
     </div>
 
     <div id="modal-edit-explanation-block">
