@@ -101,6 +101,7 @@ let roomCode = null;
 let isHost = false;
 let pollHandle = null;
 let tickHandle = null;
+let sseHandle = null;
 let roomListHandle = null; // 参加ルーム一覧のポーリング（screen-join を表示中だけ動かす）
 let lastRoomSnapshot = null;
 let renderedQIndex = -1;   // 直近に描画した問題番号（変わったら回答UIをリセットする）
@@ -523,18 +524,35 @@ async function submitCreateRoom() {
 }
 
 // ============================================================
-//  ポーリング（1秒ごとに状態を取得して描画）
+//  ポーリング（状態を取得して描画）
+//  ★ 遅延低減：定期ポーリングを1000ms→400msに短縮した上で、他の参加者の
+//    操作（参加・開始・回答など）をSSEで即座に検知し、次の定期ポーリングを
+//    待たずにその場で取得し直す。SSEが繋がらない環境でも400msポーリングだけで
+//    動作は継続できる。
 // ============================================================
 function startPolling() {
   stopPolling();
   pollOnce();
-  pollHandle = setInterval(pollOnce, 1000);
+  pollHandle = setInterval(pollOnce, 400);
   tickHandle = setInterval(tickQuizClocks, 200);
+  startQuizRealtime();
 }
 function stopPolling() {
   if (pollHandle) clearInterval(pollHandle);
   if (tickHandle) clearInterval(tickHandle);
   pollHandle = null; tickHandle = null;
+  stopQuizRealtime();
+}
+function startQuizRealtime() {
+  try {
+    sseHandle = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
+    sseHandle.onmessage = () => { pollOnce(); };
+  } catch (e) {
+    // EventSource非対応環境などでも、定期ポーリングだけで動作を継続できる
+  }
+}
+function stopQuizRealtime() {
+  if (sseHandle) { sseHandle.close(); sseHandle = null; }
 }
 async function pollOnce() {
   if (!roomCode) return;
@@ -574,12 +592,21 @@ function renderRoom(room) {
 // ★ 追加：スタート直後、最初の問題の前だけ表示する「5,4,3,2,1」カウントダウン。
 //   ホスト・参加者どちらも同じ画面を見る（サーバーのcountdown_started_atを
 //   基準にするため、全員の端末でぴったり同じタイミングで数字が減っていく）。
+let lastCountdownStartedAt = null; // ★ 直前に描画したカウントダウンの開始時刻（重複ポップ防止用）
 function renderCountdown(room) {
   showScreenQ('countdown');
   const el = document.getElementById('cd-num');
   el.dataset.startedAt = room.countdown_started_at || '';
   el.dataset.limit = room.countdown_duration_sec || '';
-  lastCountdownShown = null; // ★ 新しいカウントダウンのたびに「5」からポップ演出させる
+  // ★ 修正：以前はここで毎回 lastCountdownShown をリセットしていたため、
+  //   ポーリング（1秒間隔）のたびに「同じ数字」へポップ演出をやり直してしまい、
+  //   「5,5,4,4,3,3…」のように各数字が2回ずつ表示されて見えるバグがあった。
+  //   本当に新しいカウントダウンが始まった時（countdown_started_atが変わった時）
+  //   だけリセットする。
+  if (room.countdown_started_at !== lastCountdownStartedAt) {
+    lastCountdownStartedAt = room.countdown_started_at;
+    lastCountdownShown = null; // 新しいカウントダウンのときだけ「5」からポップ演出させる
+  }
 }
 
 // ★ 追加：毎問の直前に「第N問」を大きく見せる区間。
@@ -708,14 +735,26 @@ function renderPlayScreen(room, opts) {
   updateTimerBarFor(room, timerbarId);
 }
 
+// ★ 修正：正解発表(reveal)中は、サーバーが players に answered/correct を
+//   含めて返すようになったので、その問題への各参加者の◯×も一緒に表示する。
+//   （出題中は correct フィールド自体が来ないので、その場合は何も表示しない）
 function miniLeaderboardHtml(players) {
   return players.slice(0, 5).map((p, i) => `
     <div class="qz-lb-row">
       <span class="qz-lb-rank">${i + 1}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
+      ${quizMarkHtml(p)}
       <span class="qz-lb-score">${p.score}点</span>
     </div>`).join('');
+}
+
+function quizMarkHtml(p) {
+  if (typeof p.correct === 'undefined') return ''; // 出題中など、正誤情報が無い場合は何も出さない
+  if (!p.answered) return `<span class="qz-lb-mark unanswered" title="未回答">―</span>`;
+  return p.correct
+    ? `<span class="qz-lb-mark correct" title="正解">◯</span>`
+    : `<span class="qz-lb-mark wrong" title="不正解">✕</span>`;
 }
 
 function renderHostPlay(room) {

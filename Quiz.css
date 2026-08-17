@@ -349,6 +349,11 @@ input, select{ font-family:inherit; }
 .qz-lb-rank{ font-weight:700; width:20px; text-align:center; color:var(--text-secondary); font-size:13px; }
 .qz-lb-name{ flex:1; text-align:left; font-size:14px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .qz-lb-score{ font-weight:700; font-size:14px; color:var(--accent); }
+/* ★ 追加：正解発表(reveal)中、他の参加者がこの問題に正解したか(◯)・不正解か(✕)を表示 */
+.qz-lb-mark{ width:22px; text-align:center; font-weight:800; font-size:14px; flex-shrink:0; }
+.qz-lb-mark.correct{ color:#16a34a; }
+.qz-lb-mark.wrong{ color:#dc2626; }
+.qz-lb-mark.unanswered{ color:var(--text-dim); }
 
 /* ── 結果画面 ───────────────────────── */
 .qz-podium{ display:flex; align-items:flex-end; gap:10px; width:100%; max-width:360px; margin:10px 0 22px; }
