@@ -529,7 +529,7 @@ function startPolling() {
   stopPolling();
   pollOnce();
   pollHandle = setInterval(pollOnce, 1000);
-  tickHandle = setInterval(tickTimerBars, 200);
+  tickHandle = setInterval(tickQuizClocks, 200);
 }
 function stopPolling() {
   if (pollHandle) clearInterval(pollHandle);
@@ -560,11 +560,33 @@ function renderRoom(room) {
 
   if (room.state === 'lobby') {
     renderLobby(room);
+  } else if (room.state === 'countdown') {
+    renderCountdown(room);
+  } else if (room.state === 'intro') {
+    renderIntro(room);
   } else if (room.state === 'question' || room.state === 'reveal') {
     if (isHost) renderHostPlay(room); else renderPlayerPlay(room);
   } else if (room.state === 'ended') {
     renderResult(room);
   }
+}
+
+// ★ 追加：スタート直後、最初の問題の前だけ表示する「5,4,3,2,1」カウントダウン。
+//   ホスト・参加者どちらも同じ画面を見る（サーバーのcountdown_started_atを
+//   基準にするため、全員の端末でぴったり同じタイミングで数字が減っていく）。
+function renderCountdown(room) {
+  showScreenQ('countdown');
+  const el = document.getElementById('cd-num');
+  el.dataset.startedAt = room.countdown_started_at || '';
+  el.dataset.limit = room.countdown_duration_sec || '';
+  lastCountdownShown = null; // ★ 新しいカウントダウンのたびに「5」からポップ演出させる
+}
+
+// ★ 追加：毎問の直前に「第N問」を大きく見せる区間。
+function renderIntro(room) {
+  showScreenQ('intro');
+  document.getElementById('in-qnum').textContent = `第${room.current_q + 1}問`;
+  document.getElementById('in-total').textContent = `全${room.total_questions}問`;
 }
 
 function renderLobby(room) {
@@ -730,11 +752,14 @@ function updateTimerBarFor(room, elId) {
     el.dataset.limit = room.time_limit_sec || '';
   }
 }
-function tickTimerBars() {
+// ★ 名称変更：タイマーバーだけでなく、カウントダウン画面の数字もここで
+//   一緒に更新するようになったため（どちらもサーバー時計基準の残り時間を
+//   200msごとに滑らかに再計算する、という意味では同じ処理）。
+function tickQuizClocks() {
   // ★ 修正：Date.now()をそのまま使うと端末の時計のズレがそのまま
-  //   タイマーバーのズレになる（ホストと参加者で進み方が食い違って見える
-  //   原因だった）。quizClockOffsetMsで補正した「サーバー時計での現在時刻」
-  //   を使って計算する。
+  //   タイマーバー／カウントダウンのズレになる（ホストと参加者で進み方が
+  //   食い違って見える原因だった）。quizClockOffsetMsで補正した
+  //   「サーバー時計での現在時刻」を使って計算する。
   const serverNow = Date.now() + quizClockOffsetMs;
   ['hp-timerbar', 'pp-timerbar'].forEach(id => {
     const el = document.getElementById(id);
@@ -744,6 +769,26 @@ function tickTimerBars() {
     const remain = Math.max(0, limit - (serverNow - started));
     el.style.transform = `scaleX(${remain / limit})`;
   });
+  tickCountdownNum(serverNow);
+}
+
+let lastCountdownShown = null; // ★ 追加：直前に表示した数字（変わった時だけポップ演出を出し直すため）
+function tickCountdownNum(serverNow) {
+  const el = document.getElementById('cd-num');
+  if (!el || !el.dataset.startedAt || !el.dataset.limit) return;
+  const started = Number(el.dataset.startedAt) * 1000;
+  const limit = Number(el.dataset.limit) * 1000;
+  const remainSec = Math.max(1, Math.ceil((limit - (serverNow - started)) / 1000));
+  if (remainSec !== lastCountdownShown) {
+    lastCountdownShown = remainSec;
+    el.textContent = String(remainSec);
+    // ★ 数字が変わるたびに qzCountPop アニメーションを最初から再生させる
+    //   （同じアニメーション名を付け直すだけではブラウザが「変化なし」と
+    //   判断して再生してくれないため、一度 none にしてから戻すテクニックを使う）。
+    el.style.animation = 'none';
+    void el.offsetWidth; // 強制リフローでスタイルの変更を確定させる
+    el.style.animation = '';
+  }
 }
 
 async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId = 'pp-waiting-note') {

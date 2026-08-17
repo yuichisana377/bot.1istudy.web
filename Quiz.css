@@ -234,6 +234,20 @@ input, select{ font-family:inherit; }
 }
 .qz-waiting-anim{ font-size:44px; margin-bottom:6px; }
 
+/* ── カウントダウン（スタート直後、最初の問題の前だけ） ───────────────────────── */
+.qz-countdown-num{
+  font-weight:800; font-size:130px; line-height:1; color:var(--accent);
+  animation:qzCountPop .5s ease;
+}
+@keyframes qzCountPop{ from{ transform:scale(1.5); opacity:0; } to{ transform:scale(1); opacity:1; } }
+
+/* ── 「第N問」表示（毎問の直前） ───────────────────────── */
+.qz-intro-qnum{
+  font-weight:800; font-size:40px; line-height:1.3; color:var(--text);
+  animation:qzCountPop .35s ease;
+}
+.qz-intro-sub{ color:var(--text-secondary); font-size:14px; margin-top:8px; }
+
 /* ── 出題画面 共通 ───────────────────────── */
 .qz-progress-label{ font-weight:700; font-size:13px; color:var(--text-secondary); }
 .qz-my-score{ font-weight:700; font-size:14px; color:var(--accent); }
