@@ -3,9 +3,8 @@
 //  timetable.html から読み込む
 // ============================================================
 
-const API_BASE = "https://python-bot-1istudy.onrender.com/";
+const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const GUILD_ID = "1509880344806162544";
-const JSON_URL = "https://raw.githubusercontent.com/yuichisana377/python.bot.1istudy/refs/heads/main/plans_1509880344806162544.json";
 
 // ★ ポイント付与対象カテゴリ
 const POINT_CATEGORIES = ['提出', '宿題'];
@@ -145,9 +144,8 @@ async function api(path, opts = {}) {
 // ============================================================
 async function loadTTHomeworks() {
   try {
-    const res  = await fetch(JSON_URL);
-    const data = await res.json();
-    ttHomeworks = Array.isArray(data) ? data : [];
+    const data = await api(`/list_schedule?guild_id=${GUILD_ID}`);
+    ttHomeworks = (data.ok && Array.isArray(data.plans)) ? data.plans : [];
   } catch(e) {
     ttHomeworks = [];
   }
@@ -1625,10 +1623,12 @@ async function hashOfUrl(url) {
   return digestMessage(txt);
 }
 
-// 監視対象4種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
+// 監視対象3種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
+// ★ 以前は課題表示（ttHomeworks）用に別途GitHub上の静的JSONも監視していたが、
+//   ttHomeworks も list_schedule（ライブAPI）から取得するようになったため、
+//   schedule のハッシュ1つで両方の変化を検知できる。
 let watchHashes = {
-  schedule:  null, // 予定・課題（list_schedule）
-  homeworks: null, // 課題JSON（JSON_URL）
+  schedule:  null, // 予定・課題（list_schedule。ttHomeworksもここから取得）
   overrides: null, // 時間割変更・休校（list_timetable）
   terms:     null, // 学期ごとの基本時間割（list_terms）
 };
@@ -1647,9 +1647,8 @@ async function refreshWatchedData() {
 // 変更チェック本体
 async function checkForUpdates() {
   try {
-    const [scheduleHash, homeworksHash, overridesHash, termsHash] = await Promise.all([
+    const [scheduleHash, overridesHash, termsHash] = await Promise.all([
       hashOfUrl(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`),
-      hashOfUrl(JSON_URL),
       hashOfUrl(`${API_BASE}${TT_API.LIST}?guild_id=${GUILD_ID}`),
       hashOfUrl(`${API_BASE}${TERM_API.LIST}?guild_id=${GUILD_ID}`),
     ]);
@@ -1658,14 +1657,12 @@ async function checkForUpdates() {
 
     const changed = !isFirstCheck && (
       scheduleHash  !== watchHashes.schedule  ||
-      homeworksHash !== watchHashes.homeworks ||
       overridesHash !== watchHashes.overrides ||
       termsHash     !== watchHashes.terms
     );
 
     watchHashes = {
       schedule:  scheduleHash,
-      homeworks: homeworksHash,
       overrides: overridesHash,
       terms:     termsHash,
     };
