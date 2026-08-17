@@ -1843,6 +1843,7 @@ async function openEditDeck(deckId) {
 function applyCardFormChoiceMode(choiceMode) {
   const isChoice = !!choiceMode;
   document.getElementById('qa-csv-block').style.display         = isChoice ? 'none' : '';
+  document.getElementById('qa-choice-csv-block').style.display  = isChoice ? '' : 'none';
   document.getElementById('qa-answer-block').style.display      = isChoice ? 'none' : '';
   document.getElementById('qa-explanation-block').style.display = isChoice ? 'none' : '';
   document.getElementById('qa-choices-block').style.display     = isChoice ? '' : 'none';
@@ -1990,6 +1991,120 @@ async function handleCsvImport(event) {
   if (skippedDup)   parts.push(`重複のため${skippedDup}件をスキップしました`);
   if (skippedEmpty) parts.push(`問題文または解答が空のため${skippedEmpty}件をスキップしました`);
   if (sanitized)    parts.push(`${sanitized}件で使用できない文字を自動的に取り除きました`);
+  await showCmAlert({ title: 'CSVの読み込みが完了しました', desc: parts.join('\n') });
+}
+
+// ============================================================
+//  ★ 追加：多肢選択デッキ専用のCSV読み込み（handleCsvImportの選択式版）
+//  ─────────────────────────────────────────────
+//  列は「問題, 選択肢1, 選択肢2, 選択肢3, 選択肢4, 選択肢5, 正解」の並び。
+//  ・選択肢は2〜5個。使わない列は空欄でよく、空欄の列は詰めて（無いものとして）扱う。
+//  ・正解列には選択肢の番号（1始まり）を入れる。複数正解の場合は「1,3」のように
+//    カンマ（または読点・スペース）区切りで並べる。1個だけなら択一問題、
+//    2個以上なら複数回答問題として扱われる（他の作成経路と同じ自動判定）。
+// ============================================================
+const CHOICE_CSV_HEADER_ALIASES = {
+  question: ['question', '問題', '問題文', 'q'],
+  correct:  ['correct', '正解', 'answer', '答え'],
+};
+// 見出し行から「問題」「正解」列と、「選択肢1」〜「選択肢5」（choice1〜5 / a〜e も可）の列を検出する
+function detectChoiceCsvColumns(headerRow) {
+  const norm = headerRow.map(h => (h || '').trim().toLowerCase());
+  let qIdx = -1, correctIdx = -1;
+  const choiceCols = []; // [{ col, num }]
+  norm.forEach((h, i) => {
+    if (qIdx === -1 && CHOICE_CSV_HEADER_ALIASES.question.includes(h)) { qIdx = i; return; }
+    if (correctIdx === -1 && CHOICE_CSV_HEADER_ALIASES.correct.includes(h)) { correctIdx = i; return; }
+    const m = h.match(/^(?:選択肢|choice)\s*([1-5])$/) || h.match(/^([a-e])$/);
+    if (m) {
+      const num = /^[a-e]$/.test(m[1]) ? 'abcde'.indexOf(m[1]) + 1 : Number(m[1]);
+      choiceCols.push({ col: i, num });
+    }
+  });
+  choiceCols.sort((a, b) => a.num - b.num);
+  const isHeader = qIdx !== -1 && correctIdx !== -1 && choiceCols.length >= CHOICE_MIN;
+  return { isHeader, qIdx, correctIdx, choiceCols };
+}
+
+async function handleChoiceCsvImport(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // 同じファイルを連続選択してもonchangeが発火するようにリセット
+  if (!file) return;
+
+  const deck = decks.find(d => d.id === currentDeckId);
+  if (!deck) return;
+
+  let text;
+  try {
+    text = await file.text();
+  } catch (e) {
+    await showCmAlert({ title: '読み込みに失敗しました', desc: 'CSVファイルを読み込めませんでした。' });
+    return;
+  }
+
+  const rows = parseCSV(text);
+  if (!rows.length) {
+    await showCmAlert({ title: '読み込めるデータがありません', desc: 'CSVファイルの中身が空のようです。' });
+    return;
+  }
+
+  let { isHeader, qIdx, correctIdx, choiceCols } = detectChoiceCsvColumns(rows[0]);
+  const dataRows = isHeader ? rows.slice(1) : rows;
+  if (!isHeader) {
+    // ★ 見出しが無い場合は「問題, 選択肢1〜5, 正解」の固定7列とみなす
+    qIdx = 0; correctIdx = 6;
+    choiceCols = [1, 2, 3, 4, 5].map((col, i) => ({ col, num: i + 1 }));
+  }
+
+  let added = 0, skippedEmpty = 0, skippedChoiceCount = 0, skippedCorrect = 0, skippedDup = 0, sanitized = 0;
+  for (const r of dataRows) {
+    let q = (r[qIdx] || '').trim();
+    let rawChoices = choiceCols.map(({ col }) => (r[col] || '').trim());
+    let correctRaw = (r[correctIdx] || '').trim();
+    if (!q || !correctRaw) { skippedEmpty++; continue; }
+
+    const before = q + rawChoices.join('') + correctRaw;
+    q = stripBugChars(q);
+    rawChoices = rawChoices.map(stripBugChars);
+    correctRaw = stripBugChars(correctRaw);
+    if ((q + rawChoices.join('') + correctRaw) !== before) sanitized++;
+    if (!q || !correctRaw) { skippedEmpty++; continue; }
+
+    // ★ 空欄の選択肢列は詰めて（無いものとして）扱う
+    const choices = rawChoices.filter(c => c);
+    if (choices.length < CHOICE_MIN || choices.length > CHOICE_MAX) { skippedChoiceCount++; continue; }
+
+    // ★ 正解列：選択肢の番号（1始まり）をカンマ/読点/スペース区切りで並べたもの
+    const rawNums = correctRaw.split(/[,、\s]+/).map(s => s.trim()).filter(Boolean).map(Number);
+    const allValid = rawNums.length > 0 && rawNums.every(n => Number.isInteger(n) && n >= 1 && n <= choices.length);
+    if (!allValid) { skippedCorrect++; continue; }
+    const correct = [...new Set(rawNums.map(n => n - 1))].sort((a, b) => a - b);
+
+    const answerText = correct.map(i => choices[i]).join(' / ');
+    if (findDuplicateCardIndex(deck, q, answerText) !== -1) { skippedDup++; continue; }
+
+    deck.cards.push({
+      id: genId(), question: q, answer: answerText, explanation: '',
+      choices, correct_indices: correct,
+      imgs_q: [], imgs_a: [], imgs_e: [],
+    });
+    added++;
+  }
+
+  if (added > 0) {
+    saveDecks(decks);
+    document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+    renderCreatedList();
+    // ★ handleCsvImport() と同様、サーバー登録済みのデッキは追加のたびに反映しておく
+    if (deck.filename) queueSyncDeckToServer(deck);
+  }
+
+  const parts = [`${added}枚を追加しました`];
+  if (skippedDup)         parts.push(`重複のため${skippedDup}件をスキップしました`);
+  if (skippedEmpty)       parts.push(`問題文または正解が空のため${skippedEmpty}件をスキップしました`);
+  if (skippedChoiceCount) parts.push(`選択肢が2〜5個の範囲外だったため${skippedChoiceCount}件をスキップしました`);
+  if (skippedCorrect)     parts.push(`正解の指定が不正だったため${skippedCorrect}件をスキップしました`);
+  if (sanitized)          parts.push(`${sanitized}件で使用できない文字を自動的に取り除きました`);
   await showCmAlert({ title: 'CSVの読み込みが完了しました', desc: parts.join('\n') });
 }
 

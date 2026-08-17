@@ -197,6 +197,18 @@
         <div class="math-pad" id="mathpad-q" data-target="ta-q" data-btn="mathbtn-q" style="display:none"></div>
       </div>
 
+      <!-- ★ 追加：多肢選択デッキ用のCSV読み込み（通常デッキ用のqa-csv-blockとは別物・通常時は非表示） -->
+      <div class="card-block" id="qa-choice-csv-block" style="display:none">
+        <div class="block-header">
+          <span class="block-label">CSVから読み込む <span class="block-label-sub">Import</span></span>
+        </div>
+        <div class="block-actions" style="border-top:none">
+          <button class="block-action-btn" onclick="document.getElementById('choice-csv-file-input').click()">📄 CSVファイルを選ぶ</button>
+        </div>
+        <input type="file" id="choice-csv-file-input" accept=".csv,text/csv" style="display:none" onchange="handleChoiceCsvImport(event)">
+        <p class="csv-import-hint">列の並びは「問題, 選択肢1, 選択肢2, 選択肢3, 選択肢4, 選択肢5, 正解」（1行目に同じ見出しがあれば自動認識、無ければこの順として読み込みます）。選択肢は2〜5個で、使わない列は空欄のままでOKです（空欄はそのぶん詰めて扱われます）。正解の列には選択肢の番号（1始まり）を入れ、複数正解の場合は「1,3」のようにカンマ区切りで並べてください。まとめて末尾に追加され、内容が重複するカードは自動でスキップされます。</p>
+      </div>
+
       <!-- ★ 追加：多肢選択デッキ用の選択肢入力欄（通常デッキでは非表示） -->
       <div class="card-block" id="qa-choices-block" style="display:none">
         <div class="block-header">
