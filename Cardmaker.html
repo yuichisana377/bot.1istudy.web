@@ -147,6 +147,17 @@
 
       <div class="card-block">
         <div class="block-header">
+          <span class="block-label">CSVから読み込む <span class="block-label-sub">Import</span></span>
+        </div>
+        <div class="block-actions" style="border-top:none">
+          <button class="block-action-btn" onclick="document.getElementById('csv-file-input').click()">📄 CSVファイルを選ぶ</button>
+        </div>
+        <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none" onchange="handleCsvImport(event)">
+        <p class="csv-import-hint">1行目に見出し（例：問題,解答,解説）があれば自動で認識します。見出しが無い場合は「問題,解答,解説」の順として読み込みます（解説は省略可）。まとめて末尾に追加され、内容が重複するカードは自動でスキップされます。</p>
+      </div>
+
+      <div class="card-block">
+        <div class="block-header">
           <span class="block-label">問題文 <span class="block-label-sub">Question</span></span>
         </div>
         <textarea class="auto-textarea" id="ta-q" placeholder="問題文を入力してください…" oninput="autoResize(this)"></textarea>

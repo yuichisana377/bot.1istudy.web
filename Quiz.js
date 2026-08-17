@@ -321,7 +321,126 @@ function addManualQuestion() {
       </div>`).join('')}
   `;
   document.getElementById('hs-manual-list').appendChild(wrap);
+  return wrap;
 }
+
+// ============================================================
+//  ★ CSVから一括読み込み（手動で問題を作る）
+//  ─────────────────────────────────────────────
+//  1行目が見出し（問題,選択肢A〜D,正解 または question,choiceA〜D,correct）
+//  なら自動認識してスキップする。見出しが無ければ「問題,選択肢A,選択肢B,
+//  選択肢C,選択肢D,正解」の順の列とみなす。「正解」列はA〜D／1〜4／選択肢
+//  そのものの文言のいずれでも指定できる（判定できない場合はAを正解にする）。
+//  読み込んだ内容は addManualQuestion() と同じ入力欄に反映されるので、
+//  取り込み後に見直し・修正してから作成できる。
+// ============================================================
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM除去
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\r') {
+      // 何もしない（続く \n で改行確定）
+    } else if (c === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => (c || '').trim() !== ''));
+}
+
+const QUIZ_CSV_HEADER_ALIASES = {
+  question: ['question', '問題', '問題文', 'q'],
+  choiceA:  ['choicea', '選択肢a', 'a'],
+  choiceB:  ['choiceb', '選択肢b', 'b'],
+  choiceC:  ['choicec', '選択肢c', 'c'],
+  choiceD:  ['choiced', '選択肢d', 'd'],
+  correct:  ['correct', 'answer', '正解', '正答'],
+};
+function detectQuizCsvColumns(headerRow) {
+  const norm = headerRow.map(h => (h || '').trim().toLowerCase());
+  const idx = { question: -1, choiceA: -1, choiceB: -1, choiceC: -1, choiceD: -1, correct: -1 };
+  norm.forEach((h, i) => {
+    for (const key of Object.keys(QUIZ_CSV_HEADER_ALIASES)) {
+      if (idx[key] === -1 && QUIZ_CSV_HEADER_ALIASES[key].includes(h)) idx[key] = i;
+    }
+  });
+  const isHeader = [idx.question, idx.choiceA, idx.choiceB, idx.choiceC, idx.choiceD].every(v => v !== -1);
+  return { isHeader, idx };
+}
+
+// 「正解」列の値（A/B/C/D、1〜4、または選択肢そのものの文言）から choices の index を求める。
+// 判定できない場合はA（0）を正解として扱う（取り込み後に一覧で見直せるため）。
+function resolveCorrectIndex(correctRaw, choices) {
+  const s = (correctRaw || '').trim();
+  if (!s) return 0;
+  const letterIdx = { a: 0, b: 1, c: 2, d: 3 }[s.toLowerCase()];
+  if (letterIdx !== undefined) return letterIdx;
+  const num = Number(s);
+  if (Number.isInteger(num) && num >= 1 && num <= 4) return num - 1;
+  const matchIdx = choices.findIndex(c => c.trim() === s);
+  return matchIdx !== -1 ? matchIdx : 0;
+}
+
+async function handleQuizCsvImport(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // 同じファイルを連続選択してもonchangeが発火するようにリセット
+  if (!file) return;
+
+  let text;
+  try {
+    text = await file.text();
+  } catch (e) {
+    await showConfirm({ title: '読み込みに失敗しました', desc: 'CSVファイルを読み込めませんでした。', okLabel: 'OK', cancelLabel: '閉じる' });
+    return;
+  }
+
+  const rows = parseCSV(text);
+  if (!rows.length) {
+    await showConfirm({ title: '読み込めるデータがありません', desc: 'CSVファイルの中身が空のようです。', okLabel: 'OK', cancelLabel: '閉じる' });
+    return;
+  }
+
+  let { isHeader, idx } = detectQuizCsvColumns(rows[0]);
+  const dataRows = isHeader ? rows.slice(1) : rows;
+  if (!isHeader) idx = { question: 0, choiceA: 1, choiceB: 2, choiceC: 3, choiceD: 4, correct: 5 };
+
+  let added = 0, skipped = 0;
+  for (const r of dataRows) {
+    const question = (r[idx.question] || '').trim();
+    const choices = [idx.choiceA, idx.choiceB, idx.choiceC, idx.choiceD].map(i => (r[i] || '').trim());
+    if (!question || choices.some(c => !c)) { skipped++; continue; }
+    const correctRaw = idx.correct !== -1 ? (r[idx.correct] || '') : '';
+    const correctIndex = resolveCorrectIndex(correctRaw, choices);
+
+    const wrap = addManualQuestion();
+    // ★ .value への代入はmaxlength属性による制限を受けないため、入力欄と
+    //   同じ上限（問題文200字・選択肢80字）に合わせて明示的に切り詰める。
+    wrap.querySelector('.mq-question').value = question.slice(0, 200);
+    [...wrap.querySelectorAll('.mq-choice')].forEach((inp, i) => { inp.value = choices[i].slice(0, 80); });
+    [...wrap.querySelectorAll('input[type=radio]')].forEach((rad, i) => { rad.checked = (i === correctIndex); });
+    added++;
+  }
+
+  const parts = [`${added}問を追加しました`];
+  if (skipped) parts.push(`問題文または選択肢が空の${skipped}行をスキップしました`);
+  await showConfirm({ title: 'CSVの読み込みが完了しました', desc: parts.join('\n'), okLabel: 'OK', cancelLabel: '閉じる' });
+}
+
 function removeManualQuestion(idx) {
   const el = document.querySelector(`.qz-manual-card[data-qid="${idx}"]`);
   if (el) el.remove();

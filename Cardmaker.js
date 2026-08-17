@@ -1572,6 +1572,132 @@ function clearEditor() {
   });
 }
 
+// ============================================================
+//  ★ CSVから一括読み込み（編集画面）
+//  ─────────────────────────────────────────────
+//  1行目が見出し（問題/解答/解説 または question/answer/explanation）なら
+//  自動認識してその行はスキップする。見出しが無ければ「問題,解答,解説」の
+//  順の列とみなす。画像は含められない（imgs_q/imgs_a/imgs_e は空のまま、
+//  必要ならCSV取り込み後に個別に画像を追加できる）。
+//  ・重複（既存カード、またはCSV内での重複）は自動でスキップする。
+//    1行ずつ確認ダイアログを出すのは一括読み込みでは非現実的なため。
+//  ・使用できない文字（制御文字・不可視文字など）が含まれていた場合は、
+//    行ごと弾くのではなく自動的に取り除いてから取り込む。
+// ============================================================
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM除去
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\r') {
+      // 何もしない（続く \n で改行確定。単独 \r のみの古い形式は考慮しない）
+    } else if (c === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => (c || '').trim() !== '')); // 完全な空行は除外
+}
+
+const CSV_HEADER_ALIASES = {
+  question:    ['question', '問題', '問題文', 'q'],
+  answer:      ['answer', '解答', '答え', 'a'],
+  explanation: ['explanation', '解説', 'e'],
+};
+function detectCsvColumns(headerRow) {
+  const norm = headerRow.map(h => (h || '').trim().toLowerCase());
+  const idx = { question: -1, answer: -1, explanation: -1 };
+  norm.forEach((h, i) => {
+    for (const key of Object.keys(CSV_HEADER_ALIASES)) {
+      if (idx[key] === -1 && CSV_HEADER_ALIASES[key].includes(h)) idx[key] = i;
+    }
+  });
+  // 問題・解答の列がどちらも見出しとして認識できた場合だけ「見出し行」とみなす
+  const isHeader = idx.question !== -1 && idx.answer !== -1;
+  return { isHeader, idx };
+}
+
+function stripBugChars(str) {
+  if (!str) return str;
+  const bad = findBugChars(str);
+  if (!bad.length) return str;
+  return [...str].filter(ch => !bad.includes(ch)).join('');
+}
+
+async function handleCsvImport(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // 同じファイルを連続選択してもonchangeが発火するようにリセット
+  if (!file) return;
+
+  const deck = decks.find(d => d.id === currentDeckId);
+  if (!deck) return;
+
+  let text;
+  try {
+    text = await file.text();
+  } catch (e) {
+    await showCmAlert({ title: '読み込みに失敗しました', desc: 'CSVファイルを読み込めませんでした。' });
+    return;
+  }
+
+  const rows = parseCSV(text);
+  if (!rows.length) {
+    await showCmAlert({ title: '読み込めるデータがありません', desc: 'CSVファイルの中身が空のようです。' });
+    return;
+  }
+
+  let { isHeader, idx } = detectCsvColumns(rows[0]);
+  const dataRows = isHeader ? rows.slice(1) : rows;
+  if (!isHeader) idx = { question: 0, answer: 1, explanation: 2 };
+
+  let added = 0, skippedEmpty = 0, skippedDup = 0, sanitized = 0;
+  for (const r of dataRows) {
+    let q = (r[idx.question] || '').trim();
+    let a = (r[idx.answer] || '').trim();
+    let e = idx.explanation !== -1 ? (r[idx.explanation] || '').trim() : '';
+    if (!q || !a) { skippedEmpty++; continue; }
+
+    const before = q + a + e;
+    q = stripBugChars(q); a = stripBugChars(a); e = stripBugChars(e);
+    if ((q + a + e) !== before) sanitized++;
+    if (!q || !a) { skippedEmpty++; continue; }
+
+    if (findDuplicateCardIndex(deck, q, a) !== -1) { skippedDup++; continue; }
+
+    deck.cards.push({ id: genId(), question: q, answer: a, explanation: e, imgs_q: [], imgs_a: [], imgs_e: [] });
+    added++;
+  }
+
+  if (added > 0) {
+    saveDecks(decks);
+    document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+    renderCreatedList();
+    // ★ saveCard() と同様、サーバー登録済みのデッキは追加のたびに反映しておく
+    //   （そうしないと次に強制リロードしたときにこの分が消えてしまう）。
+    if (deck.filename) queueSyncDeckToServer(deck);
+  }
+
+  const parts = [`${added}枚を追加しました`];
+  if (skippedDup)   parts.push(`重複のため${skippedDup}件をスキップしました`);
+  if (skippedEmpty) parts.push(`問題文または解答が空のため${skippedEmpty}件をスキップしました`);
+  if (sanitized)    parts.push(`${sanitized}件で使用できない文字を自動的に取り除きました`);
+  await showCmAlert({ title: 'CSVの読み込みが完了しました', desc: parts.join('\n') });
+}
+
 async function saveCard(mode) {
   const q = document.getElementById('ta-q').value.trim();
   const a = document.getElementById('ta-a').value.trim();

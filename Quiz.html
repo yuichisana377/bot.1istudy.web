@@ -100,6 +100,9 @@
 
     <!-- 手動で作成 -->
     <div id="hs-manual-panel" style="display:none">
+      <button type="button" class="qz-add-q-btn" onclick="document.getElementById('hs-csv-file-input').click()">📄 CSVから読み込む</button>
+      <input type="file" id="hs-csv-file-input" accept=".csv,text/csv" style="display:none" onchange="handleQuizCsvImport(event)">
+      <p class="qz-hint">1行目に見出し（問題,選択肢A,選択肢B,選択肢C,選択肢D,正解）があれば自動で認識します。見出しが無い場合はこの順の列とみなします。「正解」はA〜D・1〜4・選択肢の文言のいずれかで指定できます。</p>
       <div id="hs-manual-list"></div>
       <button type="button" class="qz-add-q-btn" onclick="addManualQuestion()">＋ 問題を追加</button>
     </div>
