@@ -1668,5 +1668,16 @@ async function checkForUpdates() {
   } catch(e) {}
 }
 
-// 10秒ごとにチェック
+// ★ 以前は10秒おきのポーリングだけだったが、サーバーが実際に常時稼働している
+//   ので、変更があった瞬間にpushしてもらい即座に反映する（Server-Sent Events）。
+//   接続が切れた場合に備え、10秒間隔のフォールバックポーリングも残す。
+function startRealtimeUpdates() {
+  try {
+    const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
+    es.onmessage = () => { checkForUpdates(); };
+  } catch (e) {
+    // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
+  }
+}
+startRealtimeUpdates();
 setInterval(checkForUpdates, 10000);

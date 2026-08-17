@@ -4418,6 +4418,30 @@ async function jumpToDeckFromUrl() {
   });
 }
 
+// ===== ★ リアルタイム更新（Server-Sent Events） =====
+//   以前は list_cards / list_folders / list_order をそれぞれ10秒おきに
+//   ポーリングしてハッシュ比較していたが、サーバーが実際に常時稼働している
+//   ので、変更があった瞬間にpushしてもらい即座に再取得する方式に変える。
+//   ・サーバー側は「何かが変わった」とだけ知らせてくる（中身は含まない）ので、
+//     受け取ったら3つとも念のためチェックし直す（変わっていない分は
+//     ハッシュ比較でそのままスキップされるので無駄にはならない）。
+//   ・接続が切れていた場合に備え、10秒間隔のフォールバックポーリングも残す
+//     （EventSourceは自動再接続するが、万一に備えた保険）。
+function startRealtimeUpdates() {
+  try {
+    const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
+    es.onmessage = () => {
+      checkCardsUpdate();
+      checkFoldersUpdate();
+      checkOrderUpdate();
+    };
+    // onerrorは特に何もしない（EventSourceが自動的に再接続を試みる）
+  } catch (e) {
+    // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
+  }
+}
+startRealtimeUpdates();
+
 // ===== JSON変更監視（公開デッキ list_cards のみ） =====
 let lastCardsHash = null;
 
@@ -4468,7 +4492,7 @@ async function checkCardsUpdate() {
   } catch(e) {}
 }
 
-// 10秒ごとにチェック
+// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
 setInterval(checkCardsUpdate, 10000);
 
 // ===== ページ復帰時の強制リフレッシュ（Chromeのbfcache / バックグラウンド対策） =====
@@ -4529,7 +4553,7 @@ async function checkFoldersUpdate() {
   } catch(e) {}
 }
 
-// 10秒ごとにチェック
+// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
 setInterval(checkFoldersUpdate, 10000);
 
 // ===== JSON変更監視（共有の並び順 list_order.json） =====
@@ -4557,7 +4581,7 @@ async function checkOrderUpdate() {
   } catch(e) {}
 }
 
-// 10秒ごとにチェック
+// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
 setInterval(checkOrderUpdate, 10000);
 
 // ===== わからないマーク／続きから／完了記録（study_data）の他端末での変更を反映 =====
