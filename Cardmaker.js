@@ -1133,10 +1133,26 @@ let loadingDeckIds = new Set();
 //   ・タイムアウト時間を余裕を持たせつつ、さらに一度だけ自動で（ユーザーに
 //     気づかれないよう静かに）再試行してから失敗として扱うようにすることで、
 //     一時的な通信の遅延・瞬断だけでは失敗扱いにならないようにする。
-const DECK_LOAD_TIMEOUT_MS = 20000; // 8秒 → 20秒に延長
-async function fetchCardSetOnce(filename) {
+//   ★ さらに修正：それでもカード枚数がとても多いデッキだけ、20秒固定では
+//     間に合わず読み込みに失敗することがあったため、固定値ではなく
+//     「カード枚数が多いデッキほどタイムアウトを延ばす」方式にする
+//     （list_cards のメタ情報で分かっている枚数を基準にする。枚数が
+//     不明なとき・少ないときは従来通り基本値のまま）。青天井にはせず、
+//     上限（DECK_LOAD_MAX_TIMEOUT_MS）を設けて壊れたデッキ等で
+//     いつまでも待たされ続けることは防ぐ。
+const DECK_LOAD_BASE_TIMEOUT_MS = 20000; // 8秒 → 20秒に延長（基本値）
+const DECK_LOAD_PER_CARD_MS     = 150;   // カード1枚につき+150ms延長
+const DECK_LOAD_MAX_TIMEOUT_MS  = 90000; // 上限90秒
+
+function deckLoadTimeoutMs(expectedCount) {
+  if (!expectedCount || expectedCount <= 0) return DECK_LOAD_BASE_TIMEOUT_MS;
+  const extended = DECK_LOAD_BASE_TIMEOUT_MS + expectedCount * DECK_LOAD_PER_CARD_MS;
+  return Math.min(DECK_LOAD_MAX_TIMEOUT_MS, extended);
+}
+
+async function fetchCardSetOnce(filename, timeoutMs = DECK_LOAD_BASE_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DECK_LOAD_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(filename)}`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timer);
@@ -1167,6 +1183,8 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
   const knownCount = deck.cardsLoaded ? deck.cards.length : 0;
   const metaCount = typeof deck.count === 'number' ? deck.count : 0;
   const expectedCount = Math.max(knownCount, metaCount) || null;
+  // ★ カード枚数が多い（＝データ量が大きい）デッキほどタイムアウトを延ばす
+  const timeoutMs = deckLoadTimeoutMs(expectedCount);
 
   loadingDeckIds.add(deckId);
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
@@ -1177,10 +1195,10 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     //   これにより、一時的な遅延・瞬断だけでユーザーに失敗を見せてしまうことを防ぐ。
     let data;
     try {
-      data = await fetchCardSetOnce(deck.filename);
+      data = await fetchCardSetOnce(deck.filename, timeoutMs);
     } catch (firstErr) {
       await new Promise(r => setTimeout(r, 500));
-      data = await fetchCardSetOnce(deck.filename);
+      data = await fetchCardSetOnce(deck.filename, timeoutMs);
     }
     const fetchedCards = data.cards || [];
 
