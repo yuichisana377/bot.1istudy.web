@@ -1671,10 +1671,17 @@ async function checkForUpdates() {
 // ★ 以前は10秒おきのポーリングだけだったが、サーバーが実際に常時稼働している
 //   ので、変更があった瞬間にpushしてもらい即座に反映する（Server-Sent Events）。
 //   接続が切れた場合に備え、10秒間隔のフォールバックポーリングも残す。
+// ★ 勉強タイマーの同期（他端末での一時停止／再開、3時間ごとの自動休憩の検知）も
+//   同じSSE接続に相乗りさせる。timerSyncInterval が動いている（＝タイマー画面が
+//   進行中の記録を表示している）ときだけ syncTimerFromServer() を呼ぶことで、
+//   従来のstartSyncPolling()と同じ「タイマーに関係あるときだけ同期する」条件を保つ。
 function startRealtimeUpdates() {
   try {
     const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
-    es.onmessage = () => { checkForUpdates(); };
+    es.onmessage = () => {
+      checkForUpdates();
+      if (timerSyncInterval) syncTimerFromServer();
+    };
   } catch (e) {
     // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
   }

@@ -27,6 +27,10 @@ function getLoginSession() {
 // ============================================================
 window.addEventListener('load', () => {
   loadNotices();
+  // ★ 変更監視用のハッシュを、初回読み込みの内容で起点合わせしておく
+  //  （比較なしで保存するだけの「初回チェック」）
+  checkNoticesUpdate();
+  startRealtimeUpdates();
 });
 
 // ============================================================
@@ -435,6 +439,57 @@ function closeNoticeModal(name) {
 function onBgClickNotice(e, name) {
   if (e.target === document.getElementById('modal-' + name)) closeNoticeModal(name);
 }
+
+// ============================================================
+//  ★ リアルタイム更新（Server-Sent Events）
+//  ─────────────────────────────
+//  以前は初回読み込み時にしか一覧を取得しておらず、他の人がお知らせを
+//  追加・編集・削除しても、ページを開き直すまで反映されなかった。
+//  サーバーが実際に常時稼働しているので、変更があった瞬間にpushで
+//  知らせてもらい、その場で一覧だけ静かに更新し直す。編集中のフォームや
+//  開いているプレビューモーダルはそのまま触らない（一覧の再描画だけ行う）。
+//  ・SSE接続が切れていた場合に備え、10秒間隔のフォールバックポーリングも残す。
+// ============================================================
+async function digestMessage(message) {
+  const msgUint8 = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+let lastNoticesHash = null;
+
+async function checkNoticesUpdate() {
+  try {
+    const res = await fetch(`${API_BASE}list_notices?guild_id=${GUILD_ID}`, { cache: 'no-store' });
+    const txt = await res.text();
+    const hash = await digestMessage(txt);
+
+    // 初回は保存だけ
+    if (lastNoticesHash === null) { lastNoticesHash = hash; return; }
+    // ハッシュが変わっていなければ何もしない
+    if (hash === lastNoticesHash) return;
+    lastNoticesHash = hash;
+
+    let data;
+    try { data = JSON.parse(txt); } catch (e) { return; }
+    if (!data.ok) return;
+    notices = data.notices;
+    renderNotices();
+  } catch (e) {}
+}
+
+function startRealtimeUpdates() {
+  try {
+    const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
+    es.onmessage = () => { checkNoticesUpdate(); };
+  } catch (e) {
+    // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
+  }
+}
+
+// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
+setInterval(checkNoticesUpdate, 10000);
 
 // ============================================================
 //  ドロワー（他ページと共通の挙動）
