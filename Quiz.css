@@ -162,6 +162,8 @@ input, select{ font-family:inherit; }
   transition:transform .1s, opacity .12s;
 }
 .qz-room-row:active{ transform:scale(.98); opacity:.85; }
+/* ★ 進行中で途中参加不可のルーム：状況は見えるがタップはできない状態 */
+.qz-room-row-disabled{ opacity:.55; box-shadow:none; }
 .qz-room-row-main{ min-width:0; }
 .qz-room-row-title{
   font-weight:700; font-size:15px; color:var(--text);

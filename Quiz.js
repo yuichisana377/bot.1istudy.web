@@ -172,14 +172,29 @@ async function loadRoomList() {
     listEl.innerHTML = `<p class="qz-label">現在参加できるクイズはありません。ホストが作成すると、ここに表示されます。</p>`;
     return;
   }
-  listEl.innerHTML = rooms.map(r => `
-    <button type="button" class="qz-room-row" onclick="joinRoomByCode('${r.code}')">
+  // ★ 開始後（question/reveal）のルームも「プレイ中」として出しっぱなしにする
+  //   （終了(ended)するまで一覧に残る）。ホストが途中参加を許可していれば
+  //   そこから参加できる（joinable=true）。許可していない場合は、状況が
+  //   分かるように表示だけはするが、タップしても参加できないようにする。
+  listEl.innerHTML = rooms.map(r => {
+    const inProgress = r.state !== 'lobby';
+    const joinable = r.state === 'lobby' || r.allow_late_join;
+    const statusText = !inProgress
+      ? '参加受付中'
+      : (joinable ? `🔴 プレイ中（第${r.current_q + 1}問）` : '🔒 プレイ中・途中参加不可');
+    const tag = joinable ? 'button' : 'div';
+    const typeAttr = joinable ? ' type="button"' : '';
+    const clickAttr = joinable ? ` onclick="joinRoomByCode('${r.code}')"` : '';
+    const disabledClass = joinable ? '' : ' qz-room-row-disabled';
+    return `
+    <${tag} class="qz-room-row${disabledClass}"${typeAttr}${clickAttr}>
       <div class="qz-room-row-main">
         <div class="qz-room-row-title">${escapeHtml(r.title)}</div>
-        <div class="qz-room-row-sub">${escapeHtml(r.host_nickname)} さん・${r.question_count}問</div>
+        <div class="qz-room-row-sub">${escapeHtml(r.host_nickname)} さん・${r.question_count}問・${statusText}</div>
       </div>
       <div class="qz-room-row-count">👥 ${r.player_count}</div>
-    </button>`).join('');
+    </${tag}>`;
+  }).join('');
 }
 
 // ★ 参加できるルームは一覧表示中に増えたり（新規作成）消えたり（開始・終了）するため、
@@ -231,9 +246,18 @@ function quizErrorText(code) {
 // ============================================================
 //  クイズを作る（ホスト：セットアップ）
 // ============================================================
+let hsAllowLateJoin = false; // 途中参加を許可するか（作成のたびにデフォルト＝不許可へ戻す）
+function setLateJoinOption(v) {
+  hsAllowLateJoin = v;
+  document.querySelectorAll('#hs-late-join-toggle .qz-toggle-opt').forEach((b, i) => {
+    b.classList.toggle('active', (i === 1) === v);
+  });
+}
+
 async function goHostSetupScreen() {
   showScreenQ('host-setup');
   document.getElementById('hs-error').textContent = '';
+  setLateJoinOption(false);
 
   if (launchDeckInfo && launchDeckInfo.filename) {
     // デッキのメニューから直接来た場合：デッキ選択を固定表示にする
@@ -327,7 +351,7 @@ async function submitCreateRoom() {
   const isDeckSrc = document.querySelector('#hs-source-toggle .qz-toggle-opt[data-src="deck"]').classList.contains('active');
   // ★ 制限時間は1問20秒固定（サーバー側でも固定されている）。
 
-  const body = withAuth({ title });
+  const body = withAuth({ title, allow_late_join: hsAllowLateJoin });
 
   if (isDeckSrc) {
     const filename = document.getElementById('hs-deck-select').value;

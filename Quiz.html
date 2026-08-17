@@ -104,6 +104,15 @@
       <button type="button" class="qz-add-q-btn" onclick="addManualQuestion()">＋ 問題を追加</button>
     </div>
 
+    <div class="qz-field">
+      <span class="qz-field-label">途中参加</span>
+      <div class="qz-toggle-group" id="hs-late-join-toggle">
+        <button type="button" class="qz-toggle-opt active" onclick="setLateJoinOption(false)">許可しない</button>
+        <button type="button" class="qz-toggle-opt" onclick="setLateJoinOption(true)">許可する</button>
+      </div>
+      <p class="qz-hint">許可すると、クイズが始まった後でも「参加する」の一覧からそのクイズを選んで途中から参加できます（一覧には終了するまで「プレイ中」として出続けます）。</p>
+    </div>
+
     <p class="qz-hint">1問20秒。全員が回答し終わるか時間切れになったら自動で正解を発表し、しばらくしたら次の問題に進みます。あなたも参加者として一緒に回答できます。</p>
 
     <div class="qz-error" id="hs-error"></div>
