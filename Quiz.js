@@ -425,13 +425,21 @@ function renderPlayScreen(room, opts) {
   }
 
   [...choicesEl.children].forEach((btn, i) => {
+    const picked = yourAnswer === i;
     btn.disabled = answered || revealed;
-    btn.classList.toggle('qz-picked', yourAnswer === i);
+    btn.classList.toggle('qz-picked', picked);
     if (revealed) {
-      btn.classList.toggle('qz-correct-flash', i === room.question.correct_index);
-      btn.classList.toggle('qz-dim', i !== room.question.correct_index && yourAnswer !== i);
+      const isCorrect = i === room.question.correct_index;
+      btn.classList.toggle('qz-correct-flash', isCorrect);
+      // ★ 自分が選んだ選択肢が不正解だった場合は、赤く光らせて
+      //   「これがあなたの選んだ（間違っていた）答え」だとひと目で分かるようにする。
+      btn.classList.toggle('qz-wrong-flash', picked && !isCorrect);
+      btn.classList.toggle('qz-dim', !isCorrect && !picked);
     } else {
-      btn.classList.remove('qz-correct-flash', 'qz-dim');
+      btn.classList.remove('qz-correct-flash', 'qz-wrong-flash');
+      // ★ 回答直後（発表前）も、選んでいない残りの選択肢を薄くして、
+      //   「自分が押したのはこれ」を最後まではっきり見せ続ける。
+      btn.classList.toggle('qz-dim', answered && !picked);
     }
   });
 
@@ -535,8 +543,10 @@ async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId
   hasAnsweredThisQ = true;
   const choicesEl = document.getElementById(choicesId);
   [...choicesEl.children].forEach((btn, i) => {
+    const picked = i === choiceIndex;
     btn.disabled = true;
-    btn.classList.toggle('qz-picked', i === choiceIndex);
+    btn.classList.toggle('qz-picked', picked);
+    btn.classList.toggle('qz-dim', !picked);
   });
   const waitingNote = document.getElementById(waitingNoteId);
   if (waitingNote) waitingNote.style.display = '';

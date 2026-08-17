@@ -250,9 +250,43 @@ input, select{ font-family:inherit; }
 
 .qz-choice-btn[disabled]{ pointer-events:none; }
 .qz-choice-btn.qz-dim{ opacity:.35; filter:grayscale(.3); }
-.qz-choice-btn.qz-picked{ outline:3px solid #fff; outline-offset:-3px; }
-.qz-choice-btn.qz-correct-flash{ outline:3px solid #fff; outline-offset:-3px; box-shadow:0 0 0 4px rgba(22,163,74,.35); }
-.qz-choice-btn.qz-wrong-flash{ box-shadow:0 0 0 4px rgba(239,68,68,.3); }
+
+/* ★ 自分が押した選択肢を一目で分かるようにする：どの色のボタンでも
+   はっきり見える濃色の枠＋右上のチェックバッジで「選択中」を強調し、
+   他の選択肢は.qz-dimで薄くして目立たなくする。
+   正解発表(reveal)時は .qz-correct-flash / .qz-wrong-flash が
+   同じ場所の枠・バッジ色を上書きして「正解／自分の誤答」を示す。 */
+.qz-choice-btn.qz-picked{
+  outline:4px solid #fff; outline-offset:-4px;
+  box-shadow:0 0 0 4px rgba(17,24,39,.4), var(--shadow);
+  transform:scale(1.02);
+}
+.qz-choice-btn.qz-picked::after{
+  content:"✓ 選択中"; position:absolute; top:8px; right:8px;
+  background:#111827; color:#fff; font-size:10.5px; font-weight:800;
+  letter-spacing:.02em; padding:3px 8px; border-radius:999px; line-height:1.4;
+  box-shadow:0 1px 4px rgba(0,0,0,.35);
+}
+.qz-choice-btn.qz-correct-flash{
+  outline:4px solid #fff; outline-offset:-4px;
+  box-shadow:0 0 0 4px rgba(22,163,74,.45), var(--shadow);
+}
+.qz-choice-btn.qz-correct-flash::after{
+  content:"✓ 正解"; position:absolute; top:8px; right:8px;
+  background:#16a34a; color:#fff; font-size:10.5px; font-weight:800;
+  letter-spacing:.02em; padding:3px 8px; border-radius:999px; line-height:1.4;
+  box-shadow:0 1px 4px rgba(0,0,0,.35);
+}
+.qz-choice-btn.qz-wrong-flash{
+  outline:4px solid #fff; outline-offset:-4px;
+  box-shadow:0 0 0 4px rgba(239,68,68,.45), var(--shadow);
+}
+.qz-choice-btn.qz-wrong-flash::after{
+  content:"✕ 選んだ答え"; position:absolute; top:8px; right:8px;
+  background:#dc2626; color:#fff; font-size:10.5px; font-weight:800;
+  letter-spacing:.02em; padding:3px 8px; border-radius:999px; line-height:1.4;
+  box-shadow:0 1px 4px rgba(0,0,0,.35);
+}
 
 .qz-answer-feedback{
   margin-top:16px; padding:16px; border-radius:var(--r-md); text-align:center;
