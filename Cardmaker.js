@@ -3595,8 +3595,33 @@ function saveStudyDataCache() {
 }
 let studyDataCache = loadStudyDataCache();
 
-// デッキ/フォルダを進捗・完了記録のキーに変換する（サーバー側と共通の形式）
-function studyItemKey(isFolder, id) { return (isFolder ? 'folder:' : 'deck:') + id; }
+// ★ 修正（バグ修正）：わからないマーク／続きから進捗／完了記録を「端末間で
+//   正しく同期するためのキー」に変換する。
+//   ─────────────────────────────────────────────
+//   deck.id は fetchAndMergeDecks() が「この端末で初めてそのデッキを見たとき」
+//   に genId() でその場限り採番するローカル専用のIDで、同じ公開済みデッキでも
+//   端末（あるいは同じ端末でも別のブラウザ／別に「ホーム画面に追加」したPWA）
+//   ごとに毎回バラバラの値になる。これをそのままサーバー同期のキーに使って
+//   いたため、ある端末で付けた「わからない」マークが、そのデッキを別のIDで
+//   認識している他の端末には決して同じキーとして現れず、「別端末で変更しても
+//   反映されない」という不具合になっていた。
+//   サーバー側で全端末共通なのは deck.filename（公開時にサーバーが発行し、
+//   以降ずっと変わらない）なので、公開済みデッキは必ずこちらをキーに使う。
+//   まだ公開していない（この端末だけのローカル下書き）デッキは他の端末には
+//   そもそも存在しないので、これまで通りローカルIDで構わない
+//   （'local:' を付けて deck.filename と衝突しないようにするだけ）。
+function studyDataDeckKey(deck) {
+  if (!deck) return null;
+  return deck.filename || ('local:' + deck.id);
+}
+
+// デッキ/フォルダを進捗・完了記録のキーに変換する（サーバー側と共通の形式）。
+// フォルダのidは元々サーバー発行の共通IDなのでそのまま使える。
+function studyItemKey(isFolder, id) {
+  if (isFolder) return 'folder:' + id;
+  const deck = decks.find(d => d.id === id);
+  return 'deck:' + (studyDataDeckKey(deck) ?? id); // 万一見つからない場合は従来通りIDをそのまま使う
+}
 
 // ★ サーバーから自分の学習データを取得し、キャッシュへ反映する
 async function fetchAndMergeStudyData() {
@@ -3644,16 +3669,23 @@ async function pushStudyDataToServer(path, body) {
 }
 
 // ── わからないマーク ──────────────────
+//   ★ 修正：deckId（ローカル専用ID）ではなく studyDataDeckKey()（端末間で
+//     共通の filename ベースのキー）で studyDataCache.unsure を引く・書き込む。
+//     呼び出し側は deckId を渡すだけでよい（互換性のため引数は変えていない）。
 function getUnsureSet(deckId) {
-  const arr = studyDataCache.unsure[deckId];
+  const deck = decks.find(d => d.id === deckId);
+  const key = studyDataDeckKey(deck) ?? deckId;
+  const arr = studyDataCache.unsure[key];
   return new Set(Array.isArray(arr) ? arr : []);
 }
 function saveUnsureSet(deckId, set) {
+  const deck = decks.find(d => d.id === deckId);
+  const key = studyDataDeckKey(deck) ?? deckId;
   const arr = [...set];
-  if (arr.length) studyDataCache.unsure[deckId] = arr;
-  else delete studyDataCache.unsure[deckId];
+  if (arr.length) studyDataCache.unsure[key] = arr;
+  else delete studyDataCache.unsure[key];
   saveStudyDataCache();
-  pushStudyDataToServer('save_unsure', { deck_id: deckId, unsure: arr });
+  pushStudyDataToServer('save_unsure', { deck_id: key, unsure: arr });
 }
 
 // ★ 学習の続きから再開するための進捗保存・読込・削除
