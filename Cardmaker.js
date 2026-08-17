@@ -1077,7 +1077,17 @@ async function fetchAndMergeDecks() {
     const existing = decks.find(d => d.filename === s.filename);
     // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
     //   未読み込みなら空配列のままにし、開いたときに取得する。
-    const keepLoadedCards = existing && existing.cardsLoaded;
+    // ★ 修正：ただし、サーバー側の最新枚数（s.count）がこの端末にキャッシュ済みの
+    //   枚数より減っている場合は引き継がない。他の人がデッキを編集して枚数を
+    //   減らした後、この端末でキャッシュ（多い方の枚数）を持ち越し続けると、
+    //   ensureDeckCardsLoaded() の件数不一致セーフティ（減っていたら異常とみなす）が
+    //   「一度読み込んだ枚数」を基準にしたまま二度と満たされなくなり、
+    //   そのデッキが（本当は正常なのに）永久に開けなくなってしまう。
+    //   減っていた場合は未読み込み扱いに戻し、次に開いたときに必ずサーバーから
+    //   最新を取り直させることで、この「詰み」を防ぐ。
+    const cachedIsStale = existing && existing.cardsLoaded
+      && typeof s.count === 'number' && s.count < existing.cards.length;
+    const keepLoadedCards = existing && existing.cardsLoaded && !cachedIsStale;
     return {
       id: existing ? existing.id : genId(),
       name: s.name,
