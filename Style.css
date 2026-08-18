@@ -1023,6 +1023,25 @@ body {
   text-decoration: underline;
 }
 
+/* ★ 追加：詳細モーダル内の「実行済みにする」ボタンは、一覧カード上のバッジ風
+   スタイルではなく、編集・削除ボタンと同じリンク風の見た目に揃える */
+.notice-actions .notice-done-btn {
+  display: block;
+  width: auto;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  padding: 6px 4px;
+}
+.notice-actions .notice-done-btn:active,
+.notice-actions .notice-done-btn:hover,
+.notice-actions .notice-done-btn.is-done {
+  color: #166534;
+  text-decoration: underline;
+}
+
 /* ============================================================
    サービス情報ページ（ServiceInfo.html）
 ============================================================ */

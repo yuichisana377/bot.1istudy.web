@@ -94,15 +94,15 @@ function renderNotices() {
   }).join('') + `</div>`;
 }
 
-// ★ 追加：「実行済み」ボタン。全員共有の状態として、押した瞬間に一覧の下へ
-//   薄く移動する。カード自体のクリック（詳細表示）は発火させない。
-async function toggleNoticeDone(event, filename) {
-  event.stopPropagation();
+// ★ 追加：「実行済み」の切り替え本体。全員共有の状態として、押した瞬間に
+//   一覧の下へ薄く移動する。一覧カードのボタン・詳細モーダルのボタン
+//   どちらから呼ばれても、両方の表示を同期する。
+async function setNoticeDone(filename, nextDone) {
   const n = notices.find(x => x.filename === filename);
   if (!n) return;
-  const nextDone = !n.done;
   n.done = nextDone; // ★ 楽観的に即座に反映（サーバー応答を待たず見た目を切り替える）
   renderNotices();
+  updateViewDoneBtn();
   try {
     const res = await api('/set_notice_done', {
       method: 'POST',
@@ -113,8 +113,35 @@ async function toggleNoticeDone(event, filename) {
     // ★ サーバーへの反映に失敗した場合は表示も元に戻す
     n.done = !nextDone;
     renderNotices();
+    updateViewDoneBtn();
     alert('実行済みの切り替えに失敗しました。通信環境を確認してもう一度お試しください。');
   }
+}
+
+// 一覧カードの「実行済みにする」ボタンから（カード自体のクリック＝詳細表示は発火させない）
+function toggleNoticeDone(event, filename) {
+  event.stopPropagation();
+  const n = notices.find(x => x.filename === filename);
+  if (!n) return;
+  setNoticeDone(filename, !n.done);
+}
+
+// 詳細モーダルの「実行済みにする」ボタンから
+function toggleNoticeDoneFromModal() {
+  if (!currentViewFilename) return;
+  const n = notices.find(x => x.filename === currentViewFilename);
+  if (!n) return;
+  setNoticeDone(currentViewFilename, !n.done);
+}
+
+// 詳細モーダルのボタン表示を、今開いているお知らせの実行済み状態に合わせる
+function updateViewDoneBtn() {
+  const btn = document.getElementById('view-done-btn');
+  if (!btn || !currentViewFilename) return;
+  const n = notices.find(x => x.filename === currentViewFilename);
+  const isDone = !!(n && n.done);
+  btn.textContent = isDone ? '✓ 実行済み' : '実行済みにする';
+  btn.classList.toggle('is-done', isDone);
 }
 
 // ============================================================
@@ -128,6 +155,7 @@ async function openViewModal(filename) {
   bodyEl.innerHTML = '';
   document.getElementById('view-loading').style.display = 'block';
   document.getElementById('modal-view').classList.add('open');
+  updateViewDoneBtn(); // ★ 追加：「実行済みにする」ボタンの表示を、このお知らせの状態に合わせる
 
   try {
     const data = await api(`/get_notice?filename=${encodeURIComponent(filename)}`);

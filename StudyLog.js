@@ -190,17 +190,26 @@ window.addEventListener("load", function() {
   restoreTimer();
   initTaskListEvents(); // ★ 課題リストのクリックをイベント委譲で処理（IDに引用符が含まれても壊れないように）
 
+  // ★ 修正：「ログ一覧」の表示が、ポイント・達成済み課題・全ユーザー名簿
+  //   など他のデータ取得が終わるまで待たされていて遅く感じられていた。
+  //   renderLogs() は logs（loadLogs()の結果）だけで描画できるので、
+  //   他の読み込みを待たず最優先で取得し、届いた時点ですぐ表示する。
+  //   （loadLogs() の呼び出しは1回だけ。下のPromise.allでは、ここで
+  //   発行済みのPromiseをそのまま使い回す＝二重フェッチしない）
+  const logsPromise = loadLogs();
+  logsPromise.then(renderLogs);
+
   Promise.all([
-    loadUsers(),           // ★ 全ユーザーのnicknameMapを最初に構築
+    logsPromise,
+    loadUsers(),           // ★ 全ユーザーのnicknameMapを構築
     loadSubjects(),
-    loadLogs(),
     loadPoints(),
     loadCompletedTasks(),
     loadAllCompletedTasks(),
     loadTasks()
   ]).then(function() {
     renderSubjectDropdown();
-    renderAll();
+    renderAll(); // ★ ランキング・みんなの記録も含めて改めて描画（renderLogs()の再描画は無害）
     renderTasks();
   });
   prefetchOtherPages(); // ★ 追加：メニューを開くのを待たず、初期表示後に自動で他ページを裏で先読み
