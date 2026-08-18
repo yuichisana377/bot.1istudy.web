@@ -432,6 +432,48 @@ html, body {
 .empty-state { text-align: center; padding: 4rem 1.5rem; color: var(--text-secondary); font-size: 14px; }
 .empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
 
+/* ── クイズ用デッキ選択モード（Quiz.html「デッキを選ぶ」からの遷移） ──
+   ★ 通常のデッキ一覧（screen-list）に checkbox 付きの選択UIを重ねて出す。
+   フォルダ・デッキの構造や検索性はそのまま活かしつつ、複数選択・フォルダ
+   まるごと選択ができるようにするための追加分。 */
+.pick-mode-banner {
+  box-sizing: border-box;
+  background: #EFF4FF; color: #1d4ed8; font-size: 12.5px; font-weight: 600;
+  padding: .55rem 1rem; text-align: center; line-height: 1.6;
+  position: sticky; top: calc(56px + env(safe-area-inset-top, 0px)); z-index: 90;
+}
+.pick-mode-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: .75rem 1rem calc(env(safe-area-inset-bottom, 0px) + 12px);
+  display: flex; align-items: center; gap: .75rem; z-index: 110;
+}
+.pick-mode-count { flex: 1; font-size: 13px; font-weight: 700; color: var(--text-secondary); }
+.pick-mode-bar-actions { display: flex; gap: .5rem; flex-shrink: 0; }
+.pick-mode-bar-actions .btn { flex: none; padding: 0 1rem; height: 42px; }
+
+.pick-checkbox {
+  width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--border);
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; color: #fff; cursor: pointer;
+  background: var(--surface); transition: background .1s, border-color .1s;
+}
+.pick-checkbox.checked  { background: #2563EB; border-color: #2563EB; }
+.pick-checkbox.implied  { background: #93c5fd; border-color: #93c5fd; } /* 上位フォルダの選択で自動的に含まれている */
+.pick-checkbox.disabled { opacity: .35; cursor: not-allowed; }
+.deck-card.pick-disabled { opacity: .55; }
+.deck-card-note-ineligible { font-size: 12px; color: #c2410c; margin-top: 2px; }
+
+/* 選択モード中は、選択に関係ない操作（追加・検索・バナー・進行中一覧など）を隠す */
+.pick-mode-active .add-deck-btn,
+.pick-mode-active .quiz-banner,
+.pick-mode-active .inprogress-section,
+.pick-mode-active .completed-section,
+.pick-mode-active #search-icon-btn,
+.pick-mode-active #drawer-menu-btn {
+  display: none !important;
+}
+
 /* ── フォルダ ── */
 /* ★ 追加：フォルダはデッキと見分けやすいよう、ごく薄い黄色っぽい背景にする */
 .folder-card {

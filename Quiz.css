@@ -212,13 +212,22 @@ input, select{ font-family:inherit; }
 }
 .qz-add-q-btn:active{ background:var(--bg); }
 
-/* ── コード表示・待機室（CardMakerの .deck-card / .card-block と同じ白いサーフェス） ───────────────────────── */
-.qz-code-display{
-  font-weight:800; font-size:52px; letter-spacing:.16em;
-  color:var(--accent); background:var(--surface); border:1px solid var(--border);
-  box-shadow:var(--shadow);
-  border-radius:var(--r-lg); padding:18px 10px; width:100%; max-width:340px;
+/* ── デッキ選択（CardMakerのホーム画面へ行って選ぶ方式） ───────────────────────── */
+.qz-deck-picker-btn{
+  width:100%; padding:14px; border-radius:var(--r-md); border:1.5px dashed var(--accent);
+  background:var(--accent-soft); color:var(--accent); font-weight:700; font-size:14.5px;
 }
+.qz-deck-picker-btn:active{ opacity:.85; }
+.qz-deck-chip-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+.qz-deck-chip{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:10px 12px; border-radius:var(--r-md); background:var(--surface);
+  border:1px solid var(--border); font-size:13.5px; font-weight:600; color:var(--text);
+}
+.qz-deck-chip-name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qz-deck-chip-remove{ flex:none; background:none; border:none; color:var(--text-secondary); font-size:16px; padding:2px 6px; line-height:1; }
+
+/* ── 待機室（CardMakerの .deck-card / .card-block と同じ白いサーフェス） ───────────────────────── */
 .qz-player-grid{
   display:flex; flex-wrap:wrap; gap:10px; justify-content:center; width:100%;
   padding:6px 0 14px;

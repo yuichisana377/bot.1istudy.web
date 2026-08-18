@@ -70,9 +70,9 @@
 <!-- ══════════ デッキ一覧 ══════════ -->
 <div class="screen active" id="screen-list">
   <div class="topbar">
-    <button class="menu-btn" onclick="openDrawer()">☰</button>
+    <button class="menu-btn" id="drawer-menu-btn" onclick="openDrawer()">☰</button>
     <div class="topbar-title">📇 CardMaker</div>
-    <button class="icon-btn" onclick="openSearchScreen()" title="問題を検索" aria-label="検索">🔍</button>
+    <button class="icon-btn" id="search-icon-btn" onclick="openSearchScreen()" title="問題を検索" aria-label="検索">🔍</button>
     <div class="header-account" style="margin-left:auto;display:flex;align-items:center;gap:8px;">
       <div id="header-avatar" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;"></div>
       <div style="line-height:1.25;text-align:right;">
@@ -80,6 +80,10 @@
         <div id="header-id" style="font-size:11px;color:var(--text-secondary,#64748b);"></div>
       </div>
     </div>
+  </div>
+  <!-- ★ 追加：クイズのデッキ選択モード（Quiz.html?から「デッキを選ぶ」で来た場合だけ表示） -->
+  <div class="pick-mode-banner" id="pick-mode-banner" style="display:none">
+    🎮 クイズに使うデッキ・フォルダを選んでください（複数選択できます。フォルダを選ぶと中のデッキを全部まとめて使います）
   </div>
   <div class="cm-scroll-body">
     <div class="inner">
@@ -110,6 +114,15 @@
     </div>
   </div>
   <button class="add-deck-btn" onclick="openAddChoice()" aria-label="追加">＋</button>
+
+  <!-- ★ 追加：クイズのデッキ選択モード用の下部バー（選択中の件数・決定・キャンセル） -->
+  <div class="pick-mode-bar" id="pick-mode-bar" style="display:none">
+    <div class="pick-mode-count" id="pick-mode-count">デッキを選んでください</div>
+    <div class="pick-mode-bar-actions">
+      <button type="button" class="btn btn-ghost" onclick="pickModeCancel()">キャンセル</button>
+      <button type="button" class="btn btn-blue" id="pick-mode-confirm-btn" onclick="pickModeConfirm()" disabled>この内容で決定</button>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════ 単語検索 ══════════ -->
@@ -493,6 +506,16 @@
       <div>
         <div>わからないカードだけ</div>
         <div class="play-mode-sub" id="play-mode-unsure-sub"></div>
+      </div>
+    </div>
+
+    <!-- ★ 追加：「みんなでクイズを始める」（以前はデッキの✏️メニューにあったが、
+         プレイ操作の流れに合わせてこちらへ移動した）。公開済みデッキだけ表示する。 -->
+    <div class="play-mode-item" id="play-mode-quiz-item" onclick="startQuizFromPlayMode()" style="display:none">
+      <span class="play-mode-icon">🎮</span>
+      <div>
+        <div>みんなでクイズを始める</div>
+        <div class="play-mode-sub">友達とオンラインで早押し4択</div>
       </div>
     </div>
 

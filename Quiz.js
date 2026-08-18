@@ -121,7 +121,12 @@ function applyServerNow(data) {
     quizClockOffsetMs = data.server_now - Date.now();
   }
 }
-let launchDeckInfo = null; // ?mode=host&deck=... で渡されたデッキ情報
+let launchDeckInfo = null; // ?mode=host&deck=... で渡されたデッキ情報（デッキメニューからの単発起動）
+// ★ 「デッキから自動作成」で選ばれているデッキ一覧。[{filename, name}, ...]。
+//   Cardmaker.html（いつもの単語のホーム画面）を ?pick=quiz で開いて選んでもらい、
+//   sessionStorage経由でここへ受け取る（複数デッキ・フォルダごとの選択に対応するため）。
+let hsSelectedDecks = [];
+let hsDeckPickerLocked = false; // ★ デッキメニューから直接来た場合（launchDeckInfo）は選び直しさせない
 
 // ============================================================
 //  起動
@@ -134,10 +139,21 @@ async function initQuizApp() {
   document.getElementById('home-account').textContent = STUDENT.nickname ? `${STUDENT.nickname} さん` : '';
 
   if (mode === 'host') {
-    launchDeckInfo = {
-      filename: params.get('deck'),
-      name: params.get('name') ? decodeURIComponent(params.get('name')) : '',
-    };
+    const deckParam = params.get('deck');
+    if (deckParam) {
+      launchDeckInfo = {
+        filename: deckParam,
+        name: params.get('name') ? decodeURIComponent(params.get('name')) : '',
+      };
+    } else if (params.get('fromPicker') === '1') {
+      // ★ Cardmaker.html（デッキ選択画面）で「この内容で決定」して戻ってきた場合
+      try {
+        const picked = JSON.parse(sessionStorage.getItem('quizDeckPicker') || '[]');
+        if (Array.isArray(picked) && picked.length) hsSelectedDecks = picked;
+      } catch {}
+    }
+    sessionStorage.removeItem('quizDeckPicker');
+    history.replaceState(null, '', location.pathname); // URLをきれいに戻す
     showScreenQ('home');
     goHostSetupScreen();
   } else if (codeParam) {
@@ -255,6 +271,9 @@ function quizErrorText(code) {
     quiz_already_started: 'このクイズはもう始まっています',
     not_logged_in: 'ログインが切れています。ログインし直してください',
     network: '通信に失敗しました。もう一度お試しください',
+    deck_not_found: '選んだデッキが見つかりませんでした。デッキを選び直してください',
+    deck_too_small: '選んだデッキ（合計）に、答えの種類が4つ以上ありません。デッキを追加するか選び直してください',
+    too_many_decks: '一度に選べるデッキの数が多すぎます。選ぶデッキを減らしてください',
   }[code] || (code ? `エラー: ${code}` : '不明なエラーが発生しました');
 }
 
@@ -278,33 +297,60 @@ async function goHostSetupScreen() {
     // デッキのメニューから直接来た場合：デッキ選択を固定表示にする
     document.getElementById('hs-title').value = launchDeckInfo.name || '';
     setHostSource('deck');
-    const sel = document.getElementById('hs-deck-select');
-    sel.innerHTML = `<option value="${escapeHtml(launchDeckInfo.filename)}">${escapeHtml(launchDeckInfo.name || launchDeckInfo.filename)}</option>`;
-    sel.disabled = true;
+    hsSelectedDecks = [{ filename: launchDeckInfo.filename, name: launchDeckInfo.name || launchDeckInfo.filename }];
+    hsDeckPickerLocked = true;
     document.querySelectorAll('#hs-source-toggle .qz-toggle-opt').forEach(b => b.disabled = true);
   } else {
     document.querySelectorAll('#hs-source-toggle .qz-toggle-opt').forEach(b => b.disabled = false);
-    const sel = document.getElementById('hs-deck-select');
-    sel.disabled = false;
-    sel.innerHTML = `<option>読み込み中…</option>`;
-    const data = await apiGet('list_cards');
-    if (data.ok && data.sets) {
-      const sets = data.sets.filter(s => !s.incomplete);
-      if (!sets.length) {
-        sel.innerHTML = `<option value="">公開されているデッキがありません</option>`;
-      } else {
-        sel.innerHTML = sets.map(s =>
-          `<option value="${escapeHtml(s.filename)}">${escapeHtml(s.name)}${s.subject ? '（' + escapeHtml(s.subject) + '）' : ''}</option>`
-        ).join('');
-      }
-    } else {
-      sel.innerHTML = `<option value="">読み込みに失敗しました</option>`;
-    }
+    hsDeckPickerLocked = false;
   }
+  renderSelectedDecks();
 
   if (!document.getElementById('hs-manual-list').children.length) {
     addManualQuestion(); // 最低1問は入力欄を出しておく
   }
+}
+
+// ★ ホーム画面の「クイズを作る」から新規に開くときは、前回の選択を持ち越さず
+//   まっさらな状態から始める（?mode=host での起動やデッキメニュー起動と違い、
+//   ここではlaunchDeckInfo/hsSelectedDecksを毎回リセットする）。
+function startFreshHostSetup() {
+  launchDeckInfo = null;
+  hsSelectedDecks = [];
+  hsDeckPickerLocked = false;
+  goHostSetupScreen();
+}
+
+// ★ 「デッキを選ぶ」／「選び直す」：いつもの単語のホーム画面（Cardmaker.html）を
+//   選択モードで開く。複数のデッキ・フォルダ（サブフォルダ含む）をまとめて選べる。
+function openDeckPicker() {
+  location.href = 'Cardmaker.html?pick=quiz';
+}
+
+function renderSelectedDecks() {
+  const emptyWrap = document.getElementById('hs-deck-picker-empty');
+  const selectedWrap = document.getElementById('hs-deck-picker-selected');
+  const listEl = document.getElementById('hs-selected-deck-list');
+  const changeBtn = document.getElementById('hs-change-decks-btn');
+  changeBtn.style.display = hsDeckPickerLocked ? 'none' : '';
+
+  if (!hsSelectedDecks.length) {
+    emptyWrap.style.display = '';
+    selectedWrap.style.display = 'none';
+    return;
+  }
+  emptyWrap.style.display = 'none';
+  selectedWrap.style.display = '';
+  listEl.innerHTML = hsSelectedDecks.map((d, i) => `
+    <div class="qz-deck-chip">
+      <span class="qz-deck-chip-name">${escapeHtml(d.name || d.filename)}</span>
+      ${hsDeckPickerLocked ? '' : `<button type="button" class="qz-deck-chip-remove" onclick="removeSelectedDeck(${i})">✕</button>`}
+    </div>`).join('');
+}
+
+function removeSelectedDeck(i) {
+  hsSelectedDecks.splice(i, 1);
+  renderSelectedDecks();
 }
 
 function setHostSource(src) {
@@ -488,10 +534,9 @@ async function submitCreateRoom() {
   const body = withAuth({ title, allow_late_join: hsAllowLateJoin });
 
   if (isDeckSrc) {
-    const filename = document.getElementById('hs-deck-select').value;
-    if (!filename) { errEl.textContent = 'デッキを選んでください'; return; }
+    if (!hsSelectedDecks.length) { errEl.textContent = 'デッキを選んでください'; return; }
     body.source = 'deck';
-    body.deck_filename = filename;
+    body.deck_filenames = hsSelectedDecks.map(d => d.filename);
     const numQ = document.getElementById('hs-num-questions').value;
     if (numQ) body.num_questions = Number(numQ);
   } else {
@@ -517,7 +562,6 @@ async function submitCreateRoom() {
   isHost = true;
   renderedQIndex = -1; renderedState = null;
   history.replaceState(null, '', `${location.pathname}?code=${data.code}`);
-  document.getElementById('hl-code').textContent = data.code;
   document.getElementById('hl-title').textContent = title || 'みんなでクイズ';
   showScreenQ('host-lobby');
   startPolling();
@@ -623,7 +667,6 @@ function renderLobby(room) {
   titleEl.textContent = room.title;
 
   if (isHost) {
-    document.getElementById('hl-code').textContent = room.code;
     document.getElementById('hl-count').textContent = `参加者 ${room.players.length}人`;
     document.getElementById('hl-players').innerHTML = playerChipsHtml(room.players);
     document.getElementById('hl-start-btn').disabled = room.players.length === 0;

@@ -75,6 +75,14 @@ const QUIZ_ARCHIVE_FOLDER_ID = "quiz_archive_root";
 let folders = loadFoldersCache(); // { id, name, parentId }
 let currentFolderId = null; // null = ルート
 
+// ── ★ 追加：クイズ用デッキ選択モード（Quiz.htmlの「デッキを選ぶ」から ?pick=quiz で来た場合） ──
+//   通常のデッキ一覧をそのまま使い、デッキ／フォルダをタップすると選択のON/OFFになる。
+//   フォルダを選ぶとその配下（サブフォルダ含む）の全デッキをまとめて選んだことになる。
+let pickMode = null;               // null | 'quiz'
+let pickReturnUrl = null;          // 決定・キャンセル時に戻る先
+let pickedDeckIds = new Set();     // 個別に選んだデッキの id
+let pickedFolderIds = new Set();   // 丸ごと選んだフォルダの id
+
 // ── 一覧（ホーム画面）の並び順 ──────────────
 //   フォルダ・公開済みデッキの並び順は、サーバー（GitHub上の list_order.json）に
 //   保存され全員で共有される。folders.json と同じく「サーバーが正で、ローカルの
@@ -298,6 +306,112 @@ function canMoveDeckTo(deckId, targetFolderId) {
     return false;
   }
   return true;
+}
+
+// ============================================================
+//  ★ 追加：クイズ用デッキ選択モード（pickMode）
+//  ─────────────────────────────────────────────
+//  Quiz.html「クイズを作る」から「デッキを選ぶ」で ?pick=quiz 付きで開かれると、
+//  通常のデッキ一覧の見た目のまま、デッキ／フォルダをタップして複数選択できる
+//  ようになる。フォルダを選ぶと、そのフォルダ配下（サブフォルダ含む）の
+//  全デッキをまとめて選んだことになる（renderDeckListUI 側の分岐で表示を切り替える）。
+// ============================================================
+
+// クイズの4択自動生成に使えるデッキかどうか（公開済み・作成中でない・カードが1枚以上ある）
+function isDeckQuizPickable(d) {
+  if (!d || !d.filename) return false; // 非公開（ローカル限定）デッキはサーバー側で読めないため対象外
+  const isInProgress = d.notYetPublished !== false;
+  if (isInProgress) return false;
+  const questionCount = d.count ?? d.cards.length;
+  return questionCount > 0;
+}
+
+// 指定フォルダの祖先（自分自身は含まない）に、選択済みのフォルダがあるかどうか。
+// あれば「上位フォルダの選択に含まれて自動的に選ばれている」状態とみなす。
+function pickFolderAncestorSelected(folderId) {
+  let cur = folderId ? folders.find(f => f.id === folderId) : null;
+  while (cur) {
+    if (pickedFolderIds.has(cur.id)) return true;
+    cur = cur.parentId ? folders.find(f => f.id === cur.parentId) : null;
+  }
+  return false;
+}
+function togglePickDeck(deckId, ev) {
+  if (ev) ev.stopPropagation();
+  const d = decks.find(x => x.id === deckId);
+  if (!d || !isDeckQuizPickable(d)) return;
+  if (pickFolderAncestorSelected(d.folderId || null)) return; // 上位フォルダ選択で自動的に含まれている
+  if (pickedDeckIds.has(deckId)) pickedDeckIds.delete(deckId); else pickedDeckIds.add(deckId);
+  renderDeckListUI();
+}
+
+function togglePickFolder(folderId, ev) {
+  if (ev) ev.stopPropagation();
+  const f = folders.find(x => x.id === folderId);
+  if (!f) return;
+  if (pickFolderAncestorSelected(f.parentId || null)) return; // 上位フォルダ選択で自動的に含まれている
+  const hasEligibleDeck = collectDecksInFolder(folderId).some(isDeckQuizPickable);
+  if (!hasEligibleDeck) return;
+  if (pickedFolderIds.has(folderId)) {
+    pickedFolderIds.delete(folderId);
+  } else {
+    pickedFolderIds.add(folderId);
+    // ★ フォルダを選んだら、その配下の個別選択（デッキ・子孫フォルダ）は
+    //   フォルダ選択に包含されて冗長になるので整理しておく
+    collectDecksInFolder(folderId).forEach(d => pickedDeckIds.delete(d.id));
+    folderDescendants(folderId).forEach(sf => pickedFolderIds.delete(sf.id));
+  }
+  renderDeckListUI();
+}
+
+// 現在の選択内容を、実際にクイズへ渡す「デッキ filename の一覧」に展開する
+// （フォルダ選択は配下の対象デッキへ、個別選択とあわせて重複なく1つのリストにする）。
+function computePickedDecks() {
+  const filenameSet = new Set();
+  const result = [];
+  const add = d => {
+    if (!isDeckQuizPickable(d) || filenameSet.has(d.filename)) return;
+    filenameSet.add(d.filename);
+    result.push({ filename: d.filename, name: d.name });
+  };
+  pickedFolderIds.forEach(fid => collectDecksInFolder(fid).forEach(add));
+  pickedDeckIds.forEach(id => { const d = decks.find(x => x.id === id); if (d) add(d); });
+  return result;
+}
+
+function updatePickBar() {
+  const countEl = document.getElementById('pick-mode-count');
+  const confirmBtn = document.getElementById('pick-mode-confirm-btn');
+  if (!countEl) return;
+  const picked = computePickedDecks();
+  countEl.textContent = picked.length ? `${picked.length}件のデッキを選択中` : 'デッキを選んでください';
+  if (confirmBtn) confirmBtn.disabled = picked.length === 0;
+}
+
+function pickModeCancel() {
+  location.href = pickReturnUrl || 'Quiz.html';
+}
+
+async function pickModeConfirm() {
+  const picked = computePickedDecks();
+  if (!picked.length) return;
+  sessionStorage.setItem('quizDeckPicker', JSON.stringify(picked));
+  location.href = pickReturnUrl || 'Quiz.html?mode=host&fromPicker=1';
+}
+
+// URLの ?pick=quiz を見て選択モードを開始する（renderDeckList() で最新の
+// decks/folders を取得し終えた後に呼ぶこと）
+function initPickModeFromUrl() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('pick') !== 'quiz') return;
+  pickMode = 'quiz';
+  pickReturnUrl = 'Quiz.html?mode=host&fromPicker=1';
+  history.replaceState(null, '', location.pathname + location.hash);
+  document.body.classList.add('pick-mode-active');
+  document.getElementById('pick-mode-banner').style.display = 'block';
+  document.getElementById('pick-mode-bar').style.display = 'flex';
+  currentFolderId = null; // ホームから選び始める
+  renderDeckListUI();
 }
 
 // ★ ドラッグ&ドロップの data-key（"deck:<filename>" または "localdeck:<id>"）から
@@ -635,6 +749,7 @@ function renderDeckListUI() {
     grid.style.display='none'; empty.style.display='block';
     document.getElementById('deck-list-empty-text').textContent =
       currentFolderId ? 'このフォルダにはまだ何もありません' : 'まだデッキがありません';
+    if (pickMode) updatePickBar();
     return;
   }
   empty.style.display='none'; grid.style.display='flex';
@@ -647,6 +762,26 @@ function renderDeckListUI() {
   const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;
   const folderUnsureBadge = unsureCount > 0                     // ★ 追加
     ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
+
+  // ★ 追加：クイズ用デッキ選択モードでは、通常のプレイ/メニューボタンの代わりに
+  //   チェックボックスを出す。フォルダ本体をタップすれば中を見に行けるのはそのまま。
+  if (pickMode) {
+    const eligibleCount = collectDecksInFolder(f.id).filter(isDeckQuizPickable).length;
+    const impliedByAncestor = pickFolderAncestorSelected(f.parentId || null);
+    const disabled = eligibleCount === 0 || impliedByAncestor;
+    const checked = pickedFolderIds.has(f.id) || impliedByAncestor;
+    const cbClass = disabled ? 'pick-checkbox disabled' : checked
+      ? (pickedFolderIds.has(f.id) ? 'pick-checkbox checked' : 'pick-checkbox implied') : 'pick-checkbox';
+    return { key: `folder:${f.id}`, html: `
+  <div class="deck-card folder-card${disabled && !checked ? ' pick-disabled' : ''}" data-key="folder:${f.id}" onclick="openFolder('${f.id}')">
+    <div class="${cbClass}" onclick="togglePickFolder('${f.id}', event)">${checked ? '✓' : ''}</div>
+    <div class="deck-card-info">
+      <div class="deck-card-title">📁 ${esc(f.name)}</div>
+      <div class="deck-card-meta">${eligibleCount > 0 ? `${eligibleCount} デッキが対象` : '対象にできるデッキがありません'}${folderUnsureBadge}</div>
+    </div>
+  </div>` };
+  }
+
   return { key: `folder:${f.id}`, html: `
   <div class="deck-card folder-card" data-key="folder:${f.id}" onclick="openFolder('${f.id}')">
     <div class="deck-card-info">
@@ -728,6 +863,35 @@ function renderDeckListUI() {
     //   未公開（自分だけの下書き）デッキは他人には見えないデータなので、他の端末とは
     //   絶対に一致しないローカル専用キー（localdeck:）にし、サーバーには送らない。
     const orderKey = d.filename ? `deck:${d.filename}` : `localdeck:${d.id}`;
+
+    // ★ 追加：クイズ用デッキ選択モードでは、プレイ/メニューボタンの代わりに
+    //   カード全体をタップして選択できるチェックボックスUIにする。
+    if (pickMode) {
+      const eligible = isDeckQuizPickable(d);
+      const impliedByAncestor = pickFolderAncestorSelected(d.folderId || null);
+      const disabled = !eligible || impliedByAncestor;
+      const checked = pickedDeckIds.has(d.id) || impliedByAncestor;
+      const cbClass = disabled ? 'pick-checkbox disabled' : (checked ? 'pick-checkbox checked' : 'pick-checkbox');
+      const ineligibleNote = !eligible
+        ? `<div class="deck-card-note-ineligible">クイズには使えません（非公開・作成中のデッキ）</div>` : '';
+      return { key: orderKey, html: `
+    <div class="deck-card${disabled && !checked ? ' pick-disabled' : ''}" data-key="${orderKey}" onclick="togglePickDeck('${d.id}', event)">
+      <div class="${cbClass}">${checked ? '✓' : ''}</div>
+      <div class="deck-card-info">
+        ${subjectLabel}
+        <div class="deck-card-title">${esc(displayName)}</div>
+        <div class="deck-card-meta">
+          ${questionCount} 問
+          ${pubBadge}
+          ${quizArchiveBadge}
+          ${choiceModeBadge}
+          ${unsureBadge}
+        </div>
+        ${ineligibleNote}
+      </div>
+    </div>` };
+    }
+
     return { key: orderKey, html: `
     <div class="deck-card" data-key="${orderKey}">
       <div class="deck-card-info">
@@ -761,6 +925,7 @@ function renderDeckListUI() {
     return true;
   });
   grid.innerHTML = dedupedItems.map(it => it.html).join('');
+  if (pickMode) updatePickBar();
 }
 
 // ── パンくずリスト ────────────────────
@@ -1578,42 +1743,19 @@ function openDeckMenu(id) {
   const deck = decks.find(d => d.id === id);
   document.getElementById('menu-deck-name').textContent = deck.name;
   document.getElementById('menu-unpublish-item').style.display = deck.filename ? '' : 'none';
-  // ★ 追加：「みんなでクイズ」機能への入口。公開済み（filenameあり）のデッキだけ表示する
-  //   （Quiz.jsはサーバーのget_card_setでデッキを取得するため、非公開のローカル限定
-  //   デッキは対象外）。Cardmaker.htmlを直接編集せず、既存のmodal-deck-menu内に
-  //   動的にボタンを追加することで、HTML側の変更なしに機能を追加している。
-  ensureQuizMenuItem();
-  document.getElementById('menu-quiz-item').style.display = deck.filename ? '' : 'none';
   openModal('modal-deck-menu');
 }
 
-// ★ 追加：「みんなでクイズを始める」ボタンをmodal-deck-menuの中に1回だけ生成する。
-//   既存の menu-unpublish-item をテンプレートとして直前に挿入することで、
-//   既存の他ボタンと見た目の統一感をできるだけ保つ（HTML未編集での追加のため）。
-function ensureQuizMenuItem() {
-  if (document.getElementById('menu-quiz-item')) return;
-  const modal = document.getElementById('modal-deck-menu');
-  if (!modal) return;
-  const anchor = document.getElementById('menu-unpublish-item');
-  const btn = document.createElement('button');
-  btn.id = 'menu-quiz-item';
-  btn.type = 'button';
-  btn.textContent = '🎮 みんなでクイズを始める';
-  if (anchor) {
-    btn.className = anchor.className; // 既存メニュー項目と同じクラスで見た目を揃える
-  } else {
-    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:12px 16px;border:none;background:none;font-size:15px;cursor:pointer;';
-  }
-  btn.onclick = () => { closeModal('modal-deck-menu'); startQuizFromDeck(menuTargetId); };
-  if (anchor && anchor.parentElement) {
-    anchor.parentElement.insertBefore(btn, anchor);
-  } else {
-    modal.appendChild(btn);
-  }
+// ★ 「みんなでクイズを始める」は✏️メニューではなく「▶ プレイ」を押した先の
+//   モーダル（modal-play-mode）から呼ぶ。closeModal + startQuizFromDeck で、
+//   今プレイしようとしているデッキ（studyDeckId）をそのままクイズに渡す。
+function startQuizFromPlayMode() {
+  closeModal('modal-play-mode');
+  startQuizFromDeck(studyDeckId);
 }
 
-// ★ 追加：デッキ一覧の「⋮」メニューから、そのデッキを元にした「みんなでクイズ」の
-//   ホスト作成画面（Quiz.html）へ遷移する。
+// ★ デッキ一覧から、そのデッキを元にした「みんなでクイズ」のホスト作成画面
+//   （Quiz.html）へ遷移する。
 function startQuizFromDeck(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck || !deck.filename) {
@@ -3820,6 +3962,10 @@ async function openFolderPlayMode(folderId) {
     resumeItemF.style.display = 'none';
   }
 
+  // ★「みんなでクイズを始める」は単一デッキが前提の機能なので、フォルダのプレイでは出さない
+  //   （複数デッキ・フォルダごとまとめてクイズにしたい場合はQuiz.html側の「デッキを選ぶ」を使う）。
+  document.getElementById('play-mode-quiz-item').style.display = 'none';
+
   openModal('modal-play-mode');
 }
 // ★ プレイ開始のたびに、必ずサーバーから最新のカードを取り直す（force=true）。
@@ -4053,8 +4199,20 @@ async function openPlayMode(deckId) {
   // ★「クイズ過去問」フォルダの中のデッキ、および多肢選択デッキ（choiceMode有り）は、
   //   通常のフラッシュカード（すべて/わからないだけ/続きから の選択モーダル）
   //   ではなく、一人用選択式モードでプレイする。
+  //   ★ ただし公開済み（filenameあり）なら「みんなでクイズ」も選べるよう、
+  //     一人用選択式モーダルを出す前に軽く選ばせる（play-mode-itemと同じ見た目）。
   if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode) {
-    return startSoloQuiz(deckId);
+    if (!deck.filename) return startSoloQuiz(deckId);
+    const choice = await showCmChoiceDialog({
+      title: deck.name,
+      choices: [
+        { icon: '🔘', label: '一人でプレイ', sub: '選択式クイズに一人で挑戦する', value: 'solo' },
+        { icon: '🎮', label: 'みんなでクイズを始める', sub: '友達とオンラインで早押し4択', value: 'multi' },
+      ],
+    });
+    if (choice === 'multi') return startQuizFromDeck(deckId);
+    if (choice === 'solo') return startSoloQuiz(deckId);
+    return; // キャンセル
   }
   studyIsFolder = false;
   studyDeckId = deckId;
@@ -4102,6 +4260,11 @@ async function openPlayMode(deckId) {
   } else {
     resumeItemD.style.display = 'none';
   }
+
+  // ★「みんなでクイズを始める」：公開済み（filenameあり）のデッキだけ表示する
+  //   （Quiz.jsはサーバーのget_card_setでデッキを取得するため、非公開のローカル限定
+  //   デッキは対象外）。
+  document.getElementById('play-mode-quiz-item').style.display = deck.filename ? '' : 'none';
 
   // ★ 反転トグルを必ず見せるため、わからないカードの有無に関わらずモーダルを開く
   openModal('modal-play-mode');
@@ -5195,7 +5358,7 @@ document.addEventListener('click', function(e) {
 initMathPads();
 
 // ── 起動 ──────────────────────────────
-renderDeckList().then(jumpToDeckFromUrl);
+renderDeckList().then(() => { initPickModeFromUrl(); jumpToDeckFromUrl(); });
 
 // ===== Discord通知からのディープリンク対応 =====
 // ★ 追加：通知メッセージのリンク（例: Cardmaker.html?deck=set_xxxx.json）から
