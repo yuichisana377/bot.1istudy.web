@@ -727,6 +727,14 @@ html, body {
   border: 1px solid #fcd34d; padding: 1px 7px; border-radius: 20px; font-weight: 700;
 }
 
+/* ★ 追加：学習画面右上の「みんなのわかる率」バッジ */
+.study-understand-badge {
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+  background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+  padding: 3px 9px; border-radius: 20px;
+}
+
 /* プレイモード */
 .play-mode-item {
   display: flex; align-items: center; gap: .9rem;

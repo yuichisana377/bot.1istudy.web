@@ -1734,7 +1734,25 @@ async function renderDeckList() {
   try {
     await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
     renderDeckListUI();
+    preloadUnsureBadges();
   } catch(e) {}
+}
+
+// ★ 追加：一覧の「わからない」バッジ（🔖）は、そのデッキのカード本体が
+//   読み込み済み（cardsLoaded=true）でないと計算できない（804行目付近）。
+//   Safariなど長く使っている端末では過去にデッキを開いたときのキャッシュが
+//   残っているため気づきにくいが、Discordの内蔵ブラウザのようにストレージが
+//   毎回まっさらな環境だと、一覧を開いた直後はバッジが一件も出ないままになる。
+//   「わからない」の記録（studyDataCache.unsure）自体はカード本体と無関係に
+//   サーバー同期済みなので、記録があるデッキだけバックグラウンドでカード本体を
+//   読み込み直し、バッジを後から反映させる。
+//   ★ ensureDeckCardsLoaded() は完了時に list 画面なら自動で再描画するので、
+//     ここでは呼び出すだけでよい（await不要＝一覧の表示はブロックしない）。
+function preloadUnsureBadges() {
+  const targets = decks.filter(d =>
+    d.filename && d.cardsLoaded === false && (studyDataCache.unsure[d.filename] || []).length > 0
+  );
+  targets.forEach(d => ensureDeckCardsLoaded(d.id));
 }
 
 // ── デッキメニュー ─────────────────────
@@ -3727,10 +3745,10 @@ function loadStudyDataCache() {
   try {
     const d = JSON.parse(localStorage.getItem(STUDY_DATA_CACHE_KEY));
     if (d && typeof d === 'object') {
-      return { unsure: d.unsure || {}, progress: d.progress || {}, completed: d.completed || {} };
+      return { unsure: d.unsure || {}, progress: d.progress || {}, completed: d.completed || {}, seen: d.seen || {} };
     }
   } catch (e) {}
-  return { unsure: {}, progress: {}, completed: {} };
+  return { unsure: {}, progress: {}, completed: {}, seen: {} };
 }
 function saveStudyDataCache() {
   try { localStorage.setItem(STUDY_DATA_CACHE_KEY, JSON.stringify(studyDataCache)); } catch (e) {}
@@ -3781,6 +3799,7 @@ async function fetchAndMergeStudyData() {
       unsure:    data.data.unsure    || {},
       progress:  data.data.progress  || {},
       completed: data.data.completed || {},
+      seen:      data.data.seen      || {},
     };
     saveStudyDataCache();
     return true;
@@ -3828,6 +3847,54 @@ function saveUnsureSet(deckId, set) {
   else delete studyDataCache.unsure[key];
   saveStudyDataCache();
   pushStudyDataToServer('save_unsure', { deck_id: key, unsure: arr });
+}
+
+// ── みんなの「わかる率」用：実際に学習した（表示した）カードの記録 ──
+//   ★「わからない」と違い、一度記録したカードキーは外れない（学習済みという事実は
+//     消えないため）。公開デッキ（filenameあり）だけが対象（非公開デッキは
+//     「他の人」がいないので集計の意味がない）。
+function markCardSeen(deckId, card) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck || !deck.filename) return;
+  const key = deck.filename;
+  const already = studyDataCache.seen[key] || [];
+  const cKey = cardKey(card);
+  if (already.includes(cKey)) return; // 既に記録済みなら通信しない
+  const arr = [...already, cKey];
+  studyDataCache.seen[key] = arr;
+  saveStudyDataCache();
+  pushStudyDataToServer('save_seen', { deck_id: key, seen: arr });
+}
+
+// ★ 追加：学習画面右上に「みんなのわかる率」を出す（自分だけでなく、その公開デッキを
+//   学習した全員分の「学習済みカードのうち、今わからないマークが付いていない割合」）。
+//   フォルダをまとめてプレイしている場合は、対象フォルダ内の公開デッキ全部をまとめて集計する。
+//   非公開デッキだけの場合は「他の人」がいないので出さない。
+async function loadUnderstandingBadge() {
+  const badge = document.getElementById('study-understand-badge');
+  if (!badge) return;
+  badge.style.display = 'none';
+  const session = getLoginSession();
+  if (!session || !session.session_token) return;
+  const targetDecks = studyIsFolder
+    ? folderPlayDecks.filter(d => d.filename)
+    : decks.filter(d => d.id === studyDeckId && d.filename);
+  const filenames = [...new Set(targetDecks.map(d => d.filename))];
+  if (!filenames.length) return;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const qs = new URLSearchParams({ guild_id: GUILD_ID, session_token: session.session_token, filenames: filenames.join(',') });
+    const res = await fetch(`${API_BASE}deck_understanding?${qs.toString()}`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const data = await res.json();
+    // ★ まだ誰も（自分も含め）1枚も学習していなければ、0%という誤解を招く表示はしない
+    if (!data.ok || !data.studied) return;
+    const pct = Math.round((data.understood / data.studied) * 100);
+    badge.textContent = `🌐 わかる率 ${pct}%`;
+    badge.title = `学習済みカードのうち「わからない」が付いていない割合（みんなの合計 ${data.understood}/${data.studied}）`;
+    badge.style.display = '';
+  } catch (e) {} // 通信失敗時は出さないだけ（学習自体は止めない）
 }
 
 // ★ 学習の続きから再開するための進捗保存・読込・削除
@@ -4372,6 +4439,7 @@ async function startStudyMode(mode) {
   document.getElementById('study-done').style.display    = 'none';
   document.getElementById('study-content').style.display = 'flex';
   renderStudyCard();
+  loadUnderstandingBadge(); // ★ 追加：みんなの「わかる率」を右上に読み込む（非同期・表示はブロックしない）
 }
 
 // ══════════ 一覧表示（問題と答えをまとめて見る） ══════════
@@ -4616,6 +4684,7 @@ function renderStudyCard() {
     return;
   }
   const c = studyCards[studyIdx];
+  markCardSeen(studyIsFolder ? c.__deckId : studyDeckId, c); // ★ 追加：みんなの「わかる率」用に学習済み記録
 
   // ★ 反転モードなら「問題」欄に解答、「解答」欄に問題文を出す（解説はそのまま解答側に表示）
   const qText = studyReverse ? c.answer   : c.question;
@@ -5493,6 +5562,7 @@ async function forceRefreshOnReturn() {
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
+    preloadUnsureBadges();
   } finally {
     isForceRefreshing = false;
   }
