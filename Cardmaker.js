@@ -739,6 +739,10 @@ function renderDeckListUI() {
   renderBreadcrumb();
   renderInProgressUI(); // ★ 追加：ホームにプレイ中（続きから再開できる）デッキ・フォルダを表示
 
+  // ★ 追加：初回描画が終わったので、JS読み込み前用の静的スケルトンを消す
+  const skeleton = document.getElementById('deck-skeleton');
+  if (skeleton) skeleton.style.display = 'none';
+
   const grid  = document.getElementById('deck-grid');
   const empty = document.getElementById('deck-list-empty');
 
@@ -5011,6 +5015,28 @@ function closeImgLightbox() {
 function openDrawer() {
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('open');
+  prefetchOtherPages(); // ★ 追加：メニューを開いた瞬間に他ページを裏で先読み
+}
+// ★ 追加：ドロワーを開いた時点（＝まだどのページに行くか決める前）で、
+//   他ページのJS/CSSをバックグラウンドで先読み（prefetch）しておく。
+//   実際にメニューをタップしたときには既にブラウザキャッシュに入っている
+//   ことが多く、体感の切り替え速度が上がる。一度実行したら再実行しない。
+let _didPrefetchOtherPages = false;
+function prefetchOtherPages() {
+  if (_didPrefetchOtherPages) return;
+  _didPrefetchOtherPages = true;
+  [
+    '/Plan.js',
+    '/Timetable.js',
+    '/StudyLog.js', '/StudyLog.css',
+    '/Notice.js',
+    '/ServiceInfo.js',
+  ].forEach(href => {
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.href = href;
+    document.head.appendChild(link);
+  });
 }
 function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');

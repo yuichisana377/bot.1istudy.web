@@ -334,6 +334,23 @@ html, body {
 }
 
 /* ── デッキ一覧 ── */
+/* ★ 追加：JSの読み込み・実行が終わる前に見える、静的なスケルトン表示。
+   これが無いと、JS実行前の一瞬「まだデッキがありません」という
+   誤った空表示が見えてしまっていた（HTML側で#deck-list-emptyが
+   デフォルトで見えるようになっていたため）。読み込みが遅い回線・
+   Discordの内蔵ブラウザなどでは、この一瞬が数秒続いて見えることもあった。 */
+.deck-skeleton { display: flex; flex-direction: column; gap: .9rem; }
+.deck-skeleton-card {
+  height: 72px; border-radius: var(--r-lg);
+  background: linear-gradient(90deg, var(--border-light) 25%, var(--border) 37%, var(--border-light) 63%);
+  background-size: 400% 100%;
+  animation: deck-skeleton-shimmer 1.4s ease infinite;
+}
+@keyframes deck-skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 .deck-grid { display: flex; flex-direction: column; gap: .9rem; }
 .deck-card {
   background: var(--surface); border-radius: var(--r-lg);

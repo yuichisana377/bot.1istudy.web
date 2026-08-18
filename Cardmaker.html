@@ -108,7 +108,14 @@
         <div class="completed-label">✅ プレイ済み（完了）</div>
         <div class="completed-scroll" id="completed-scroll"></div>
       </div>
-      <div id="deck-list-empty" class="empty-state">
+      <!-- ★ 追加：JS読み込み前から見える静的スケルトン。初回描画（renderDeckListUI）が
+           終わった時点でJS側が非表示にする。 -->
+      <div class="deck-skeleton" id="deck-skeleton">
+        <div class="deck-skeleton-card"></div>
+        <div class="deck-skeleton-card"></div>
+        <div class="deck-skeleton-card"></div>
+      </div>
+      <div id="deck-list-empty" class="empty-state" style="display:none">
         <div class="empty-icon">📭</div>
         <div id="deck-list-empty-text">まだデッキがありません</div>
         <div style="margin-top:.5rem;font-size:13px">右下の ＋ からデッキやフォルダを作成</div>
