@@ -955,120 +955,21 @@ function folderPathLabel(folderId) {
 }
 
 // ============================================================
-//  ★ 単語検索（screen-search）
+//  ★ 単語検索（screen-search）は Cardmaker-search.js に分離した
 //  ─────────────────────────────────────────────
-//  ・検索対象は「検索を開いた時点で表示していたフォルダ」の中身だけ
-//    （サブフォルダは含む。collectDecksInFolder と同じ範囲）。
-//    ホーム画面（フォルダを開いていない状態）から開けば全体が対象になる。
-//  ・問題文・解答のどちらかに含まれていればヒットとする。
-//  ・「多少の表記ゆれ」を許容するため、比較前に正規化する：
-//      - Unicode正規化(NFKC)で全角/半角の違いを吸収
-//      - カタカナ→ひらがなに変換して、ひらがな/カタカナの違いを無視
-//      - 大文字/小文字を無視
-//      - 空白（半角・全角）を無視
-//  ・カード本体が未読み込みの公開デッキは、検索を始める前にまとめて
-//    読み込んでおく（読み込み中は件数を表示する）。
-// ============================================================
-let searchScopeFolderId = null; // 検索対象として固定したフォルダ（開いた時点のcurrentFolderId）
-let searchTargetDecks   = null; // 読み込み準備が済んだ、検索対象デッキの配列
-let searchDebounceTimer = null;
-
-function normalizeForSearch(s) {
-  if (!s) return '';
-  let t = String(s).normalize('NFKC').toLowerCase();
-  t = t.replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)); // カタカナ→ひらがな
-  t = t.replace(/[\s　]+/g, ''); // 半角・全角の空白を除去
-  return t;
-}
-
+//  一覧の初期表示には不要な機能なので、実体は別ファイルに移し、
+//  loadChunksInBackground()（後述）が初期表示後にバックグラウンドで
+//  読み込む。ここに残す openSearchScreen / onSearchInput は、HTML側の
+//  onclick/oninput から直接呼ばれる入口（Cardmaker.html）が、万一まだ
+//  読み込みが間に合っていないタイミングで呼ばれても壊れないための
+//  薄いプロキシ。チャンク読み込みが終わると同名の本物の関数で
+//  上書きされるので、これらのプロキシは実質「読み込みを待つだけ」になる。
 async function openSearchScreen() {
-  searchScopeFolderId = currentFolderId;
-  searchTargetDecks = null;
-  document.getElementById('search-input').value = '';
-  document.getElementById('search-results').innerHTML = '';
-  const scopeLabel = folderPathLabel(searchScopeFolderId);
-  document.getElementById('search-scope-label').textContent =
-    scopeLabel ? `📁 ${scopeLabel} の中を検索します` : '📚 すべてのデッキから検索します';
-  showScreen('search');
-  setTimeout(() => document.getElementById('search-input').focus(), 200);
-  await prepareSearchScope();
+  await loadChunkWithFeedback('search', '/Cardmaker-search.js');
+  return openSearchScreen(); // ★ この時点では本物の実装に差し替わっている
 }
-
-// ★ 検索対象デッキのカード本体を、必要なものだけ先にまとめて読み込んでおく
-async function prepareSearchScope() {
-  const statusEl = document.getElementById('search-status');
-  const targets = collectDecksInFolder(searchScopeFolderId)
-    .filter(d => (d.filename ? (d.count ?? d.cards.length) : d.cards.length) > 0);
-  const unloaded = targets.filter(d => d.filename && !d.cardsLoaded);
-  if (unloaded.length) {
-    statusEl.style.display = 'block';
-    statusEl.textContent = `問題データを読み込み中…（${unloaded.length}件のデッキ）`;
-    await Promise.all(unloaded.map(d => ensureDeckCardsLoaded(d.id)));
-  }
-  statusEl.style.display = 'none';
-  // ★ 途中でユーザーが検索画面から離れていた場合は反映しない
-  if (!document.getElementById('screen-search').classList.contains('active')) return;
-  searchTargetDecks = targets;
-  runSearch();
-}
-
 function onSearchInput() {
-  clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(runSearch, 150);
-}
-
-function runSearch() {
-  const resultsEl = document.getElementById('search-results');
-  const raw = document.getElementById('search-input').value.trim();
-
-  if (!searchTargetDecks) return; // まだ読み込み準備中（準備完了後に自動で1回呼ばれる）
-
-  if (!raw) {
-    resultsEl.innerHTML = `<div class="search-hint">🔍 キーワードを入力してください</div>`;
-    return;
-  }
-
-  const nq = normalizeForSearch(raw);
-  const hits = [];
-  for (const d of searchTargetDecks) {
-    for (const c of d.cards) {
-      const q = mathToPlainText(c.question), a = mathToPlainText(c.answer);
-      if (normalizeForSearch(q).includes(nq) || normalizeForSearch(a).includes(nq)) {
-        hits.push({ deckId: d.id, deckName: d.name, cardId: c.id, q, a });
-      }
-    }
-  }
-
-  if (!hits.length) {
-    resultsEl.innerHTML = `<div class="search-hint">「${esc(raw)}」に該当する問題は見つかりませんでした</div>`;
-    return;
-  }
-
-  resultsEl.innerHTML = `<div class="search-results">` + hits.map(h => `
-    <div class="search-result-item" onclick="openSearchResult('${h.deckId}','${h.cardId}')">
-      <div class="search-result-deck">${esc(h.deckName)}</div>
-      <div class="search-result-q">${esc(h.q)}</div>
-      <div class="search-result-a">${esc(h.a)}</div>
-    </div>`).join('') + `</div>`;
-}
-
-// ★ 検索結果をタップしたら、編集画面ではなく「一覧で見る」画面（そのデッキの
-//   全問題をまとめて見られる画面）を開き、該当の問題の位置まで自動でスクロールする。
-//   検索の準備段階（prepareSearchScope）で対象デッキのカードは読み込み済みのはず。
-async function openSearchResult(deckId, cardId) {
-  const deck = decks.find(d => d.id === deckId);
-  if (!deck) return;
-  const card = deck.cards.find(c => c.id === cardId);
-  if (!card) return;
-
-  studyIsFolder = false;
-  studyDeckId = deckId;
-  listViewFilter = 'all';
-  listViewReverse = false;
-  document.getElementById('list-view-title').textContent = deck.name;
-  pendingListViewScrollKey = cardKey(card);
-  showScreen('list-view');
-  renderListView();
+  loadChunk('search', '/Cardmaker-search.js').then(() => onSearchInput());
 }
 
 // ── プレイ中（続きから再開できる）デッキ・フォルダ ────────────────────
@@ -5068,6 +4969,53 @@ function showBanner(msg, bg, color) {
   }, 3500);
 }
 
+// ── チャンク（機能ごとに分割した追加JS）の読み込み ──────────
+//   ★ 追加：Cardmaker.jsを丸ごと最初に読み込むと重いので、一覧表示に
+//   最低限必要な部分（このファイル）だけをまず読み込み、検索など
+//   すぐには使わない機能は別ファイルに分けて、初期表示が終わった後に
+//   バックグラウンドで順番に読み込んでいく（使う/使わないにかかわらず、
+//   1つ読み終わったら次、と順に読み進める）。
+//   通常はユーザーがその機能を使う前に読み込みが終わっているはずだが、
+//   万一間に合っていない状態でその機能が呼ばれても、loadChunk() が
+//   読み込み完了まで待ってから続きを実行するので壊れない。
+const _chunkPromises = {};
+const _chunkDone = new Set(); // ★ 追加：既に読み込み完了したチャンク名（ローディング表示の要否判定用）
+function loadChunk(name, src) {
+  if (_chunkPromises[name]) return _chunkPromises[name];
+  _chunkPromises[name] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => { _chunkDone.add(name); resolve(); };
+    s.onerror = () => reject(new Error('chunk load failed: ' + src));
+    document.head.appendChild(s);
+  });
+  return _chunkPromises[name];
+}
+// ★ 追加：まだ読み込み終わっていないチャンクを使おうとした場合だけ、
+//   （通常は背景読み込みで既に終わっているので出番はまれ）ページ遷移
+//   用と同じローディング表示を一時的に出しつつ待つ。タップしても
+//   何も起きないように見える事故を防ぐための保険。
+async function loadChunkWithFeedback(name, src) {
+  if (_chunkDone.has(name)) return loadChunk(name, src);
+  const overlay = document.getElementById('page-nav-loading');
+  if (overlay) overlay.classList.add('show');
+  try {
+    await loadChunk(name, src);
+  } finally {
+    if (overlay) overlay.classList.remove('show');
+  }
+}
+// ★ 一覧の初期表示が終わった後に呼ばれる（起動処理を参照）。
+//   ここに載せたチャンクを順番に（1つ終わったら次を）読み込んでいく。
+async function loadChunksInBackground() {
+  const chunks = [
+    ['search', '/Cardmaker-search.js'],
+  ];
+  for (const [name, src] of chunks) {
+    try { await loadChunk(name, src); } catch (e) { console.warn('[cardmaker]', e); }
+  }
+}
+
 // ── ユーティリティ ────────────────────
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
@@ -5465,6 +5413,7 @@ initMathPads();
 
 // ── 起動 ──────────────────────────────
 renderDeckList().then(() => { initPickModeFromUrl(); jumpToDeckFromUrl(); });
+loadChunksInBackground(); // ★ 追加：初期表示をブロックせず、残りの機能チャンクを裏で順に読み込む
 
 // ===== Discord通知からのディープリンク対応 =====
 // ★ 追加：通知メッセージのリンク（例: Cardmaker.html?deck=set_xxxx.json）から
