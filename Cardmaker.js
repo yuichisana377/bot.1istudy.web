@@ -3948,221 +3948,15 @@ async function openFolderPlayMode(folderId) {
 //   といったすれ違いが起きやすかった。プレイのたびに読み込み直すことで、
 //   誰かが編集した直後でも次にプレイした人にはほぼ即座に反映される。
 // ============================================================
-//  ★ 一人用選択式クイズ（choice_modeを持つ選択式デッキ全般で使う）
+//  ★ 一人用選択式クイズは Cardmaker-quizplay.js に分離した
 //  ─────────────────────────────────────────────
-//  みんなでクイズ（Quiz.js）でホストが作ったオリジナル4択クイズは、
-//  bot.py側で自動的に「クイズ過去問」フォルダへデッキとしてアーカイブされる
-//  （各カードに choices/correct_indices が入る単一正解デッキとして）。
-//  ユーザーがCardMakerで自作する多肢選択デッキ（2〜5択・単一/複数正解）も
-//  同じ画面・同じデータ形式（choices/correct_indices）でここから遊べる。
-//  ライブルームには接続せず、この画面の中だけで完結する一人用モード。
-//  プレイ後はサーバーにスコアを送り、そのデッキの過去の挑戦者全員の中での
-//  順位（ランキング）を取得して表示する。
-// ============================================================
-let soloQuizDeckId  = null;
-let soloQuizCards   = [];
-let soloQuizIdx     = 0;
-let soloQuizScore   = 0;
-let soloQuizAnswered = false;
-let soloQuizSelected = new Set();  // ★ 追加：複数正解モードで、まだ回答確定前に選んでいる選択肢
-
+//  実体は別ファイルに移し、loadChunksInBackground() が背景で読み込む。
+//  ここに残す startSoloQuiz は、openPlayMode()（下記、core側）や
+//  結果画面の「もう一度挑戦する」ボタン（Cardmaker.html）から呼ばれる
+//  入口。チャンク読み込み完了後は同名の本物の実装に上書きされる。
 async function startSoloQuiz(deckId) {
-  const deck = decks.find(d => d.id === deckId);
-  if (!deck) return;
-
-  await waitForPendingSync(deckId);
-  let result = await ensureDeckCardsLoaded(deckId, true);
-  while (!result.ok) {
-    const retry = await showCmConfirm({
-      title: '読み込みに失敗しました',
-      desc: '通信環境を確認してもう一度お試しください。',
-      okLabel: 'もう一度試す', cancelLabel: 'やめる',
-    });
-    if (!retry) return;
-    result = await ensureDeckCardsLoaded(deckId, true);
-  }
-
-  const freshDeck = decks.find(d => d.id === deckId);
-  // ★ 修正：4択固定だったのを2〜5択に一般化。旧形式（correct_index単数）の
-  //   カードも correct_indices（配列）へ正規化してから使う（元の配列は書き換えない）。
-  const playable = freshDeck.cards
-    .filter(c => Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN)
-    .map(c => ({
-      ...c,
-      correct_indices: Array.isArray(c.correct_indices) ? c.correct_indices
-        : (typeof c.correct_index === 'number' ? [c.correct_index] : []),
-    }))
-    .filter(c => c.correct_indices.length >= 1);
-  if (!playable.length) {
-    await showCmAlert({ title: '選択式の問題がありません', desc: 'このデッキには選択式の問題がまだありません。' });
-    return;
-  }
-
-  soloQuizDeckId = deckId;
-  soloQuizCards  = [...playable];
-  // 出題順をシャッフル（Fisher-Yates。shuffleStudy()と同じやり方）
-  for (let i = soloQuizCards.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [soloQuizCards[i], soloQuizCards[j]] = [soloQuizCards[j], soloQuizCards[i]];
-  }
-  soloQuizIdx = 0;
-  soloQuizScore = 0;
-
-  document.getElementById('qp-title').textContent = freshDeck.name;
-  document.getElementById('qp-result-content').style.display = 'none';
-  document.getElementById('qp-play-content').style.display = '';
-  showScreen('quiz-play');
-  renderQuizPlayQuestion();
-}
-
-function renderQuizPlayQuestion() {
-  const card = soloQuizCards[soloQuizIdx];
-  soloQuizAnswered = false;
-  soloQuizSelected = new Set();
-  document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
-  const pct = soloQuizCards.length > 1 ? (soloQuizIdx / soloQuizCards.length) * 100 : 0;
-  document.getElementById('qp-prog-fill').style.width = pct + '%';
-  document.getElementById('qp-prog-label').textContent = `${soloQuizIdx + 1} / ${soloQuizCards.length}`;
-  setMathText(document.getElementById('qp-q-text'), card.question);
-  document.getElementById('qp-q-imgs').innerHTML = (card.imgs_q || []).map(s =>
-    `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
-
-  // ★ 修正：4択固定だったのを、カードの選択肢数（2〜5）に合わせて描画する。
-  //   単一/複数正解はデッキ単位ではなく、この問題の正解が何個あるか（correct_indices.length）
-  //   で問題ごとに自動的に決まる。
-  const isMulti = card.correct_indices.length > 1;
-  const choicesEl = document.getElementById('qp-choices');
-  choicesEl.innerHTML = card.choices.map((c, i) => `
-    <button type="button" class="qp-choice-btn" onclick="${isMulti ? `toggleQuizPlayMultiChoice(${i})` : `answerQuizPlay(${i})`}">
-      <b>${CHOICE_LETTERS[i]}.</b> <span id="qp-choice-text-${i}"></span>
-    </button>`).join('');
-  card.choices.forEach((c, i) => setMathText(document.getElementById(`qp-choice-text-${i}`), c));
-
-  document.getElementById('qp-next-wrap').style.display = 'none';
-  // ★ 追加：複数正解モードは選び終えてから送信ボタンで確定する
-  document.getElementById('qp-submit-wrap').style.display = isMulti ? '' : 'none';
-}
-
-// ★ 追加：複数正解モードで、選択肢のON/OFFを切り替える（まだ回答は確定しない）
-function toggleQuizPlayMultiChoice(idx) {
-  if (soloQuizAnswered) return;
-  const btn = document.querySelectorAll('#qp-choices .qp-choice-btn')[idx];
-  if (soloQuizSelected.has(idx)) {
-    soloQuizSelected.delete(idx);
-    btn.classList.remove('qp-selected');
-  } else {
-    soloQuizSelected.add(idx);
-    btn.classList.add('qp-selected');
-  }
-}
-
-// ★ 追加：複数正解モードの回答を確定する（qp-submit-btnから呼ばれる）
-function submitQuizPlayMulti() {
-  if (soloQuizAnswered || soloQuizSelected.size === 0) return;
-  soloQuizAnswered = true;
-  const card = soloQuizCards[soloQuizIdx];
-  const correctSet = new Set(card.correct_indices);
-  // ★ 選んだ選択肢の集合が正解の集合と完全に一致していれば正解とする
-  const isCorrect = correctSet.size === soloQuizSelected.size && [...correctSet].every(i => soloQuizSelected.has(i));
-  if (isCorrect) {
-    soloQuizScore++;
-    document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
-  }
-
-  [...document.querySelectorAll('#qp-choices .qp-choice-btn')].forEach((btn, i) => {
-    btn.disabled = true;
-    btn.classList.remove('qp-selected');
-    if (correctSet.has(i)) btn.classList.add('qp-correct');
-    else if (soloQuizSelected.has(i)) btn.classList.add('qp-wrong');
-    else btn.classList.add('qp-dim');
-  });
-
-  document.getElementById('qp-submit-wrap').style.display = 'none';
-  document.getElementById('qp-next-wrap').style.display = '';
-  document.getElementById('qp-next-btn').textContent =
-    soloQuizIdx === soloQuizCards.length - 1 ? '結果を見る →' : '次へ →';
-}
-
-function answerQuizPlay(idx) {
-  if (soloQuizAnswered) return;
-  soloQuizAnswered = true;
-  const card = soloQuizCards[soloQuizIdx];
-  if (card.correct_indices.includes(idx)) {
-    soloQuizScore++;
-    document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
-  }
-
-  [...document.querySelectorAll('#qp-choices .qp-choice-btn')].forEach((btn, i) => {
-    btn.disabled = true;
-    if (card.correct_indices.includes(i)) btn.classList.add('qp-correct');
-    else if (i === idx) btn.classList.add('qp-wrong');
-    else btn.classList.add('qp-dim');
-  });
-
-  document.getElementById('qp-next-wrap').style.display = '';
-  document.getElementById('qp-next-btn').textContent =
-    soloQuizIdx === soloQuizCards.length - 1 ? '結果を見る →' : '次へ →';
-}
-
-function quizPlayNext() {
-  soloQuizIdx++;
-  if (soloQuizIdx >= soloQuizCards.length) {
-    finishSoloQuiz();
-  } else {
-    renderQuizPlayQuestion();
-  }
-}
-
-async function finishSoloQuiz() {
-  document.getElementById('qp-play-content').style.display = 'none';
-  document.getElementById('qp-result-content').style.display = '';
-
-  const total = soloQuizCards.length;
-  document.getElementById('qp-result-score').textContent = `${soloQuizScore} / ${total} 問正解！`;
-  document.getElementById('qp-result-rank').textContent = '結果を送信しています…';
-  document.getElementById('qp-leaderboard').innerHTML = '';
-
-  const session = getLoginSession();
-  const deck = decks.find(d => d.id === soloQuizDeckId);
-  if (!session || !deck || !deck.filename) {
-    document.getElementById('qp-result-rank').textContent = '';
-    return;
-  }
-
-  try {
-    await fetch(`${API_BASE}quiz_archive_submit_score`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        guild_id: GUILD_ID, session_token: session.session_token,
-        filename: deck.filename, score: soloQuizScore, total,
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch (e) { /* スコア送信に失敗してもランキング表示は試みる */ }
-
-  try {
-    const res = await fetch(`${API_BASE}quiz_archive_leaderboard?filename=${encodeURIComponent(deck.filename)}`, { signal: AbortSignal.timeout(8000) });
-    const data = await res.json();
-    if (data.ok) {
-      renderQuizLeaderboard(data.leaderboard, session.student_id);
-    } else {
-      document.getElementById('qp-result-rank').textContent = '';
-    }
-  } catch (e) {
-    document.getElementById('qp-result-rank').textContent = '';
-  }
-}
-
-function renderQuizLeaderboard(rows, myStudentId) {
-  const myRank = rows.findIndex(r => r.student_id === myStudentId) + 1;
-  document.getElementById('qp-result-rank').textContent =
-    myRank > 0 ? `あなたの順位：${myRank} 位 / ${rows.length} 人中` : '';
-  document.getElementById('qp-leaderboard').innerHTML = rows.map((r, i) => `
-    <div class="qp-lb-row${r.student_id === myStudentId ? ' me' : ''}">
-      <span class="qp-lb-rank">${i + 1}</span>
-      <span class="qp-lb-name">${esc(r.nickname)}</span>
-      <span class="qp-lb-score">${r.score} / ${r.total}</span>
-    </div>`).join('');
+  await loadChunkWithFeedback('quizplay', '/Cardmaker-quizplay.js');
+  return startSoloQuiz(deckId); // ★ この時点では本物の実装に差し替わっている
 }
 
 async function openPlayMode(deckId) {
@@ -4347,207 +4141,20 @@ async function startStudyMode(mode) {
   loadUnderstandingBadge(); // ★ 追加：みんなの「わかる率」を右上に読み込む（非同期・表示はブロックしない）
 }
 
-// ══════════ 一覧表示（問題と答えをまとめて見る） ══════════
-// ★ 追加：プレイモード選択のところから「一覧で見る」を選ぶと、1問ずつめくる
-//   学習画面ではなく、全カードの問題と答えをまとめてスクロールで見られる
-//   一覧画面を開く。studyIsFolder / studyDeckId / studyFolderId / folderPlayDecks は
-//   openPlayMode() / openFolderPlayMode() で既に設定・読み込み済みのものをそのまま使う。
-let listViewFilter = 'all';   // 'all' | 'unsure'
-let listViewReverse = false;  // 問題と解答を逆にするか
-// ★ 検索結果などから、この一覧を開いたら特定の問題までスクロールしたい場合に
-//   キー（cardKey）をセットしておく。renderListView() が描画後に1回だけ消費する。
-let pendingListViewScrollKey = null;
-
-function openListView() {
-  listViewReverse = document.getElementById('reverse-mode-checkbox').checked;
-  listViewFilter = 'all';
-  closeModal('modal-play-mode');
-
-  let title;
-  if (studyIsFolder) {
-    const folder = folders.find(f => f.id === studyFolderId);
-    title = folder ? `📁 ${folder.name}` : 'フォルダ';
-  } else {
-    const deck = decks.find(d => d.id === studyDeckId);
-    title = deck ? deck.name : '';
-  }
-  document.getElementById('list-view-title').textContent = title;
-
-  showScreen('list-view');
-  renderListView();
-}
-
-// ★ 一覧の元データは studyCards のようなスナップショットを持たず、
-//   毎回 decks / folderPlayDecks から直接読み直す。そのため編集で
-//   内容が変わってもここを再描画するだけで常に最新の内容が反映される。
-function getListViewPool() {
-  if (studyIsFolder) {
-    const pool = [];
-    folderPlayDecks.forEach(d => d.cards.forEach(c => pool.push({ ...c, __deckId: d.id })));
-    return pool;
-  }
-  const deck = decks.find(d => d.id === studyDeckId);
-  return deck ? [...deck.cards] : [];
-}
-
-function listViewIsUnsure(c) {
-  const deckId = c.__deckId || studyDeckId;
-  return getUnsureSet(deckId).has(cardKey(c));
-}
-
-function setListViewFilter(mode) {
-  listViewFilter = mode;
-  renderListView();
-}
-
-function toggleListViewReverse() {
-  listViewReverse = !listViewReverse;
-  renderListView();
-}
-
-function renderListView() {
-  const pool = getListViewPool();
-  const unsureCount = pool.filter(listViewIsUnsure).length;
-  const cards = listViewFilter === 'unsure' ? pool.filter(listViewIsUnsure) : pool;
-
-  document.getElementById('list-view-tab-all').textContent = `すべて (${pool.length})`;
-  document.getElementById('list-view-tab-unsure').textContent = `わからないだけ (${unsureCount})`;
-  document.getElementById('list-view-tab-all').classList.toggle('active', listViewFilter === 'all');
-  document.getElementById('list-view-tab-unsure').classList.toggle('active', listViewFilter === 'unsure');
-
-  const wrap = document.getElementById('list-view-items');
-  wrap.innerHTML = '';
-
-  if (!cards.length) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.innerHTML = `<div class="empty-icon">📭</div>${listViewFilter === 'unsure' ? 'わからないカードはありません' : 'カードがありません'}`;
-    wrap.appendChild(empty);
-    return;
-  }
-
-  cards.forEach((c, i) => {
-    const deckId = c.__deckId || studyDeckId;
-    const qText  = listViewReverse ? c.answer   : c.question;
-    const qImgs  = listViewReverse ? c.imgs_a   : c.imgs_q;
-    const aText  = listViewReverse ? c.question : c.answer;
-    const aImgs  = listViewReverse ? c.imgs_q   : c.imgs_a;
-
-    const item = document.createElement('div');
-    item.className = 'list-view-item';
-    item.dataset.key = cardKey(c); // ★ 検索結果などから、この問題までスクロールするための目印
-
-    const head = document.createElement('div');
-    head.className = 'list-view-item-head';
-
-    const num = document.createElement('div');
-    num.className = 'list-view-item-num';
-    num.textContent = i + 1;
-    head.appendChild(num);
-
-    if (studyIsFolder) {
-      const d = decks.find(x => x.id === deckId);
-      if (d) {
-        const tag = document.createElement('div');
-        tag.className = 'list-view-deck-tag';
-        tag.textContent = d.name;
-        head.appendChild(tag);
-      }
-    }
-
-    if (listViewIsUnsure(c)) {
-      const badge = document.createElement('span');
-      badge.className = 'list-view-unsure-badge';
-      badge.textContent = '🔖';
-      head.appendChild(badge);
-    }
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'list-view-edit-btn';
-    editBtn.textContent = '✏️';
-    editBtn.onclick = () => editListViewCard(cardKey(c), deckId);
-    head.appendChild(editBtn);
-
-    item.appendChild(head);
-
-    const qTag = document.createElement('div');
-    qTag.className = 'list-view-q-tag';
-    qTag.textContent = '問題';
-    item.appendChild(qTag);
-
-    const qEl = document.createElement('div');
-    qEl.className = 'list-view-q-text';
-    item.appendChild(qEl);
-    setMathText(qEl, qText);
-
-    if (qImgs && qImgs.length) {
-      const qImgWrap = document.createElement('div');
-      qImgWrap.className = 'list-view-imgs';
-      qImgWrap.innerHTML = qImgs.map(s => `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
-      item.appendChild(qImgWrap);
-    }
-
-    const aTag = document.createElement('div');
-    aTag.className = 'list-view-a-tag';
-    aTag.textContent = '解答';
-    item.appendChild(aTag);
-
-    const aEl = document.createElement('div');
-    aEl.className = 'list-view-a-text';
-    item.appendChild(aEl);
-    setMathText(aEl, aText);
-
-    if (aImgs && aImgs.length) {
-      const aImgWrap = document.createElement('div');
-      aImgWrap.className = 'list-view-imgs';
-      aImgWrap.innerHTML = aImgs.map(s => `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
-      item.appendChild(aImgWrap);
-    }
-
-    if (c.explanation) {
-      const eTag = document.createElement('div');
-      eTag.className = 'list-view-e-tag';
-      eTag.textContent = '解説';
-      item.appendChild(eTag);
-
-      const eEl = document.createElement('div');
-      eEl.className = 'list-view-e-text';
-      item.appendChild(eEl);
-      setMathText(eEl, c.explanation);
-    }
-
-    wrap.appendChild(item);
-  });
-
-  // ★ 検索結果などから「この問題までスクロールして」と指定されていれば、
-  //   描画完了後にその位置まで自動でスクロールし、見つけやすいよう一瞬ハイライトする。
-  if (pendingListViewScrollKey) {
-    const key = pendingListViewScrollKey;
-    pendingListViewScrollKey = null;
-    const target = wrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
-    if (target) {
-      requestAnimationFrame(() => {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        target.classList.add('list-view-item-highlight');
-        setTimeout(() => target.classList.remove('list-view-item-highlight'), 1800);
-      });
-    }
-  }
-}
-
-// ★ 一覧画面のカードをタップで編集する（保存後は renderListView() が呼ばれ再描画される）
-async function editListViewCard(key, deckId) {
-  const ok = await reloadCardBeforeEdit(deckId);
-  if (!ok) return; // ユーザーが読み込みを中止した
-
-  const deck = decks.find(d => d.id === deckId);
-  const freshCard = deck ? deck.cards.find(x => cardKey(x) === key) : null;
-  if (!freshCard) {
-    await showCmAlert({ title: 'このカードは既に削除されています', desc: '最新の内容に更新しました。' });
-    renderListView();
-    return;
-  }
-  openCardEditModalCommon(deckId, freshCard, 'listview');
+// ══════════ 「一覧で見る」機能は Cardmaker-listview.js に分離した ══════════
+//   実体は別ファイルに移し、loadChunksInBackground() が背景で読み込む。
+//   ここに残す openListView は、Cardmaker.html（プレイモード選択の
+//   「一覧で見る」項目）から呼ばれる入口。チャンク読み込み完了後は
+//   同名の本物の実装に上書きされる。
+//   （setListViewFilter/toggleListViewReverse/editListViewCard などは、
+//   一覧で見る画面が実際に開いた後にしか押せないボタンからしか呼ばれない
+//   ため、openListView が読み込みを待つことで間接的に保護されている。
+//   ただし検索結果からの直接ジャンプ（Cardmaker-search.js の
+//   openSearchResult）だけは openListView を経由しないため、
+//   そちら側でも別途チャンクの読み込みを待っている。）
+async function openListView() {
+  await loadChunkWithFeedback('listview', '/Cardmaker-listview.js');
+  return openListView(); // ★ この時点では本物の実装に差し替わっている
 }
 
 // ★ 追加：プレイ中のカードが「元のデッキ順で何問目か」を、
@@ -5010,6 +4617,8 @@ async function loadChunkWithFeedback(name, src) {
 async function loadChunksInBackground() {
   const chunks = [
     ['search', '/Cardmaker-search.js'],
+    ['quizplay', '/Cardmaker-quizplay.js'],
+    ['listview', '/Cardmaker-listview.js'],
   ];
   for (const [name, src] of chunks) {
     try { await loadChunk(name, src); } catch (e) { console.warn('[cardmaker]', e); }

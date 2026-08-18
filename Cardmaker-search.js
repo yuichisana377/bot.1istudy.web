@@ -107,11 +107,16 @@ function runSearch() {
 // ★ 検索結果をタップしたら、編集画面ではなく「一覧で見る」画面（そのデッキの
 //   全問題をまとめて見られる画面）を開き、該当の問題の位置まで自動でスクロールする。
 //   検索の準備段階（prepareSearchScope）で対象デッキのカードは読み込み済みのはず。
+//   ★ 一覧で見る画面（listViewFilter/renderListView等）は Cardmaker-listview.js
+//   に分離されているため、ここから直接触る前に読み込みを待つ必要がある
+//   （openListView()を経由しない唯一の入口のため）。
 async function openSearchResult(deckId, cardId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
   const card = deck.cards.find(c => c.id === cardId);
   if (!card) return;
+
+  await loadChunkWithFeedback('listview', '/Cardmaker-listview.js');
 
   studyIsFolder = false;
   studyDeckId = deckId;
