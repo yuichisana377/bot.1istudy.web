@@ -63,86 +63,98 @@
         </div>
       </div>
 
-      <div class="service-card">
-        <div class="service-card-header">
-          <span class="service-card-icon">🤖</span>
-          <span class="service-card-title">Discord Bot アップデート</span>
-        </div>
-        <ul class="service-update-list">
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">「みんなでクイズ」に開始カウントダウンと「第N問」の出題演出を追加。結果をSSEでリアルタイム通知するようにし、参加者にも自分の正誤が見えるようにしました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">選択式クイズを2〜5択・単一/複数正解に対応させ、CSVでの一括インポートにも対応しました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">学習ログの手動記録クールダウンを60秒→20秒に短縮。教科をローテーションしてクールダウンを回避できる不具合も修正しました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">ログインページから生徒名簿全体を取得しないように変更し、個人情報の取り扱いを強化しました。</span>
-          </li>
-        </ul>
+      <div class="service-tabs">
+        <button class="service-tab-btn active" data-tab="bot" onclick="switchServiceTab('bot')">🤖 Bot</button>
+        <button class="service-tab-btn" data-tab="web" onclick="switchServiceTab('web')">🌐 Web</button>
+        <button class="service-tab-btn" data-tab="log" onclick="switchServiceTab('log')">🗂️ 運用ログ</button>
       </div>
 
-      <div class="service-card">
-        <div class="service-card-header">
-          <span class="service-card-icon">🌐</span>
-          <span class="service-card-title">Webサイト アップデート</span>
+      <div class="service-tab-panel active" data-tab-panel="bot">
+        <div class="service-card">
+          <div class="service-card-header">
+            <span class="service-card-icon">🤖</span>
+            <span class="service-card-title">Discord Bot アップデート</span>
+          </div>
+          <ul class="service-update-list">
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">「みんなでクイズ」に開始カウントダウンと「第N問」の出題演出を追加。結果をSSEでリアルタイム通知するようにし、参加者にも自分の正誤が見えるようにしました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">選択式クイズを2〜5択・単一/複数正解に対応させ、CSVでの一括インポートにも対応しました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">学習ログの手動記録クールダウンを60秒→20秒に短縮。教科をローテーションしてクールダウンを回避できる不具合も修正しました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">ログインページから生徒名簿全体を取得しないように変更し、個人情報の取り扱いを強化しました。</span>
+            </li>
+          </ul>
         </div>
-        <ul class="service-update-list">
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/18</span>
-            <span class="service-update-text">勉強ログページで「ログ一覧」が他のデータより優先して読み込まれるようになり、表示が速くなりました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/18</span>
-            <span class="service-update-text">お知らせに「実行済みにする」ボタンを追加。一覧カードと詳細画面（編集の隣）どちらからも押せます。押すと一覧の一番下に薄く表示され、対応済みのお知らせと未対応のものが一目でわかります（全員で共有される状態です）。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/18</span>
-            <span class="service-update-text">全体的にページの表示を軽量化・高速化しました。メニューからページを切り替えたとき、タップした瞬間にローディング表示が出るようにし、勉強ログ・時間割など一部ページでは読み込み中に本来無いはずのデータが一瞬「まだ記録がありません」と誤って見えてしまう表示も直しました。あわせてアイコン画像も軽量化しています。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/18</span>
-            <span class="service-update-text">カードを学習中の画面右上に、そのデッキをみんなで学習した「わかる率」を表示するようにしました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/18</span>
-            <span class="service-update-text">デッキ一覧の「わからない」件数バッジが、新しい端末（Discordの内蔵ブラウザなど）で開いた直後は出ないことがある不具合を修正しました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">Quizの画面をCardMakerと統一したデザインに刷新。開始カウントダウンや出題演出をリアルタイムに同期し、ホストも参加できるようにしました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">お知らせ・勉強タイマーの同期を10秒ごとのポーリングからSSE（即時プッシュ更新）へ切り替え、反映がほぼ瞬時になりました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">CardMakerに単語検索とCSVインポートを追加。選択式デッキ（2〜5択・複数正解対応）も作成できるようになりました。</span>
-          </li>
-          <li class="service-update-item">
-            <span class="service-update-date">2026/08/17</span>
-            <span class="service-update-text">予定一覧・ログをページ分割読み込みに対応させ表示を高速化。重複表示や旧バックエンド参照などの不具合も修正しました。</span>
-          </li>
-        </ul>
       </div>
 
-      <div class="service-card">
-        <div class="service-card-header">
-          <span class="service-card-icon">🗂️</span>
-          <span class="service-card-title">運用ログ</span>
-          <button class="service-card-refresh" id="log-refresh-btn" onclick="loadSystemLog()" title="更新" aria-label="運用ログを更新">⟳</button>
+      <div class="service-tab-panel" data-tab-panel="web">
+        <div class="service-card">
+          <div class="service-card-header">
+            <span class="service-card-icon">🌐</span>
+            <span class="service-card-title">Webサイト アップデート</span>
+          </div>
+          <ul class="service-update-list">
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/18</span>
+              <span class="service-update-text">勉強ログページで「ログ一覧」が他のデータより優先して読み込まれるようになり、表示が速くなりました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/18</span>
+              <span class="service-update-text">お知らせに「実行済みにする」ボタンを追加。一覧カードと詳細画面（編集の隣）どちらからも押せます。押すと一覧の一番下に薄く表示され、対応済みのお知らせと未対応のものが一目でわかります（全員で共有される状態です）。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/18</span>
+              <span class="service-update-text">全体的にページの表示を軽量化・高速化しました。メニューからページを切り替えたとき、タップした瞬間にローディング表示が出るようにし、勉強ログ・時間割など一部ページでは読み込み中に本来無いはずのデータが一瞬「まだ記録がありません」と誤って見えてしまう表示も直しました。あわせてアイコン画像も軽量化しています。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/18</span>
+              <span class="service-update-text">カードを学習中の画面右上に、そのデッキをみんなで学習した「わかる率」を表示するようにしました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/18</span>
+              <span class="service-update-text">デッキ一覧の「わからない」件数バッジが、新しい端末（Discordの内蔵ブラウザなど）で開いた直後は出ないことがある不具合を修正しました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">Quizの画面をCardMakerと統一したデザインに刷新。開始カウントダウンや出題演出をリアルタイムに同期し、ホストも参加できるようにしました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">お知らせ・勉強タイマーの同期を10秒ごとのポーリングからSSE（即時プッシュ更新）へ切り替え、反映がほぼ瞬時になりました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">CardMakerに単語検索とCSVインポートを追加。選択式デッキ（2〜5択・複数正解対応）も作成できるようになりました。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/17</span>
+              <span class="service-update-text">予定一覧・ログをページ分割読み込みに対応させ表示を高速化。重複表示や旧バックエンド参照などの不具合も修正しました。</span>
+            </li>
+          </ul>
         </div>
-        <div class="log-card-sub">バックアップやデータの変更などを自動で記録しています。</div>
-        <ul class="log-list" id="log-list">
-          <li class="log-empty">読み込み中…</li>
-        </ul>
+      </div>
+
+      <div class="service-tab-panel" data-tab-panel="log">
+        <div class="service-card">
+          <div class="service-card-header">
+            <span class="service-card-icon">🗂️</span>
+            <span class="service-card-title">運用ログ</span>
+            <button class="service-card-refresh" id="log-refresh-btn" onclick="loadSystemLog()" title="更新" aria-label="運用ログを更新">⟳</button>
+          </div>
+          <div class="log-card-sub">バックアップやデータの変更などを自動で記録しています。</div>
+          <ul class="log-list" id="log-list">
+            <li class="log-empty">読み込み中…</li>
+          </ul>
+        </div>
       </div>
 
       <p class="service-info-footer">1I 勉強会 統合学習ツール — 今後もアップデートを続けていきます。</p>

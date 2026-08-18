@@ -1072,6 +1072,33 @@ body {
   margin-top: 1px;
 }
 
+/* ★ 追加：Bot/Web/運用ログの3カテゴリをタブで切り替える。
+   カードを全部並べると縦にとても長くなるため、1つずつだけ表示する。 */
+.service-tabs {
+  display: flex;
+  gap: 6px;
+}
+.service-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all .15s;
+}
+.service-tab-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+.service-tab-panel { display: none; }
+.service-tab-panel.active { display: block; }
+
 .service-card {
   background: var(--surface);
   border: 1px solid var(--border);

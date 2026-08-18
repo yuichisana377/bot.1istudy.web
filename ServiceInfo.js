@@ -62,6 +62,21 @@ window.addEventListener('pageshow', () => {
 });
 
 // ============================================================
+//  タブ切り替え（🤖 Bot / 🌐 Web / 🗂️ 運用ログ）
+//  ・3つのカードを全部並べると縦にとても長くなるため、1つだけ表示する。
+// ============================================================
+function switchServiceTab(tab) {
+  document.querySelectorAll('.service-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('.service-tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.dataset.tabPanel === tab);
+  });
+  // ★ 運用ログタブを開いたタイミングで最新の内容に更新しておく
+  if (tab === 'log') loadSystemLog();
+}
+
+// ============================================================
 //  運用ログ（system_log） — bot.py側のprint出力の一部を、見やすい形でWebにも表示する
 //  ・バックアップ実行結果・予定/時間割/カード/お知らせ等の変更を、
 //    1つの操作＝1件のイベントとしてサーバー側でまとめて記録したもの。
