@@ -1131,3 +1131,94 @@ body {
   color: var(--text-tertiary);
   margin-top: 4px;
 }
+
+/* ── 運用ログ（system_log。バックアップ・データ変更などの内部ログをそのまま表示） ── */
+.service-card-refresh {
+  margin-left: auto;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--r-sm);
+  line-height: 1;
+}
+.service-card-refresh:hover { background: var(--bg); }
+.service-card-refresh.is-loading { animation: log-spin 0.8s linear infinite; }
+@keyframes log-spin { to { transform: rotate(360deg); } }
+
+.log-card-sub {
+  padding: 0 14px 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.log-list {
+  list-style: none;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light);
+}
+.log-item:last-child { border-bottom: none; }
+
+.log-item-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.log-item.is-error .log-item-icon {
+  background: rgba(220, 38, 38, .14);
+}
+
+.log-item-body { flex: 1; min-width: 0; }
+
+.log-item-summary {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  overflow-wrap: anywhere; /* 長い文章・エラーメッセージでも横にはみ出さない */
+}
+.log-item.is-error .log-item-summary { color: #dc2626; }
+
+.log-item-time {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+  letter-spacing: .01em;
+}
+
+.log-empty, .log-error {
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.log-load-more {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border-light);
+  cursor: pointer;
+}
+.log-load-more:hover { background: var(--bg); }

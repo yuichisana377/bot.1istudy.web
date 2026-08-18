@@ -60,3 +60,96 @@ window.addEventListener('pageshow', () => {
   const overlay = document.getElementById('page-nav-loading');
   if (overlay) overlay.classList.remove('show');
 });
+
+// ============================================================
+//  運用ログ（system_log） — bot.py側のprint出力の一部を、見やすい形でWebにも表示する
+//  ・バックアップ実行結果・予定/時間割/カード/お知らせ等の変更を、
+//    1つの操作＝1件のイベントとしてサーバー側でまとめて記録したもの。
+//  ・ログインしていなくても閲覧できる（利用者11人の小規模運用のため、
+//    このページの他の情報と同じ扱いにしている）。
+// ============================================================
+const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const LOG_CATEGORY_ICON = {
+  backup:    '💾',
+  schedule:  '📘',
+  timetable: '📒',
+  card:      '📇',
+  study:     '📊',
+  notice:    '📢',
+  task:      '✅',
+  user:      '👤',
+};
+let logDisplayCount = 50; // ★「もっと見る」を押すたびに増やして再取得する（件数自体は多くないため単純な方式でよい）
+
+function renderLogEntry(entry) {
+  const li = document.createElement('li');
+  li.className = 'log-item' + (entry.level === 'error' ? ' is-error' : '');
+
+  const icon = document.createElement('span');
+  icon.className = 'log-item-icon';
+  icon.textContent = LOG_CATEGORY_ICON[entry.category] || '🛠️';
+
+  const body = document.createElement('div');
+  body.className = 'log-item-body';
+
+  const summary = document.createElement('div');
+  summary.className = 'log-item-summary';
+  summary.textContent = entry.summary || '';
+
+  const time = document.createElement('div');
+  time.className = 'log-item-time';
+  time.textContent = (entry.time || '').replace('T', ' ');
+
+  body.appendChild(summary);
+  body.appendChild(time);
+  li.appendChild(icon);
+  li.appendChild(body);
+  return li;
+}
+
+async function loadSystemLog() {
+  const listEl = document.getElementById('log-list');
+  const btn = document.getElementById('log-refresh-btn');
+  if (btn) btn.classList.add('is-loading');
+  // ★ 前回描画時の「もっと見る」ボタン（<ul>の外、カード内に追加している）が
+  //   残ったまま重複しないよう、再読み込みのたびに一旦取り除く
+  const oldMore = listEl.parentElement.querySelector('.log-load-more');
+  if (oldMore) oldMore.remove();
+  try {
+    const res = await fetch(`${API_BASE}system_log?limit=${logDisplayCount}`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'unknown error');
+
+    listEl.innerHTML = '';
+    if (!data.entries || data.entries.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'log-empty';
+      li.textContent = 'まだログがありません。';
+      listEl.appendChild(li);
+      return;
+    }
+    data.entries.forEach(entry => listEl.appendChild(renderLogEntry(entry)));
+
+    // ★ 取得件数が要求件数と同じ＝まだ続きがあるかもしれない、という簡易判定
+    //   （サーバー側はoffsetに対応していないため、「もっと見る」は取得件数を
+    //   増やして丸ごと再取得する単純な方式にしている。件数上限が300件程度の
+    //   小規模運用なので、これで十分速い）。
+    if (data.entries.length >= logDisplayCount) {
+      const more = document.createElement('button');
+      more.className = 'log-load-more';
+      more.textContent = 'もっと見る';
+      more.onclick = () => { logDisplayCount += 50; loadSystemLog(); };
+      listEl.parentElement.appendChild(more);
+    }
+  } catch (e) {
+    listEl.innerHTML = '';
+    const li = document.createElement('li');
+    li.className = 'log-error';
+    li.textContent = 'ログを読み込めませんでした。';
+    listEl.appendChild(li);
+  } finally {
+    if (btn) btn.classList.remove('is-loading');
+  }
+}
+
+loadSystemLog();
