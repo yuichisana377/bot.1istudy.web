@@ -64,34 +64,71 @@ function extBadgeClass(ext) {
   return ext === 'md' ? 'notice-badge-md' : 'notice-badge-txt';
 }
 
+// ★ セキュリティ：ファイル名・投稿者ニックネームは利用者が自由入力できる値
+//   （HTMLタグを含められる）なので、テンプレート文字列でHTMLを組み立てて
+//   innerHTMLに流し込む方式は絶対に使わない（XSSになる）。必ずDOM APIと
+//   textContentで組み立て、文字列がそのままHTMLとして解釈されないようにする。
 function renderNotices() {
   const el = document.getElementById('notice-content');
+  el.innerHTML = ''; // ここは固定文字列のクリアのみなので安全
+
   if (!notices.length) {
-    el.innerHTML = '<div class="empty-msg">お知らせはまだありません</div>';
+    const empty = document.createElement('div');
+    empty.className = 'empty-msg';
+    empty.textContent = 'お知らせはまだありません';
+    el.appendChild(empty);
     return;
   }
 
-  // ★ 追加：「実行済み」にしたお知らせは一覧の一番下にまとめる
+  // ★ 「実行済み」にしたお知らせは一覧の一番下にまとめる
   //   （元々の並び順＝新しい順は、未実行・実行済みそれぞれのグループ内では維持する）
   const undone = notices.filter(n => !n.done);
   const done    = notices.filter(n => n.done);
   const ordered = [...undone, ...done];
 
-  el.innerHTML = `<div class="notice-list">` + ordered.map(n => {
+  const list = document.createElement('div');
+  list.className = 'notice-list';
+
+  ordered.forEach(n => {
+    const card = document.createElement('div');
+    card.className = 'notice-card' + (n.done ? ' notice-done' : '');
+    card.addEventListener('click', () => openViewModal(n.filename));
+
+    const badge = document.createElement('span');
+    badge.className = 'notice-badge ' + extBadgeClass(n.ext);
+    badge.textContent = (n.ext || '').toUpperCase();
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'notice-name';
+    nameEl.appendChild(document.createTextNode(n.filename));
     const metaParts = [];
     if (n.uploader) metaParts.push(`${n.uploader}さん`);
     if (n.uploaded_at) metaParts.push(n.uploaded_at);
-    const meta = metaParts.length ? `<span class="notice-meta">${metaParts.join(' ・ ')}</span>` : '';
-    const safeFn = n.filename.replace(/'/g, "\\'");
-    return `
-    <div class="notice-card${n.done ? ' notice-done' : ''}" onclick="openViewModal('${safeFn}')">
-      <span class="notice-badge ${extBadgeClass(n.ext)}">${n.ext.toUpperCase()}</span>
-      <span class="notice-name">${n.filename}${meta}</span>
-      <button type="button" class="notice-done-btn${n.done ? ' is-done' : ''}"
-        onclick="toggleNoticeDone(event, '${safeFn}')">${n.done ? '✓ 実行済み' : '実行済みにする'}</button>
-      <span class="notice-arrow">›</span>
-    </div>`;
-  }).join('') + `</div>`;
+    if (metaParts.length) {
+      const meta = document.createElement('span');
+      meta.className = 'notice-meta';
+      meta.textContent = metaParts.join(' ・ ');
+      nameEl.appendChild(meta);
+    }
+
+    const doneBtn = document.createElement('button');
+    doneBtn.type = 'button';
+    doneBtn.className = 'notice-done-btn' + (n.done ? ' is-done' : '');
+    doneBtn.textContent = n.done ? '✓ 実行済み' : '実行済みにする';
+    doneBtn.addEventListener('click', (event) => toggleNoticeDone(event, n.filename));
+
+    const arrow = document.createElement('span');
+    arrow.className = 'notice-arrow';
+    arrow.textContent = '›';
+
+    card.appendChild(badge);
+    card.appendChild(nameEl);
+    card.appendChild(doneBtn);
+    card.appendChild(arrow);
+    list.appendChild(card);
+  });
+
+  el.appendChild(list);
 }
 
 // ★ 追加：「実行済み」の切り替え本体。全員共有の状態として、押した瞬間に
@@ -181,11 +218,14 @@ async function openViewModal(filename) {
 /** .md は GitHub 風に Markdown レンダリング、.txt はプレーンテキスト表示 */
 function renderNoticeBody(bodyEl, filename, content) {
   const isMd = /\.md$/i.test(filename);
-  if (isMd && window.marked) {
+  // ★ セキュリティ：DOMPurifyが読み込めていない場合、サニタイズ無しでHTMLを
+  //   描画する（＝XSS）フォールバックには絶対にしない。その場合はプレーン
+  //   テキスト表示にとどめる（marked単体では危険なHTMLがそのまま通ってしまうため）。
+  if (isMd && window.marked && window.DOMPurify) {
     bodyEl.classList.remove('notice-plain');
     bodyEl.classList.add('markdown-body');
     const rawHtml = marked.parse(content, { breaks: true, gfm: true });
-    bodyEl.innerHTML = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
+    bodyEl.innerHTML = DOMPurify.sanitize(rawHtml);
   } else {
     bodyEl.classList.remove('markdown-body');
     bodyEl.classList.add('notice-plain');

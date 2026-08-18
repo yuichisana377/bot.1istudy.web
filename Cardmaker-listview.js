@@ -146,7 +146,7 @@ function renderListView() {
     if (qImgs && qImgs.length) {
       const qImgWrap = document.createElement('div');
       qImgWrap.className = 'list-view-imgs';
-      qImgWrap.innerHTML = qImgs.map(s => `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+      renderImgList(qImgWrap, qImgs); // ★ Cardmaker.js側の共通ヘルパー（XSS対策：src属性をDOMプロパティで設定）
       item.appendChild(qImgWrap);
     }
 
@@ -163,7 +163,7 @@ function renderListView() {
     if (aImgs && aImgs.length) {
       const aImgWrap = document.createElement('div');
       aImgWrap.className = 'list-view-imgs';
-      aImgWrap.innerHTML = aImgs.map(s => `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+      renderImgList(aImgWrap, aImgs); // ★ Cardmaker.js側の共通ヘルパー（XSS対策：src属性をDOMプロパティで設定）
       item.appendChild(aImgWrap);
     }
 

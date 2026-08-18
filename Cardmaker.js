@@ -3061,9 +3061,9 @@ function refreshStudyCardDisplay(c) {
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
   setMathText(document.getElementById('study-q-text'), qText);
-  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  renderImgList(document.getElementById('study-q-imgs'), qImgs);
   setMathText(document.getElementById('study-a-text'), aText);
-  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  renderImgList(document.getElementById('study-a-imgs'), aImgs);
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) {
     setMathText(document.getElementById('study-e-text'), c.explanation);
@@ -3785,7 +3785,7 @@ function renderStudyCard() {
   const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
 
   setMathText(document.getElementById('study-q-text'), qText);
-  document.getElementById('study-q-imgs').innerHTML = (qImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  renderImgList(document.getElementById('study-q-imgs'), qImgs);
   // ★ フォルダをまとめてプレイしている場合、この問題がどのカードデッキ由来かを表示する
   const deckTag = document.getElementById('study-deck-tag');
   if (studyIsFolder) {
@@ -3817,7 +3817,7 @@ function renderStudyCard() {
   document.getElementById('reveal-answer-btn').textContent = studyAutoGrade ? '採点する' : '答えを見る';
 
   setMathText(document.getElementById('study-a-text'), aText);
-  document.getElementById('study-a-imgs').innerHTML = (aImgs||[]).map(s=>`<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  renderImgList(document.getElementById('study-a-imgs'), aImgs);
   const explWrap = document.getElementById('study-expl-wrap');
   if (c.explanation) { setMathText(document.getElementById('study-e-text'), c.explanation); explWrap.style.display = ''; }
   else { explWrap.style.display = 'none'; }
@@ -4215,7 +4215,25 @@ async function loadChunksInBackground() {
 }
 
 // ── ユーティリティ ────────────────────
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// ★ セキュリティ：&/</>だけでなく "/' もエスケープする（value="${esc(x)}"のような
+//   属性値コンテキストでも安全に使えるようにするため。&quot;/&#39;はHTMLとして
+//   描画されれば元の文字に戻るので、テキストとして使う箇所には影響しない）。
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// ★ セキュリティ：問題・解答の画像は、直接APIを叩けば任意の文字列を
+//   imgs_q/imgs_aへ入れられてしまう（save_cardsはこの中身を検証していない）。
+//   `<img src="${s}">` のようにテンプレート文字列でHTMLを組み立てると、
+//   sに " を含めるだけで属性の外へ抜けてXSSになるため、必ずDOMのsrc
+//   プロパティへ代入する（この方法なら中身が何であってもHTMLとしては解釈されない）。
+function renderImgList(container, imgs) {
+  container.innerHTML = '';
+  (imgs || []).forEach(s => {
+    const img = document.createElement('img');
+    img.src = s;
+    img.alt = '';
+    img.addEventListener('click', () => openImgLightbox(img.src));
+    container.appendChild(img);
+  });
+}
 function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
 function shake(id) {
   const el=document.getElementById(id); el.style.borderColor='#EF4444'; el.focus();
