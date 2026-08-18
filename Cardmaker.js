@@ -4134,7 +4134,14 @@ function closeDrawer() {
 //   （実際のページ遷移はブラウザ標準の <a href> 遷移のまま。読み込みが
 //   速いページならすぐ次のページに切り替わるので気づかない）。
 document.querySelectorAll('.drawer-item[href]').forEach(a => {
-  a.addEventListener('click', () => {
+  a.addEventListener('click', (e) => {
+    // ★ 追加：今開いているページ自身の項目をタップした場合は、同じページへ
+    //   わざわざ再遷移（リロード）せず、ドロワーを閉じるだけにする。
+    if (a.classList.contains('active')) {
+      e.preventDefault();
+      closeDrawer();
+      return;
+    }
     const overlay = document.getElementById('page-nav-loading');
     if (overlay) overlay.classList.add('show');
   });
@@ -4603,6 +4610,7 @@ initMathPads();
 // ── 起動 ──────────────────────────────
 renderDeckList().then(() => { initPickModeFromUrl(); jumpToDeckFromUrl(); });
 loadChunksInBackground(); // ★ 追加：初期表示をブロックせず、残りの機能チャンクを裏で順に読み込む
+prefetchOtherPages(); // ★ 追加：メニューを開くのを待たず、初期表示後に自動で他ページを裏で先読み
 
 // ===== Discord通知からのディープリンク対応 =====
 // ★ 追加：通知メッセージのリンク（例: Cardmaker.html?deck=set_xxxx.json）から

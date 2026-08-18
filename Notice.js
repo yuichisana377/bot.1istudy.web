@@ -27,6 +27,7 @@ function getLoginSession() {
 // ============================================================
 window.addEventListener('load', () => {
   loadNotices();
+  prefetchOtherPages(); // ★ 追加：メニューを開くのを待たず、初期表示後に自動で他ページを裏で先読み
   // ★ 変更監視用のハッシュを、初回読み込みの内容で起点合わせしておく
   //  （比較なしで保存するだけの「初回チェック」）
   checkNoticesUpdate();
@@ -530,7 +531,14 @@ function closeDrawer() {
 //   （実際のページ遷移はブラウザ標準の <a href> 遷移のまま。読み込みが
 //   速いページならすぐ次のページに切り替わるので気づかない）。
 document.querySelectorAll('.drawer-item[href]').forEach(a => {
-  a.addEventListener('click', () => {
+  a.addEventListener('click', (e) => {
+    // ★ 追加：今開いているページ自身の項目をタップした場合は、同じページへ
+    //   わざわざ再遷移（リロード）せず、ドロワーを閉じるだけにする。
+    if (a.classList.contains('active')) {
+      e.preventDefault();
+      closeDrawer();
+      return;
+    }
     const overlay = document.getElementById('page-nav-loading');
     if (overlay) overlay.classList.add('show');
   });
