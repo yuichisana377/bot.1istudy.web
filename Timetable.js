@@ -272,11 +272,11 @@ function renderTimetable() {
   let periodsHtml = '';
   if (holidayOv) {
     const reason = holidayOv.reason || '休校';
-    const note   = holidayOv.note   ? `（${holidayOv.note}）` : '';
+    const note   = holidayOv.note   ? `（${escapeAttr(holidayOv.note)}）` : '';
     periodsHtml = `<div class="period-row" style="justify-content:center;padding:1.5rem">
       <div style="text-align:center">
         <div style="font-size:22px;margin-bottom:6px">🏫</div>
-        <div style="font-size:15px;font-weight:700;color:var(--text)">${reason}${note}</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text)">${escapeAttr(reason)}${note}</div>
         <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">この日は授業がありません</div>
       </div>
     </div>`;
@@ -289,10 +289,10 @@ function renderTimetable() {
       const periodHolidayOv  = ttOverrides[periodHolidayKey];
       if (periodHolidayOv) {
         const phReason = periodHolidayOv.reason || '休み';
-        const phNote   = periodHolidayOv.note   ? `（${periodHolidayOv.note}）` : '';
+        const phNote   = periodHolidayOv.note   ? `（${escapeAttr(periodHolidayOv.note)}）` : '';
         return `<div class="period-row" onclick="showTTDetail('${dateStr}', ${periodNum})">
           <div class="period-num">${periodNum}</div>
-          <div class="period-subject" style="color:var(--text-tertiary)">🚫 ${phReason}${phNote}</div>
+          <div class="period-subject" style="color:var(--text-tertiary)">🚫 ${escapeAttr(phReason)}${phNote}</div>
           <div class="period-right"></div>
         </div>`;
       }
@@ -306,12 +306,12 @@ function renderTimetable() {
 
       const hw = ttHomeworks.filter(h => h.date === dateStr && h.subject === subject);
       const itemsHtml = items.length
-        ? `<div class="items-row">${items.map(it => `<span class="item-tag">📎 ${it}</span>`).join('')}</div>` : '';
+        ? `<div class="items-row">${items.map(it => `<span class="item-tag">📎 ${escapeAttr(it)}</span>`).join('')}</div>` : '';
       const hwHtml = hw.map(h => {
         const { cat, text } = parsePlanContent(h.content);
         return `<div class="homework-row">
-          <span class="tt-badge tt-badge-${cat}">${cat}</span>
-          <span class="homework-text">${text}</span>
+          <span class="tt-badge tt-badge-${escapeAttr(cat)}">${escapeAttr(cat)}</span>
+          <span class="homework-text">${escapeAttr(text)}</span>
         </div>`;
       }).join('');
       const changedBadge = isChanged
@@ -319,7 +319,7 @@ function renderTimetable() {
 
       return `<div class="period-row" onclick="showTTDetail('${dateStr}', ${periodNum})">
         <div class="period-num">${periodNum}</div>
-        <div class="period-subject${subject ? '' : ' empty'}">${subject || 'ー'}${changedBadge}</div>
+        <div class="period-subject${subject ? '' : ' empty'}">${escapeAttr(subject) || 'ー'}${changedBadge}</div>
         <div class="period-right">
           ${itemsHtml}
           ${hwHtml}
@@ -453,10 +453,10 @@ function onMonthDayClick(dateStr) {
   let html = '';
   if (holidayOv) {
     const reason = holidayOv.reason || '休校';
-    const note   = holidayOv.note   ? `（${holidayOv.note}）` : '';
+    const note   = holidayOv.note   ? `（${escapeAttr(holidayOv.note)}）` : '';
     html += `<div style="text-align:center;padding:1rem 0">
       <div style="font-size:22px;margin-bottom:6px">🏫</div>
-      <div style="font-size:15px;font-weight:700;color:var(--text)">${reason}${note}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text)">${escapeAttr(reason)}${note}</div>
       <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">この日は終日お休みです</div>
     </div>`;
   }
@@ -464,10 +464,10 @@ function onMonthDayClick(dateStr) {
   if (items.length) {
     html += `<div class="detail-list" style="margin-top:${holidayOv ? '10px' : '0'}">` + items.map(it => `
       <div class="detail-item">
-        <div class="dl-label">${it.subject || '予定'}</div>
+        <div class="dl-label">${escapeAttr(it.subject) || '予定'}</div>
         <div class="dl-value">
-          <span class="tt-badge tt-badge-${it.cat}">${it.cat}</span> ${it.text}
-          ${it.note ? `<div class="dl-value dl-note" style="margin-top:6px">${it.note}</div>` : ''}
+          <span class="tt-badge tt-badge-${escapeAttr(it.cat)}">${escapeAttr(it.cat)}</span> ${escapeAttr(it.text)}
+          ${it.note ? `<div class="dl-value dl-note" style="margin-top:6px">${escapeAttr(it.note)}</div>` : ''}
         </div>
       </div>`).join('') + `</div>`;
   }
@@ -586,30 +586,30 @@ function showTTDetail(dateStr, period) {
   ];
 
   if (holidayOv) {
-    const note = holidayOv.note ? `（${holidayOv.note}）` : '';
-    rows.push(`<div class="detail-item"><div class="dl-label">状態</div><div class="dl-value">🚫 ${holidayOv.reason || '休み'}${note}</div></div>`);
+    const note = holidayOv.note ? `（${escapeAttr(holidayOv.note)}）` : '';
+    rows.push(`<div class="detail-item"><div class="dl-label">状態</div><div class="dl-value">🚫 ${escapeAttr(holidayOv.reason) || '休み'}${note}</div></div>`);
   } else {
     const subject = changeOv ? (changeOv.subject || (base && base.subject)) : (base && base.subject);
     const items   = changeOv ? (changeOv.items || [])                      : ((base && base.items) || []);
 
-    rows.push(`<div class="detail-item"><div class="dl-label">科目</div><div class="dl-value">${subject || 'ー'}${changeOv ? ' <span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:20px;font-weight:700">変更あり</span>' : ''}</div></div>`);
+    rows.push(`<div class="detail-item"><div class="dl-label">科目</div><div class="dl-value">${escapeAttr(subject) || 'ー'}${changeOv ? ' <span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:20px;font-weight:700">変更あり</span>' : ''}</div></div>`);
 
     if (items.length) {
-      rows.push(`<div class="detail-item"><div class="dl-label">持ち物</div><div class="dl-value">${items.map(it => `📎 ${it}`).join('　')}</div></div>`);
+      rows.push(`<div class="detail-item"><div class="dl-label">持ち物</div><div class="dl-value">${items.map(it => `📎 ${escapeAttr(it)}`).join('　')}</div></div>`);
     }
 
     const hw = ttHomeworks.filter(h => h.date === dateStr && h.subject === subject);
     if (hw.length) {
       const hwHtml = hw.map(h => {
         const { cat, text, note: hwNote } = parsePlanContent(h.content);
-        const hwNoteHtml = hwNote ? `<div class="dl-note" style="margin-top:4px">${hwNote}</div>` : '';
-        return `<div style="margin-bottom:6px"><span class="tt-badge tt-badge-${cat}">${cat}</span> ${text}${hwNoteHtml}</div>`;
+        const hwNoteHtml = hwNote ? `<div class="dl-note" style="margin-top:4px">${escapeAttr(hwNote)}</div>` : '';
+        return `<div style="margin-bottom:6px"><span class="tt-badge tt-badge-${escapeAttr(cat)}">${escapeAttr(cat)}</span> ${escapeAttr(text)}${hwNoteHtml}</div>`;
       }).join('');
       rows.push(`<div class="detail-item"><div class="dl-label">課題・提出物</div><div class="dl-value">${hwHtml}</div></div>`);
     }
 
     if (changeOv && changeOv.note) {
-      rows.push(`<div class="detail-item"><div class="dl-label">備考</div><div class="dl-value dl-note">${changeOv.note}</div></div>`);
+      rows.push(`<div class="detail-item"><div class="dl-label">備考</div><div class="dl-value dl-note">${escapeAttr(changeOv.note)}</div></div>`);
     }
   }
 
@@ -675,7 +675,7 @@ function openTTEditModal() {
   // ★ 科目プルダウンをDiscordのチャンネル一覧で更新
   const ttSubjectEl = document.getElementById('tt-edit-subject');
   if (ttSubjectEl) {
-    const opts = channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+    const opts = channels.map(c => `<option value="${escapeAttr(c.name)}">${escapeAttr(c.name)}</option>`).join('');
     ttSubjectEl.innerHTML = '<option value="">科目を選択</option>' + opts;
   }
 
@@ -993,8 +993,8 @@ function renderTermList() {
   el.innerHTML = sorted.map(t => `
     <div class="tt-term-list-row">
       <div class="tt-term-list-info">
-        <div class="tt-term-list-name">${t.name}</div>
-        <div class="tt-term-list-range">${t.start_date} 〜 ${t.end_date}</div>
+        <div class="tt-term-list-name">${escapeAttr(t.name)}</div>
+        <div class="tt-term-list-range">${escapeAttr(t.start_date)} 〜 ${escapeAttr(t.end_date)}</div>
       </div>
       <button type="button" class="tt-btn-secondary" onclick="editTermFromList('${t.id}')">編集</button>
       <button type="button" class="tt-term-period-del" onclick="deleteTermFromList('${t.id}')" title="削除">✕</button>
@@ -1196,15 +1196,15 @@ function renderTTOverridesList() {
     const ov = ttOverrides[key];
     let info = '', badge = '';
     if (ov.type === 'holiday') {
-      const note = ov.note ? `（${ov.note}）` : '';
-      info  = `${ov.date}　${ov.reason}${note}`;
+      const note = ov.note ? `（${escapeAttr(ov.note)}）` : '';
+      info  = `${escapeAttr(ov.date)}　${escapeAttr(ov.reason)}${note}`;
       badge = `<span class="override-badge-holiday">休校</span>`;
     } else if (ov.type === 'period_holiday') {
-      const note = ov.note ? `（${ov.note}）` : '';
-      info  = `${ov.date} ${ov.period}限　${ov.reason}${note}`;
+      const note = ov.note ? `（${escapeAttr(ov.note)}）` : '';
+      info  = `${escapeAttr(ov.date)} ${ov.period}限　${escapeAttr(ov.reason)}${note}`;
       badge = `<span class="override-badge-holiday">1コマ休み</span>`;
     } else {
-      info  = `${ov.date} ${ov.period}限 → ${ov.subject}`;
+      info  = `${escapeAttr(ov.date)} ${ov.period}限 → ${escapeAttr(ov.subject)}`;
       badge = `<span class="override-badge-change">変更</span>`;
     }
     return `<div class="override-row">
@@ -1232,7 +1232,7 @@ async function loadPlans() {
   renderTimetable(); // ★ 月間カレンダーの「予定あり」表示に反映させる
 }
 function renderChannelOptions() {
-  const opts = channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  const opts = channels.map(c => `<option value="${escapeAttr(c.name)}">${escapeAttr(c.name)}</option>`).join('');
   document.getElementById('add-subject').innerHTML  = opts || '<option value="">（なし）</option>';
   document.getElementById('edit-subject').innerHTML = '<option value="">— 変更しない —</option>' + opts;
 
@@ -1253,11 +1253,11 @@ function renderSelectList(containerId, mode) {
   el.innerHTML = plans.map(p => {
     const label = `${p.date}/${p.subject}${p.content}`;
     const { cat, text } = parsePlanContent(p.content);
-    return `<div class="sel-item" data-label="${label}" onclick="selectPlan(this,'${mode}')">
-      <span class="si-date">${p.date}</span>
-      <span class="si-subject">${p.subject}</span>
-      <span class="badge badge-${cat}">${cat}</span>
-      <span class="si-content">${text}</span>
+    return `<div class="sel-item" data-label="${escapeAttr(label)}" onclick="selectPlan(this,'${mode}')">
+      <span class="si-date">${escapeAttr(p.date)}</span>
+      <span class="si-subject">${escapeAttr(p.subject)}</span>
+      <span class="badge badge-${escapeAttr(cat)}">${escapeAttr(cat)}</span>
+      <span class="si-content">${escapeAttr(text)}</span>
     </div>`;
   }).join('');
 }

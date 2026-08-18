@@ -6,6 +6,16 @@
 const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const GUILD_ID = "1509880344806162544";
 
+// ★ 追加：表示テキスト／HTML属性値の両方に安全なHTMLエスケープ。
+//   予定のsubject/content（カテゴリの【】部分も含む）は生徒が自由に入力できる
+//   文字列で、これまで未エスケープのままinnerHTMLへ挿入していたため、
+//   悪意ある内容の予定を1件作られるだけでホーム画面を開いた全員に
+//   スクリプトが実行される保存型XSSが成立していた。
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ★ ポイント付与対象カテゴリ
 const POINT_CATEGORIES = ['提出', '宿題'];
 
@@ -312,7 +322,7 @@ function renderSubjectFilterChips() {
 
   const allBtn = `<button class="chip chip-active" data-subj="all" onclick="toggleSubjFilter(this)">すべて</button>`;
   const chs = channels.map(c =>
-    `<button class="chip" data-subj="${c.name}" onclick="toggleSubjFilter(this)">${c.name}</button>`
+    `<button class="chip" data-subj="${esc(c.name)}" onclick="toggleSubjFilter(this)">${esc(c.name)}</button>`
   ).join('');
   wrap.innerHTML = allBtn + chs;
 }
@@ -437,10 +447,10 @@ function renderPlans() {
         : '';
       const noteDot = note ? `<span class="note-dot" title="備考あり">📝</span>` : '';
       const label = `${p.date}/${p.subject}${p.content}`;
-      return `<div class="plan-row" data-label="${label.replace(/"/g, '&quot;')}" onclick="showPlanDetail(this)">
-        <span class="subject">${p.subject}</span>
-        <span class="badge badge-${cat}">${cat}</span>
-        <span class="content">${text}</span>
+      return `<div class="plan-row" data-label="${esc(label)}" onclick="showPlanDetail(this)">
+        <span class="subject">${esc(p.subject)}</span>
+        <span class="badge badge-${esc(cat)}">${esc(cat)}</span>
+        <span class="content">${esc(text)}</span>
         ${noteDot}
         ${ptsBadge}
       </div>`;
@@ -468,16 +478,16 @@ function showPlanDetail(el) {
   const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${WDAYS[d.getDay()]}）`;
 
   const rowsHtml = [
-    `<div class="detail-item"><div class="dl-label">日付</div><div class="dl-value">${dateLabel}</div></div>`,
-    `<div class="detail-item"><div class="dl-label">科目</div><div class="dl-value">${plan.subject}</div></div>`,
-    `<div class="detail-item"><div class="dl-label">カテゴリ</div><div class="dl-value"><span class="badge badge-${cat}">${cat}</span></div></div>`,
-    `<div class="detail-item"><div class="dl-label">内容</div><div class="dl-value">${text}</div></div>`,
+    `<div class="detail-item"><div class="dl-label">日付</div><div class="dl-value">${esc(dateLabel)}</div></div>`,
+    `<div class="detail-item"><div class="dl-label">科目</div><div class="dl-value">${esc(plan.subject)}</div></div>`,
+    `<div class="detail-item"><div class="dl-label">カテゴリ</div><div class="dl-value"><span class="badge badge-${esc(cat)}">${esc(cat)}</span></div></div>`,
+    `<div class="detail-item"><div class="dl-label">内容</div><div class="dl-value">${esc(text)}</div></div>`,
   ];
   if (plan.points != null) {
     rowsHtml.push(`<div class="detail-item"><div class="dl-label">ポイント</div><div class="dl-value">⭐ ${plan.points}pt</div></div>`);
   }
   if (note) {
-    rowsHtml.push(`<div class="detail-item"><div class="dl-label">備考</div><div class="dl-value dl-note">${note}</div></div>`);
+    rowsHtml.push(`<div class="detail-item"><div class="dl-label">備考</div><div class="dl-value dl-note">${esc(note)}</div></div>`);
   }
 
   document.getElementById('detail-content').innerHTML = rowsHtml.join('');
@@ -530,11 +540,11 @@ function renderLogs() {
     : '';
   el.innerHTML = logsData.map(l => `
     <div class="tl-item">
-      <div class="tl-dot dot-${l.type}"></div>
-      <div class="tl-time">${l.time}</div>
+      <div class="tl-dot dot-${esc(l.type)}"></div>
+      <div class="tl-time">${esc(l.time)}</div>
       <div class="tl-card">
-        <div class="tl-type type-${l.type}">${TYPE_LABEL[l.type] || l.type}</div>
-        <div class="tl-detail">${l.detail}</div>
+        <div class="tl-type type-${esc(l.type)}">${esc(TYPE_LABEL[l.type] || l.type)}</div>
+        <div class="tl-detail">${esc(l.detail)}</div>
       </div>
     </div>`).join('') + loadMoreHtml;
 }
@@ -543,7 +553,7 @@ function renderLogs() {
 //  科目セレクト
 // ============================================================
 function renderChannelOptions() {
-  const opts = channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  const opts = channels.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   document.getElementById('add-subject').innerHTML  = opts || '<option value="">（なし）</option>';
   document.getElementById('edit-subject').innerHTML = '<option value="">— 変更しない —</option>' + opts;
 }
@@ -557,11 +567,11 @@ function renderSelectList(containerId, mode) {
   el.innerHTML = plans.map(p => {
     const label = `${p.date}/${p.subject}${p.content}`;
     const { cat, text } = parsePlanContent(p.content);
-    return `<div class="sel-item" data-label="${label}" onclick="selectPlan(this,'${mode}')">
-      <span class="si-date">${p.date}</span>
-      <span class="si-subject">${p.subject}</span>
-      <span class="badge badge-${cat}">${cat}</span>
-      <span class="si-content">${text}</span>
+    return `<div class="sel-item" data-label="${esc(label)}" onclick="selectPlan(this,'${mode}')">
+      <span class="si-date">${esc(p.date)}</span>
+      <span class="si-subject">${esc(p.subject)}</span>
+      <span class="badge badge-${esc(cat)}">${esc(cat)}</span>
+      <span class="si-content">${esc(text)}</span>
     </div>`;
   }).join('');
 }

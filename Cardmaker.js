@@ -1770,7 +1770,7 @@ async function loadSubjects() {
     const data = await res.json();
     if (!data.ok || !data.channels.length) throw new Error();
     sel.innerHTML = '<option value="">科目を選択（任意）</option>' +
-      data.channels.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+      data.channels.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   } catch(e) {
     sel.innerHTML = '<option value="">（科目を取得できませんでした）</option>';
   }
@@ -3102,10 +3102,12 @@ async function openRename(id) {
     if (!data.ok || !data.channels.length) throw new Error();
     sel.innerHTML = '<option value="">科目なし</option>' +
       data.channels.map(c =>
-        `<option value="${c.name}"${c.name === currentSubject ? ' selected' : ''}>${c.name}</option>`
+        `<option value="${esc(c.name)}"${c.name === currentSubject ? ' selected' : ''}>${esc(c.name)}</option>`
       ).join('');
   } catch(e) {
-    sel.innerHTML = `<option value="${currentSubject}">${currentSubject || '（取得失敗）'}</option>`;
+    // ★ 修正：currentSubject（deck.subject）はデッキ作成者が自由に設定できる文字列。
+    //   未エスケープでinnerHTMLへ挿入するとXSSになるため esc() を通す。
+    sel.innerHTML = `<option value="${esc(currentSubject)}">${esc(currentSubject) || '（取得失敗）'}</option>`;
   }
   setTimeout(() => document.getElementById('modal-rename-input').focus(), 150);
 }
