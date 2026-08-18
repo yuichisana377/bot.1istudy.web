@@ -111,19 +111,12 @@ function renderNotices() {
       nameEl.appendChild(meta);
     }
 
-    const doneBtn = document.createElement('button');
-    doneBtn.type = 'button';
-    doneBtn.className = 'notice-done-btn' + (n.done ? ' is-done' : '');
-    doneBtn.textContent = n.done ? '✓ 実行済み' : '実行済みにする';
-    doneBtn.addEventListener('click', (event) => toggleNoticeDone(event, n.filename));
-
     const arrow = document.createElement('span');
     arrow.className = 'notice-arrow';
     arrow.textContent = '›';
 
     card.appendChild(badge);
     card.appendChild(nameEl);
-    card.appendChild(doneBtn);
     card.appendChild(arrow);
     list.appendChild(card);
   });
@@ -131,9 +124,9 @@ function renderNotices() {
   el.appendChild(list);
 }
 
-// ★ 追加：「実行済み」の切り替え本体。全員共有の状態として、押した瞬間に
-//   一覧の下へ薄く移動する。一覧カードのボタン・詳細モーダルのボタン
-//   どちらから呼ばれても、両方の表示を同期する。
+// ★ 「実行済み」の切り替え本体。全員共有の状態として、押した瞬間に
+//   一覧の下へ薄く移動する。詳細モーダルの「実行済みにする」ボタン
+//   （編集する・削除するの並び）からのみ呼ばれる。
 async function setNoticeDone(filename, nextDone) {
   const n = notices.find(x => x.filename === filename);
   if (!n) return;
@@ -153,14 +146,6 @@ async function setNoticeDone(filename, nextDone) {
     updateViewDoneBtn();
     alert('実行済みの切り替えに失敗しました。通信環境を確認してもう一度お試しください。');
   }
-}
-
-// 一覧カードの「実行済みにする」ボタンから（カード自体のクリック＝詳細表示は発火させない）
-function toggleNoticeDone(event, filename) {
-  event.stopPropagation();
-  const n = notices.find(x => x.filename === filename);
-  if (!n) return;
-  setNoticeDone(filename, !n.done);
 }
 
 // 詳細モーダルの「実行済みにする」ボタンから
