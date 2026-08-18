@@ -64,22 +64,6 @@ function extBadgeClass(ext) {
   return ext === 'md' ? 'notice-badge-md' : 'notice-badge-txt';
 }
 
-// ★ 追加：表示テキスト用のHTMLエスケープ（filename・uploaderはアップロード時に
-//   利用者が自由に決められる文字列で、そのままHTMLへ差し込むとXSSになるため必須）。
-function esc(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-// ★ 追加：onclick="fn('...')" のように、HTML属性（ダブルクォート）の中の
-//   JS文字列リテラル（シングルクォート）へ値を埋め込む場合のエスケープ。
-//   ・まずJS文字列として安全にする（\ と ' をエスケープ）
-//   ・その結果をHTML属性として安全にする（& と " をエスケープ）
-//   の順で行わないと、二重引用符で属性自体を抜け出されてしまう
-//   （例: filename に `"` が含まれていると onclick="..." を途中で終わらせられる）。
-function escForInlineHandler(s) {
-  const jsEscaped = String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  return jsEscaped.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-}
-
 function renderNotices() {
   const el = document.getElementById('notice-content');
   if (!notices.length) {
@@ -95,14 +79,14 @@ function renderNotices() {
 
   el.innerHTML = `<div class="notice-list">` + ordered.map(n => {
     const metaParts = [];
-    if (n.uploader) metaParts.push(`${esc(n.uploader)}さん`);
-    if (n.uploaded_at) metaParts.push(esc(n.uploaded_at));
+    if (n.uploader) metaParts.push(`${n.uploader}さん`);
+    if (n.uploaded_at) metaParts.push(n.uploaded_at);
     const meta = metaParts.length ? `<span class="notice-meta">${metaParts.join(' ・ ')}</span>` : '';
-    const safeFn = escForInlineHandler(n.filename);
+    const safeFn = n.filename.replace(/'/g, "\\'");
     return `
     <div class="notice-card${n.done ? ' notice-done' : ''}" onclick="openViewModal('${safeFn}')">
       <span class="notice-badge ${extBadgeClass(n.ext)}">${n.ext.toUpperCase()}</span>
-      <span class="notice-name">${esc(n.filename)}${meta}</span>
+      <span class="notice-name">${n.filename}${meta}</span>
       <button type="button" class="notice-done-btn${n.done ? ' is-done' : ''}"
         onclick="toggleNoticeDone(event, '${safeFn}')">${n.done ? '✓ 実行済み' : '実行済みにする'}</button>
       <span class="notice-arrow">›</span>
