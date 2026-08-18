@@ -479,6 +479,32 @@ body {
 }
 .drawer-overlay.open { display: block; }
 
+/* ============================
+   ページ遷移ローディング（共通）
+   ─────────────────────────────
+   ★ 追加：メニュー（ドロワー）から別ページへ移動するとき、回線が遅い・
+   Discordの内蔵ブラウザなどで読み込みに時間がかかると、タップしても
+   何も変わらないまま止まって見え、壊れていると誤解されやすかった。
+   タップした瞬間にこのオーバーレイを被せて「移動が始まった」ことを
+   即座に見せる（実際のページ遷移自体はブラウザ標準の読み込みのままで、
+   読み込みが速ければすぐそのまま新しいページに切り替わる）。
+============================ */
+.page-nav-loading {
+  display: none;
+  position: fixed; inset: 0;
+  background: var(--bg);
+  z-index: 400; /* ドロワー（310）より手前 */
+  align-items: center; justify-content: center;
+}
+.page-nav-loading.show { display: flex; }
+.page-nav-loading .spinner-lg {
+  width: 34px; height: 34px;
+  border: 3px solid var(--border);
+  border-top-color: #1e40af;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
 .drawer {
   position: fixed;
   top: 0; left: 0; bottom: 0;

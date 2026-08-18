@@ -5017,6 +5017,17 @@ function closeDrawer() {
   document.getElementById('drawer-overlay').classList.remove('open');
 }
 
+// ★ 追加：ドロワーのメニューをタップした瞬間に、読み込み中であることが
+//   見た目にもすぐ伝わるよう、ページ遷移ローディングを即座に表示する
+//   （実際のページ遷移はブラウザ標準の <a href> 遷移のまま。読み込みが
+//   速いページならすぐ次のページに切り替わるので気づかない）。
+document.querySelectorAll('.drawer-item[href]').forEach(a => {
+  a.addEventListener('click', () => {
+    const overlay = document.getElementById('page-nav-loading');
+    if (overlay) overlay.classList.add('show');
+  });
+});
+
 // ── バナー ────────────────────────────
 function showBanner(msg, bg, color) {
   const banner = document.getElementById('save-ok-banner');
@@ -5571,6 +5582,11 @@ async function forceRefreshOnReturn() {
 // bfcacheから復元された場合（persisted === true）に発火
 window.addEventListener('pageshow', (e) => {
   if (e.persisted) forceRefreshOnReturn();
+  // ★ 追加：ページ遷移ローディングの表示が残ったまま（＝他ページに移動しかけた
+  //   状態のまま）bfcacheに入っていた場合、「戻る」で復元したときに画面が
+  //   ローディングで覆われたまま固まって見えてしまうのを防ぐ。
+  const overlay = document.getElementById('page-nav-loading');
+  if (overlay) overlay.classList.remove('show');
 });
 
 // タブ／アプリがバックグラウンドから表示状態に戻った瞬間に発火

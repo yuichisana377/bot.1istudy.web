@@ -13,6 +13,9 @@
 <!-- ドロワーオーバーレイ -->
 <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
 
+<!-- ★ 追加：ページ遷移中ローディング（メニュー選択直後、読み込み中の合図） -->
+<div class="page-nav-loading" id="page-nav-loading"><div class="spinner-lg"></div></div>
+
 <!-- ドロワー -->
 <div class="drawer" id="drawer">
   <div class="drawer-header">
@@ -91,6 +94,10 @@
           <span class="service-card-title">Webサイト アップデート</span>
         </div>
         <ul class="service-update-list">
+          <li class="service-update-item">
+            <span class="service-update-date">2026/08/18</span>
+            <span class="service-update-text">メニューからページを切り替えたとき、読み込みに時間がかかっても画面が固まって見えないよう、タップした瞬間にローディング表示が出るようにしました。</span>
+          </li>
           <li class="service-update-item">
             <span class="service-update-date">2026/08/18</span>
             <span class="service-update-text">カードを学習中の画面右上に、そのデッキをみんなで学習した「わかる率」を表示するようにしました。</span>
