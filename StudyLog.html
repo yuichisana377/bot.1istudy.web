@@ -123,8 +123,11 @@
     <!-- ログ一覧（自分のみ） -->
     <div class="sl-card">
       <div class="sl-card-title">📋 ログ一覧</div>
+      <!-- ★ 追加：JS読み込み・データ取得前は空表示ではなくスケルトンを見せる -->
       <div id="log-list">
-        <div class="empty-msg">まだ記録がありません</div>
+        <div class="skeleton-block" style="height:44px;margin-bottom:8px"></div>
+        <div class="skeleton-block" style="height:44px;margin-bottom:8px"></div>
+        <div class="skeleton-block" style="height:44px"></div>
       </div>
     </div>
 
@@ -147,14 +150,18 @@
 
       <!-- ② メンバーごとの今週の記録 -->
       <div style="font-weight:700;font-size:14px;color:#475569;margin:4px 0 10px;padding-top:4px;border-top:1px solid #e2e8f0">👤 メンバー別 今週の記録</div>
+      <!-- ★ 追加：JS読み込み・データ取得前は空表示ではなくスケルトンを見せる -->
       <div id="member-week-list" style="margin-bottom:18px">
-        <div class="empty-msg">データなし</div>
+        <div class="skeleton-block" style="height:36px;margin-bottom:6px"></div>
+        <div class="skeleton-block" style="height:36px"></div>
       </div>
 
       <!-- ③ みんなの勉強ログ -->
       <div style="font-weight:700;font-size:14px;color:#475569;margin:4px 0 10px;padding-top:4px;border-top:1px solid #e2e8f0">📋 みんなの勉強ログ</div>
       <div id="everyone-log-list">
-        <div class="empty-msg">まだ記録がありません</div>
+        <div class="skeleton-block" style="height:44px;margin-bottom:8px"></div>
+        <div class="skeleton-block" style="height:44px;margin-bottom:8px"></div>
+        <div class="skeleton-block" style="height:44px"></div>
       </div>
     </div>
 

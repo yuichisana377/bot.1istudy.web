@@ -205,7 +205,16 @@
   </header>
 
   <!-- 時間割メイン -->
-  <main class="tt-main" id="tt-main-content"></main>
+  <!-- ★ 追加：JS読み込み・描画前は空白ではなくスケルトンを見せる
+       （renderTimetable()が呼ばれると中身は丸ごと置き換わる） -->
+  <main class="tt-main" id="tt-main-content">
+    <div style="padding:16px">
+      <div class="skeleton-block" style="height:28px;width:60%;margin-bottom:16px"></div>
+      <div class="skeleton-block" style="height:52px;margin-bottom:10px"></div>
+      <div class="skeleton-block" style="height:52px;margin-bottom:10px"></div>
+      <div class="skeleton-block" style="height:52px"></div>
+    </div>
+  </main>
 
 </div>
 <!-- ★scroll-body ここまで -->

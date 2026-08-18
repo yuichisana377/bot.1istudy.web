@@ -469,6 +469,26 @@ body {
 .spinner-dark { border-color: rgba(0,0,0,0.2); border-top-color: var(--text); }
 
 /* ============================
+   スケルトン読み込み表示（共通）
+   ─────────────────────────────
+   ★ 追加：一覧・リスト系のコンテンツがJSの読み込み・データ取得の間、
+   HTML側で「まだデータがありません」等の空表示がデフォルトで見えて
+   しまうと、実際には未取得なだけなのに空だと誤解される。
+   各ページで、一覧のデフォルト（JS実行前）表示をこの .skeleton-block
+   に差し替え、データ取得後にJS側で非表示にする運用にする。
+============================ */
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+.skeleton-block {
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, var(--border-light) 25%, var(--border) 37%, var(--border-light) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+/* ============================
    ドロワー（共通）
 ============================ */
 .drawer-overlay {
