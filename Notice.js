@@ -71,18 +71,50 @@ function renderNotices() {
     return;
   }
 
-  el.innerHTML = `<div class="notice-list">` + notices.map(n => {
+  // ★ 追加：「実行済み」にしたお知らせは一覧の一番下にまとめる
+  //   （元々の並び順＝新しい順は、未実行・実行済みそれぞれのグループ内では維持する）
+  const undone = notices.filter(n => !n.done);
+  const done    = notices.filter(n => n.done);
+  const ordered = [...undone, ...done];
+
+  el.innerHTML = `<div class="notice-list">` + ordered.map(n => {
     const metaParts = [];
     if (n.uploader) metaParts.push(`${n.uploader}さん`);
     if (n.uploaded_at) metaParts.push(n.uploaded_at);
     const meta = metaParts.length ? `<span class="notice-meta">${metaParts.join(' ・ ')}</span>` : '';
+    const safeFn = n.filename.replace(/'/g, "\\'");
     return `
-    <div class="notice-card" onclick="openViewModal('${n.filename.replace(/'/g, "\\'")}')">
+    <div class="notice-card${n.done ? ' notice-done' : ''}" onclick="openViewModal('${safeFn}')">
       <span class="notice-badge ${extBadgeClass(n.ext)}">${n.ext.toUpperCase()}</span>
       <span class="notice-name">${n.filename}${meta}</span>
+      <button type="button" class="notice-done-btn${n.done ? ' is-done' : ''}"
+        onclick="toggleNoticeDone(event, '${safeFn}')">${n.done ? '✓ 実行済み' : '実行済みにする'}</button>
       <span class="notice-arrow">›</span>
     </div>`;
   }).join('') + `</div>`;
+}
+
+// ★ 追加：「実行済み」ボタン。全員共有の状態として、押した瞬間に一覧の下へ
+//   薄く移動する。カード自体のクリック（詳細表示）は発火させない。
+async function toggleNoticeDone(event, filename) {
+  event.stopPropagation();
+  const n = notices.find(x => x.filename === filename);
+  if (!n) return;
+  const nextDone = !n.done;
+  n.done = nextDone; // ★ 楽観的に即座に反映（サーバー応答を待たず見た目を切り替える）
+  renderNotices();
+  try {
+    const res = await api('/set_notice_done', {
+      method: 'POST',
+      body: JSON.stringify({ filename, done: nextDone }),
+    });
+    if (!res.ok) throw new Error(res.error || '');
+  } catch (e) {
+    // ★ サーバーへの反映に失敗した場合は表示も元に戻す
+    n.done = !nextDone;
+    renderNotices();
+    alert('実行済みの切り替えに失敗しました。通信環境を確認してもう一度お試しください。');
+  }
 }
 
 // ============================================================

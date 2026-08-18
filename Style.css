@@ -800,6 +800,30 @@ body {
 .notice-card:active {
   background: var(--bg);
 }
+/* ★ 追加：実行済みにしたお知らせは薄く表示する（一覧の一番下にまとめて並ぶ） */
+.notice-card.notice-done {
+  opacity: .5;
+}
+
+/* ★ 追加：「実行済みにする」ボタン */
+.notice-done-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.notice-done-btn.is-done {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #bbf7d0;
+}
 
 .notice-badge {
   font-size: 10px;
