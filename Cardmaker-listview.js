@@ -26,15 +26,14 @@ function openListView() {
   listViewFilter = 'all';
   closeModal('modal-play-mode');
 
-  let title;
+  const titleEl = document.getElementById('list-view-title');
   if (studyIsFolder) {
     const folder = folders.find(f => f.id === studyFolderId);
-    title = folder ? `📁 ${folder.name}` : 'フォルダ';
+    setIconText(titleEl, folder ? Icons.cmHtml('folder', {size:16}) : '', folder ? folder.name : 'フォルダ');
   } else {
     const deck = decks.find(d => d.id === studyDeckId);
-    title = deck ? deck.name : '';
+    setIconText(titleEl, '', deck ? deck.name : '');
   }
-  document.getElementById('list-view-title').textContent = title;
 
   showScreen('list-view');
   renderListView();
@@ -84,7 +83,7 @@ function renderListView() {
   if (!cards.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.innerHTML = `<div class="empty-icon">📭</div>${listViewFilter === 'unsure' ? 'わからないカードはありません' : 'カードがありません'}`;
+    empty.innerHTML = `<div class="empty-icon">${Icons.cmHtml('emptyList', {size:40})}</div>${listViewFilter === 'unsure' ? 'わからないカードはありません' : 'カードがありません'}`;
     wrap.appendChild(empty);
     return;
   }
@@ -121,13 +120,13 @@ function renderListView() {
     if (listViewIsUnsure(c)) {
       const badge = document.createElement('span');
       badge.className = 'list-view-unsure-badge';
-      badge.textContent = '🔖';
+      badge.innerHTML = Icons.cmHtml('bookmark', {size:13});
       head.appendChild(badge);
     }
 
     const editBtn = document.createElement('button');
     editBtn.className = 'list-view-edit-btn';
-    editBtn.textContent = '✏️';
+    editBtn.innerHTML = Icons.html('edit', {size:14});
     editBtn.onclick = () => editListViewCard(cardKey(c), deckId);
     head.appendChild(editBtn);
 

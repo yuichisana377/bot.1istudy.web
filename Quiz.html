@@ -32,11 +32,11 @@
 
     <div class="qz-home-actions">
       <button class="qz-big-btn qz-big-btn-join" onclick="goJoinScreen()">
-        <span class="qz-big-btn-icon">👥</span>
+        <span class="qz-big-btn-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="9" cy="8.3" r="3"/><path d="M3.4 19c0-3.3 2.5-6 5.6-6s5.6 2.7 5.6 6"/><circle cx="16.6" cy="9.3" r="2.3"/><path d="M15.3 13.1c2.5.3 4.5 2.6 4.7 5.6"/></svg></span>
         <span class="qz-big-btn-label">参加する</span>
       </button>
       <button class="qz-big-btn qz-big-btn-host" onclick="startFreshHostSetup()">
-        <span class="qz-big-btn-icon">🎬</span>
+        <span class="qz-big-btn-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 9.5 19 6l1 4.5L5 14Z"/><rect x="4" y="10.5" width="16" height="9" rx="1.5"/><path d="M8 6.5l3 4"/><path d="M13 5.3l3 4"/></svg></span>
         <span class="qz-big-btn-label">クイズを作る（ホスト）</span>
       </button>
     </div>
@@ -48,7 +48,7 @@
   <header class="qz-header">
     <button class="qz-back" onclick="backFromJoinScreen()">←</button>
     <div class="qz-brand-sm">参加する</div>
-    <button class="qz-icon-btn" onclick="loadRoomList()" title="更新">🔄</button>
+    <button class="qz-icon-btn" onclick="loadRoomList()" title="更新"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.6-5.7L20 8.5"/><path d="M20 4v4.5h-4.5"/><path d="M20 12a8 8 0 0 1-13.6 5.7L4 15.5"/><path d="M4 20v-4.5h4.5"/></svg></button>
   </header>
   <div class="qz-body">
     <p class="qz-label">参加できるクイズから選んでください</p>
@@ -85,11 +85,11 @@
       <!-- ★ 単純なプルダウンではなく、いつもの単語のホーム画面（Cardmaker.html）へ行って
            そこでデッキ・フォルダを選ぶ方式。複数のデッキやフォルダごとの選択にも対応する。 -->
       <div id="hs-deck-picker-empty">
-        <button type="button" class="qz-deck-picker-btn" onclick="openDeckPicker()">📚 デッキを選ぶ</button>
+        <button type="button" class="qz-deck-picker-btn" onclick="openDeckPicker()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 6.2c-2-1.3-4.6-2-7.2-2v13c2.6 0 5.2.7 7.2 2 2-1.3 4.6-2 7.2-2v-13c-2.6 0-5.2.7-7.2 2Z"/><path d="M12 6.2v13"/></svg> デッキを選ぶ</button>
       </div>
       <div id="hs-deck-picker-selected" style="display:none">
         <div class="qz-deck-chip-list" id="hs-selected-deck-list"></div>
-        <button type="button" class="qz-add-q-btn" id="hs-change-decks-btn" onclick="openDeckPicker()">🔄 選び直す</button>
+        <button type="button" class="qz-add-q-btn" id="hs-change-decks-btn" onclick="openDeckPicker()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.6-5.7L20 8.5"/><path d="M20 4v4.5h-4.5"/><path d="M20 12a8 8 0 0 1-13.6 5.7L4 15.5"/><path d="M4 20v-4.5h4.5"/></svg> 選び直す</button>
       </div>
       <p class="qz-hint">表面（問題）と裏面（答え）から、答えをシャッフルして4択問題を自動で作ります。答えの種類が4つ以上あるデッキが必要です。複数のデッキ・フォルダを選ぶと、それらの問題をまとめて1つのクイズにします。</p>
       <label class="qz-field">
@@ -106,7 +106,7 @@
 
     <!-- 手動で作成 -->
     <div id="hs-manual-panel" style="display:none">
-      <button type="button" class="qz-add-q-btn" onclick="document.getElementById('hs-csv-file-input').click()">📄 CSVから読み込む</button>
+      <button type="button" class="qz-add-q-btn" onclick="document.getElementById('hs-csv-file-input').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M7 3.5h7l4 4v13H7Z"/><path d="M14 3.5v4h4"/></svg> CSVから読み込む</button>
       <input type="file" id="hs-csv-file-input" accept=".csv,text/csv" style="display:none" onchange="handleQuizCsvImport(event)">
       <p class="qz-hint">1行目に見出し（問題,選択肢A,選択肢B,選択肢C,選択肢D,正解）があれば自動で認識します。見出しが無い場合はこの順の列とみなします。「正解」はA〜D・1〜4・選択肢の文言のいずれかで指定できます。</p>
       <div id="hs-manual-list"></div>
@@ -134,7 +134,7 @@
   <header class="qz-header">
     <span></span>
     <div class="qz-brand-sm" id="hl-title"></div>
-    <button class="qz-icon-btn" onclick="confirmQuitHost()">✕</button>
+    <button class="qz-icon-btn" onclick="confirmQuitHost()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
   </header>
   <div class="qz-body qz-body-center">
     <p class="qz-label">参加者は「参加する」からこのクイズを選べます</p>
@@ -165,7 +165,7 @@
   <header class="qz-header">
     <div class="qz-progress-label" id="hp-progress"></div>
     <div class="qz-my-score" id="hp-score">0点</div>
-    <button class="qz-icon-btn" onclick="confirmQuitHost()">✕</button>
+    <button class="qz-icon-btn" onclick="confirmQuitHost()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
   </header>
   <div class="qz-body">
     <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="hp-timerbar"></div></div>
@@ -201,7 +201,7 @@
   <header class="qz-header">
     <span></span>
     <div class="qz-brand-sm" id="pl-title"></div>
-    <button class="qz-icon-btn" onclick="confirmQuitPlayer()">✕</button>
+    <button class="qz-icon-btn" onclick="confirmQuitPlayer()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
   </header>
   <div class="qz-body qz-body-center">
     <div class="qz-waiting-anim">⏳</div>
@@ -244,6 +244,7 @@
   </div>
 </div>
 
+<script src="/Icons.js"></script>
 <script src="/Dialog.js"></script>
 <script src="/Dropdown.js"></script>
 <script src="Quiz.js"></script>

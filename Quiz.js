@@ -211,7 +211,7 @@ async function loadRoomList() {
     const joinable = r.state === 'lobby' || r.allow_late_join;
     const statusText = !inProgress
       ? '参加受付中'
-      : (joinable ? `🔴 プレイ中（第${r.current_q + 1}問）` : '🔒 プレイ中・途中参加不可');
+      : (joinable ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="7.2" fill="currentColor" stroke="none"/></svg> プレイ中（第${r.current_q + 1}問）` : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><rect x="5" y="10.3" width="14" height="10.2" rx="2"/><path d="M8 10.3V7a4 4 0 0 1 8 0v3.3"/></svg> プレイ中・途中参加不可');
     const tag = joinable ? 'button' : 'div';
     const typeAttr = joinable ? ' type="button"' : '';
     const clickAttr = joinable ? ` onclick="joinRoomByCode('${r.code}')"` : '';
@@ -222,7 +222,7 @@ async function loadRoomList() {
         <div class="qz-room-row-title">${escapeHtml(r.title)}</div>
         <div class="qz-room-row-sub">${escapeHtml(r.host_nickname)} さん・${r.question_count}問・${statusText}</div>
       </div>
-      <div class="qz-room-row-count">👥 ${r.player_count}</div>
+      <div class="qz-room-row-count"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="9" cy="8.3" r="3"/><path d="M3.4 19c0-3.3 2.5-6 5.6-6s5.6 2.7 5.6 6"/><circle cx="16.6" cy="9.3" r="2.3"/><path d="M15.3 13.1c2.5.3 4.5 2.6 4.7 5.6"/></svg> ${r.player_count}</div>
     </${tag}>`;
   }).join('');
 }
@@ -344,7 +344,7 @@ function renderSelectedDecks() {
   listEl.innerHTML = hsSelectedDecks.map((d, i) => `
     <div class="qz-deck-chip">
       <span class="qz-deck-chip-name">${escapeHtml(d.name || d.filename)}</span>
-      ${hsDeckPickerLocked ? '' : `<button type="button" class="qz-deck-chip-remove" onclick="removeSelectedDeck(${i})">✕</button>`}
+      ${hsDeckPickerLocked ? '' : `<button type="button" class="qz-deck-chip-remove" onclick="removeSelectedDeck(${i})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>`}
     </div>`).join('');
 }
 
@@ -742,10 +742,10 @@ function renderPlayScreen(room, opts) {
     if (room.your_correct) {
       const bonus = room.first_correct_nickname === STUDENT.nickname;
       feedbackEl.className = 'qz-answer-feedback ok';
-      feedbackEl.textContent = bonus ? '🎉 正解！一番乗りボーナスで +12点！' : '✅ 正解！ +10点';
+      feedbackEl.innerHTML = bonus ? (Icons.html('celebrate', {size:15}) + ' 正解！一番乗りボーナスで +12点！') : (Icons.html('checkCircle', {size:15}) + ' 正解！ +10点');
     } else {
       feedbackEl.className = 'qz-answer-feedback ng';
-      feedbackEl.textContent = '❌ 不正解…';
+      feedbackEl.innerHTML = Icons.html('wrong', {size:15}) + ' 不正解…';
     }
     waitingNote.style.display = 'none';
   } else if (revealed && yourAnswer === undefined) {
@@ -768,8 +768,8 @@ function renderPlayScreen(room, opts) {
   if (room.state === 'reveal') {
     revealPanel.style.display = '';
     document.getElementById(firstBadgeId).textContent = room.first_correct_nickname
-      ? `⚡ 一番早く正解：${room.first_correct_nickname} さん（+2点ボーナス）`
-      : '⚡ 正解者はいませんでした';
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6Z"/></svg> 一番早く正解：${room.first_correct_nickname} さん（+2点ボーナス）`
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6Z"/></svg> 正解者はいませんでした';
     document.getElementById(leaderboardId).innerHTML = miniLeaderboardHtml(room.players);
   } else {
     revealPanel.style.display = 'none';
@@ -797,7 +797,7 @@ function quizMarkHtml(p) {
   if (!p.answered) return `<span class="qz-lb-mark unanswered" title="未回答">―</span>`;
   return p.correct
     ? `<span class="qz-lb-mark correct" title="正解">◯</span>`
-    : `<span class="qz-lb-mark wrong" title="不正解">✕</span>`;
+    : `<span class="qz-lb-mark wrong" title="不正解"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></span>`;
 }
 
 function renderHostPlay(room) {
@@ -937,7 +937,7 @@ function renderResult(room) {
   showScreenQ('result');
   const sorted = [...room.players].sort((a, b) => b.score - a.score);
   const podiumOrder = [sorted[1], sorted[0], sorted[2]]; // 2位・1位・3位の順で表示（真ん中が1位）
-  const medalMap = ['🥈', '🥇', '🥉'];
+  const medalMap = [<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c0c0c0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path d="M12 12v6"/></svg>, <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path d="M12 12v6"/></svg>, <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path d="M12 12v6"/></svg>];
   const podiumClass = ['qz-podium-2', 'qz-podium-1', 'qz-podium-3'];
   document.getElementById('result-podium').innerHTML = podiumOrder.map((p, i) => {
     if (!p) return `<div class="qz-podium-col ${podiumClass[i]}"></div>`;

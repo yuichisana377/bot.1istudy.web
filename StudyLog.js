@@ -144,7 +144,7 @@ function renderDrawerAccount() {
   var settingsBtn = document.createElement('button');
   settingsBtn.type = 'button';
   settingsBtn.className = 'drawer-account-menu-item';
-  settingsBtn.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  settingsBtn.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   settingsBtn.addEventListener('click', function(e) {
     e.stopPropagation();
     el.classList.remove('is-open');
@@ -155,7 +155,7 @@ function renderDrawerAccount() {
   var logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
-  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
   logoutBtn.addEventListener('click', function(e) {
     e.stopPropagation();
     doLogout();
@@ -376,7 +376,7 @@ function openAccountModal() {
   box.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
       '<h2 style="margin:0;font-size:18px;">アカウント設定</h2>' +
-      '<button id="sl-acct-close" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">✕</button>' +
+      '<button id="sl-acct-close" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">' + Icons.html('close', {size:18}) + '</button>' +
     '</div>' +
 
     '<div style="font-size:13px;color:#64748b;margin-bottom:20px;">学籍番号: ' + escapeHtmlSl(STUDENT.id) + '</div>' +
@@ -416,11 +416,11 @@ function openAccountModal() {
     '</div>' +
 
     '<div style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:20px;">' +
-      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">🔗 Discord連携</label>' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">' + Icons.html('link', {size:14}) + ' Discord連携</label>' +
       '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">' +
         '連携すると、タイマーの3時間経過通知などをDiscordのDMで直接受け取れます。' +
       '</p>' +
-      '<button id="sl-acct-oauth-btn" style="width:100%;padding:10px;border:none;border-radius:8px;background:#5865F2;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">🔗 Discordで連携する</button>' +
+      '<button id="sl-acct-oauth-btn" style="width:100%;padding:10px;border:none;border-radius:8px;background:#5865F2;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">' + Icons.html('link', {size:16}) + ' Discordで連携する</button>' +
       '<div id="sl-acct-oauth-msg" style="font-size:12px;margin-top:6px;text-align:center;"></div>' +
     '</div>';
 
@@ -444,10 +444,12 @@ function escapeHtmlSl(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// ★ msgは常にこのファイル内の固定文字列（呼び出し側にユーザー入力を渡す
+//   箇所は無い）なので、innerHTMLで組み立てても安全。
 function setAcctMsg(id, msg, isError) {
   var el = document.getElementById(id);
   if (!el) return;
-  el.textContent = msg;
+  el.innerHTML = msg;
   el.style.color = isError ? "#dc2626" : "#16a34a";
 }
 
@@ -475,7 +477,7 @@ async function submitNicknameChange() {
       nicknameMap[STUDENT.id] = nickname;
       applySession();
       renderAll();
-      setAcctMsg("sl-acct-nickname-msg", "✓ 保存しました");
+      setAcctMsg("sl-acct-nickname-msg", Icons.html('checkCircle', {size:14}) + " 保存しました");
     } else if (data && data.error === "not_logged_in") {
       forceReLogin();
     } else {
@@ -499,7 +501,7 @@ async function requestPasswordChangeCode() {
     });
     if (data && data.ok) {
       document.getElementById("sl-acct-pw-fields").style.display = "";
-      setAcctMsg("sl-acct-code-msg", "✓ Discordに確認コードを送信しました（10分間有効）");
+      setAcctMsg("sl-acct-code-msg", Icons.html('checkCircle', {size:14}) + " Discordに確認コードを送信しました（10分間有効）");
       document.getElementById("sl-acct-code").focus();
     } else if (data && data.error === "not_logged_in") {
       forceReLogin();
@@ -538,7 +540,7 @@ async function submitPasswordChange() {
       }),
     });
     if (data && data.ok) {
-      setAcctMsg("sl-acct-pw-msg", "✓ パスワードを変更しました");
+      setAcctMsg("sl-acct-pw-msg", Icons.html('checkCircle', {size:14}) + " パスワードを変更しました");
       document.getElementById("sl-acct-code").value   = "";
       document.getElementById("sl-acct-newpw").value  = "";
       document.getElementById("sl-acct-newpw2").value = "";
@@ -917,7 +919,7 @@ function renderLogs() {
         '<span class="sl-log-subject">' + esc(l.subject) + '</span>' +
         '<span class="sl-log-right">' +
           '<span class="sl-log-min">' + l.minutes + '分</span>' +
-          '<button class="sl-log-del-btn" data-log-time="' + escAttr(l.time) + '" title="この記録を削除">🗑</button>' +
+          '<button class="sl-log-del-btn" data-log-time="' + escAttr(l.time) + '" title="この記録を削除">' + Icons.html('trash', {size:14}) + '</button>' +
         '</span>' +
       '</div>' +
       '<div class="sl-log-meta">' + l.date + ' · ' + esc(l.nickname) + '</div>' +
@@ -960,7 +962,7 @@ async function deleteMyLog(timeKey, btn) {
   if (!data || data.ok === false) {
     if (data && data.error === "not_logged_in") { forceReLogin(); return; }
     showAppAlert({ title: "削除に失敗しました", desc: data && data.error ? data.error : "" });
-    if (btn) { btn.disabled = false; btn.textContent = "🗑"; }
+    if (btn) { btn.disabled = false; btn.innerHTML = Icons.html('trash', {size:14}); }
     return;
   }
   logs = logs.filter(function(l) { return !(l.student_id === STUDENT.id && l.time === timeKey); });
@@ -1056,11 +1058,11 @@ function renderTasks() {
     var done    = doneIds.includes(t.id);
     var pending = pendingTaskIds.has(t.id);
 
-    var btnLabel = pending ? '<span class="sl-spinner" style="border-color:rgba(0,0,0,.25);border-top-color:#334155;"></span>送信中…' : (done ? "✓ 達成済み" : "達成する");
+    var btnLabel = pending ? '<span class="sl-spinner" style="border-color:rgba(0,0,0,.25);border-top-color:#334155;"></span>送信中…' : (done ? (Icons.html('checkCircle', {size:13}) + " 達成済み") : "達成する");
     var btnClass = "sl-task-btn" + (done ? " sl-task-btn-done" : "");
 
     // ★ 備考は普段は隠しておき、タップで表示する（Plan.jsの詳細表示と同じ考え方）
-    var noteDot  = t.note ? '<span class="note-dot" title="備考あり">📝</span>' : '';
+    var noteDot  = t.note ? ('<span class="note-dot" title="備考あり">' + Icons.html('memo', {size:13}) + '</span>') : '';
     var noteHtml = t.note ? '<div class="sl-task-note">' + esc(t.note) + '</div>' : '';
 
     return '<div class="sl-task-row' + (done ? " done-row" : "") + '">' +
@@ -1069,7 +1071,7 @@ function renderTasks() {
         '<div class="sl-task-meta">' +
           '<span class="sl-subject-badge">' + esc(t.subject) + '</span>' +
           '<span class="sl-due">締切: ' + t.due + '</span>' +
-          '<span class="sl-pts-badge">⭐ +' + t.points + 'pt</span>' +
+          '<span class="sl-pts-badge">' + Icons.html('star', {size:13}) + ' +' + t.points + 'pt</span>' +
           noteDot +
         '</div>' +
         noteHtml +
@@ -1136,7 +1138,7 @@ async function saveManual() {
   if (btnEl && btnEl.disabled) return; // ★ 連打防止：送信中は何もしない
 
   if (!min || min < 1) {
-    errEl.textContent   = "✕ 1分以上の時間を入力してください";
+    errEl.innerHTML     = Icons.html('close', {size:14}) + " 1分以上の時間を入力してください";
     errEl.style.display = "block";
     setTimeout(function() { errEl.style.display = "none"; }, 3500);
     return;
@@ -1152,7 +1154,7 @@ async function saveManual() {
     var elapsedAnyMs = Date.now() - lastAnyAt;
     if (elapsedAnyMs < MANUAL_COOLDOWN_MS) {
       var remainAnySec = Math.ceil((MANUAL_COOLDOWN_MS - elapsedAnyMs) / 1000);
-      errEl.textContent   = "✕ 記録は、前回から" + (MANUAL_COOLDOWN_MS / 1000) + "秒経ってから行えます（あと" + remainAnySec + "秒）";
+      errEl.innerHTML     = Icons.html('close', {size:14}) + " 記録は、前回から" + (MANUAL_COOLDOWN_MS / 1000) + "秒経ってから行えます（あと" + remainAnySec + "秒）";
       errEl.style.display = "block";
       setTimeout(function() { errEl.style.display = "none"; }, 3500);
       return;
@@ -1165,7 +1167,7 @@ async function saveManual() {
     var elapsedMs = Date.now() - lastAt;
     if (elapsedMs < MANUAL_COOLDOWN_MS) {
       var remainSec = Math.ceil((MANUAL_COOLDOWN_MS - elapsedMs) / 1000);
-      errEl.textContent   = "✕ 同じ教科の記録は、前回から" + (MANUAL_COOLDOWN_MS / 1000) + "秒経ってから行えます（あと" + remainSec + "秒）";
+      errEl.innerHTML     = Icons.html('close', {size:14}) + " 同じ教科の記録は、前回から" + (MANUAL_COOLDOWN_MS / 1000) + "秒経ってから行えます（あと" + remainSec + "秒）";
       errEl.style.display = "block";
       setTimeout(function() { errEl.style.display = "none"; }, 3500);
       return;
@@ -1180,7 +1182,7 @@ async function saveManual() {
   if (!result.ok) {
     // ★ サーバー側の不正防止チェックで拒否された場合など
     setButtonLoading(btnEl, false);
-    errEl.textContent   = "✕ " + result.error;
+    errEl.innerHTML     = Icons.html('close', {size:14}) + " " + esc(result.error);
     errEl.style.display = "block";
     setTimeout(function() { errEl.style.display = "none"; }, 3500);
     return;

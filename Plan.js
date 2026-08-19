@@ -88,13 +88,13 @@ function renderDrawerAccount() {
   const settingsLink = document.createElement('a');
   settingsLink.className = 'drawer-account-menu-item';
   settingsLink.href = '/StudyLog.html?openAccount=1';
-  settingsLink.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   menu.appendChild(settingsLink);
 
   const logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
-  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
   logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
@@ -550,9 +550,9 @@ function renderPlans() {
     const rows = dayPlans.map(p => {
       const { cat, text, note } = parsePlanContent(p.content);
       const ptsBadge = (p.points != null)
-        ? `<span class="badge badge-pts">⭐ ${p.points}pt</span>`
+        ? `<span class="badge badge-pts"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3.5l2.5 5.3 5.8.8-4.2 4.1 1 5.8-5.1-2.7-5.1 2.7 1-5.8-4.2-4.1 5.8-.8Z"/></svg> ${p.points}pt</span>`
         : '';
-      const noteDot = note ? `<span class="note-dot" title="備考あり">📝</span>` : '';
+      const noteDot = note ? `<span class="note-dot" title="備考あり"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 4h9l3 3v13H6Z"/><path d="M15 4v3h3"/><path d="M9 13h6"/><path d="M9 17h6"/><path d="M9 9h3"/></svg></span>` : '';
       const label = `${p.date}/${p.subject}${p.content}`;
       return `<div class="plan-row" data-label="${esc(label)}" onclick="showPlanDetail(this)">
         <span class="subject">${esc(p.subject)}</span>
@@ -591,7 +591,7 @@ function showPlanDetail(el) {
     `<div class="detail-item"><div class="dl-label">内容</div><div class="dl-value">${esc(text)}</div></div>`,
   ];
   if (plan.points != null) {
-    rowsHtml.push(`<div class="detail-item"><div class="dl-label">ポイント</div><div class="dl-value">⭐ ${plan.points}pt</div></div>`);
+    rowsHtml.push(`<div class="detail-item"><div class="dl-label">ポイント</div><div class="dl-value"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3.5l2.5 5.3 5.8.8-4.2 4.1 1 5.8-5.1-2.7-5.1 2.7 1-5.8-4.2-4.1 5.8-.8Z"/></svg> ${plan.points}pt</div></div>`);
   }
   if (note) {
     rowsHtml.push(`<div class="detail-item"><div class="dl-label">備考</div><div class="dl-value dl-note">${esc(note)}</div></div>`);
@@ -946,7 +946,7 @@ function showOk(id) {
 }
 function showErr(id, msg) {
   const el = document.getElementById(id);
-  el.textContent = '✕ ' + msg;
+  el.innerHTML = Icons.html('close', {size:14}) + ' ' + esc(msg);
   el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', 4000);
 }

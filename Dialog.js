@@ -19,7 +19,10 @@
 //    CLAUDE.md参照）。
 // ============================================================
 
-function _appDialogSkeleton(title, desc) {
+// icon: 省略可。Icons.html()の戻り値（絵文字の代わりに見出しの先頭に添える
+// 固定アイコン）。title自体は常にtextNodeとして追加するので、呼び出し側が
+// 万一ユーザー入力をtitleに渡しても安全なまま。
+function _appDialogSkeleton(title, desc, icon) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-bg open';
   const box = document.createElement('div');
@@ -28,8 +31,9 @@ function _appDialogSkeleton(title, desc) {
   handle.className = 'modal-handle';
   box.appendChild(handle);
   const h3 = document.createElement('h3');
-  h3.textContent = title;
   h3.style.marginBottom = '.6rem';
+  if (icon) h3.insertAdjacentHTML('beforeend', icon + ' ');
+  h3.appendChild(document.createTextNode(title));
   box.appendChild(h3);
   if (desc) {
     const p = document.createElement('p');
@@ -43,9 +47,9 @@ function _appDialogSkeleton(title, desc) {
 
 // 選択肢が2つの確認ダイアログ（キャンセル + 実行）。confirm()の代替。
 // danger: true で実行ボタンを .btn-danger（赤系アウトライン）にする。
-function showAppConfirm({ title, desc = '', okLabel = 'OK', cancelLabel = 'キャンセル', danger = false }) {
+function showAppConfirm({ title, desc = '', okLabel = 'OK', cancelLabel = 'キャンセル', danger = false, icon = '' }) {
   return new Promise(resolve => {
-    const { overlay, box } = _appDialogSkeleton(title, desc);
+    const { overlay, box } = _appDialogSkeleton(title, desc, icon);
 
     const btnRow = document.createElement('div');
     btnRow.className = 'detail-actions';
@@ -77,9 +81,9 @@ function showAppConfirm({ title, desc = '', okLabel = 'OK', cancelLabel = 'キ�
 }
 
 // ボタン1つだけの通知ダイアログ。alert()の代替。
-function showAppAlert({ title, desc = '', okLabel = '閉じる' }) {
+function showAppAlert({ title, desc = '', okLabel = '閉じる', icon = '' }) {
   return new Promise(resolve => {
-    const { overlay, box } = _appDialogSkeleton(title, desc);
+    const { overlay, box } = _appDialogSkeleton(title, desc, icon);
 
     const okBtn = document.createElement('button');
     okBtn.type = 'button';
@@ -101,9 +105,9 @@ function showAppAlert({ title, desc = '', okLabel = '閉じる' }) {
 // 1行入力を求めるダイアログ。prompt()の代替。
 // キャンセル時は null、OK時は入力文字列（空文字含む）を返す。
 // inputType: 'text' | 'number'（number指定時はスマホでも数字キーボードが出る）
-function showAppPrompt({ title, desc = '', label = '', value = '', okLabel = 'OK', cancelLabel = 'キャンセル', inputType = 'text' }) {
+function showAppPrompt({ title, desc = '', label = '', value = '', okLabel = 'OK', cancelLabel = 'キャンセル', inputType = 'text', icon = '' }) {
   return new Promise(resolve => {
-    const { overlay, box } = _appDialogSkeleton(title, desc);
+    const { overlay, box } = _appDialogSkeleton(title, desc, icon);
 
     const field = document.createElement('div');
     field.className = 'field';

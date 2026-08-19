@@ -86,13 +86,13 @@ function renderDrawerAccount() {
   const settingsLink = document.createElement('a');
   settingsLink.className = 'drawer-account-menu-item';
   settingsLink.href = '/StudyLog.html?openAccount=1';
-  settingsLink.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   menu.appendChild(settingsLink);
 
   const logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
-  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
   logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
@@ -380,7 +380,7 @@ function renderTimetable() {
     const note   = holidayOv.note   ? `（${escapeAttr(holidayOv.note)}）` : '';
     periodsHtml = `<div class="period-row" style="justify-content:center;padding:1.5rem">
       <div style="text-align:center">
-        <div style="font-size:22px;margin-bottom:6px">🏫</div>
+        <div style="font-size:22px;margin-bottom:6px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5Z"/><path d="M7 10.3V16c0 1.5 2.2 2.6 5 2.6s5-1.1 5-2.6v-5.7"/><path d="M21 8v6.3"/></svg></div>
         <div style="font-size:15px;font-weight:700;color:var(--text)">${escapeAttr(reason)}${note}</div>
         <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">この日は授業がありません</div>
       </div>
@@ -397,7 +397,7 @@ function renderTimetable() {
         const phNote   = periodHolidayOv.note   ? `（${escapeAttr(periodHolidayOv.note)}）` : '';
         return `<div class="period-row" onclick="showTTDetail('${dateStr}', ${periodNum})">
           <div class="period-num">${periodNum}</div>
-          <div class="period-subject" style="color:var(--text-tertiary)">🚫 ${escapeAttr(phReason)}${phNote}</div>
+          <div class="period-subject" style="color:var(--text-tertiary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="8.3"/><path d="M6.6 6.6l10.8 10.8"/></svg> ${escapeAttr(phReason)}${phNote}</div>
           <div class="period-right"></div>
         </div>`;
       }
@@ -411,7 +411,7 @@ function renderTimetable() {
 
       const hw = ttHomeworks.filter(h => h.date === dateStr && h.subject === subject);
       const itemsHtml = items.length
-        ? `<div class="items-row">${items.map(it => `<span class="item-tag">📎 ${escapeAttr(it)}</span>`).join('')}</div>` : '';
+        ? `<div class="items-row">${items.map(it => `<span class="item-tag"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M16.3 6.7 8.9 14.1a3 3 0 0 0 4.2 4.2l7.6-7.6a5 5 0 0 0-7-7l-7.6 7.6a1.8 1.8 0 0 0 2.5 2.5l6.7-6.7"/></svg> ${escapeAttr(it)}</span>`).join('')}</div>` : '';
       const hwHtml = hw.map(h => {
         const { cat, text } = parsePlanContent(h.content);
         return `<div class="homework-row">
@@ -560,7 +560,7 @@ function onMonthDayClick(dateStr) {
     const reason = holidayOv.reason || '休校';
     const note   = holidayOv.note   ? `（${escapeAttr(holidayOv.note)}）` : '';
     html += `<div style="text-align:center;padding:1rem 0">
-      <div style="font-size:22px;margin-bottom:6px">🏫</div>
+      <div style="font-size:22px;margin-bottom:6px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5Z"/><path d="M7 10.3V16c0 1.5 2.2 2.6 5 2.6s5-1.1 5-2.6v-5.7"/><path d="M21 8v6.3"/></svg></div>
       <div style="font-size:15px;font-weight:700;color:var(--text)">${escapeAttr(reason)}${note}</div>
       <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">この日は終日お休みです</div>
     </div>`;
@@ -692,7 +692,7 @@ function showTTDetail(dateStr, period) {
 
   if (holidayOv) {
     const note = holidayOv.note ? `（${escapeAttr(holidayOv.note)}）` : '';
-    rows.push(`<div class="detail-item"><div class="dl-label">状態</div><div class="dl-value">🚫 ${escapeAttr(holidayOv.reason) || '休み'}${note}</div></div>`);
+    rows.push(`<div class="detail-item"><div class="dl-label">状態</div><div class="dl-value"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="8.3"/><path d="M6.6 6.6l10.8 10.8"/></svg> ${escapeAttr(holidayOv.reason) || '休み'}${note}</div></div>`);
   } else {
     const subject = changeOv ? (changeOv.subject || (base && base.subject)) : (base && base.subject);
     const items   = changeOv ? (changeOv.items || [])                      : ((base && base.items) || []);
@@ -700,7 +700,7 @@ function showTTDetail(dateStr, period) {
     rows.push(`<div class="detail-item"><div class="dl-label">科目</div><div class="dl-value">${escapeAttr(subject) || 'ー'}${changeOv ? ' <span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:20px;font-weight:700">変更あり</span>' : ''}</div></div>`);
 
     if (items.length) {
-      rows.push(`<div class="detail-item"><div class="dl-label">持ち物</div><div class="dl-value">${items.map(it => `📎 ${escapeAttr(it)}`).join('　')}</div></div>`);
+      rows.push(`<div class="detail-item"><div class="dl-label">持ち物</div><div class="dl-value">${items.map(it => `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M16.3 6.7 8.9 14.1a3 3 0 0 0 4.2 4.2l7.6-7.6a5 5 0 0 0-7-7l-7.6 7.6a1.8 1.8 0 0 0 2.5 2.5l6.7-6.7"/></svg> ${escapeAttr(it)}`).join('　')}</div></div>`);
     }
 
     const hw = ttHomeworks.filter(h => h.date === dateStr && h.subject === subject);
@@ -1063,7 +1063,7 @@ function renderTermDayEditor() {
         <input type="text" value="${escapeAttr((p.items || []).join(','))}" placeholder="持ち物（カンマ区切り）"
           oninput="updateTermPeriod('${day}',${i},'items',this.value)">
       </div>
-      <button type="button" class="tt-term-period-del" onclick="removeTermPeriod('${day}',${i})" title="このコマを削除">✕</button>
+      <button type="button" class="tt-term-period-del" onclick="removeTermPeriod('${day}',${i})" title="このコマを削除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
     </div>`).join('');
 
   container.innerHTML =
@@ -1105,7 +1105,7 @@ function renderTermList() {
         <div class="tt-term-list-range">${escapeAttr(t.start_date)} 〜 ${escapeAttr(t.end_date)}</div>
       </div>
       <button type="button" class="tt-btn-secondary" onclick="editTermFromList('${t.id}')">編集</button>
-      <button type="button" class="tt-term-period-del" onclick="deleteTermFromList('${t.id}')" title="削除">✕</button>
+      <button type="button" class="tt-term-period-del" onclick="deleteTermFromList('${t.id}')" title="削除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
     </div>`).join('');
 }
 
@@ -1330,7 +1330,7 @@ function renderTTOverridesList() {
     }
     return `<div class="override-row">
       <div class="override-info">${badge} ${info}</div>
-      <button class="override-del-btn" onclick="deleteTTOverride('${key}')" title="削除">✕</button>
+      <button class="override-del-btn" onclick="deleteTTOverride('${key}')" title="削除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
     </div>`;
   }).join('');
 }
@@ -1607,7 +1607,7 @@ function showOk(id) {
 }
 function showErr(id, msg) {
   const el = document.getElementById(id);
-  el.textContent = '✕ ' + msg;
+  el.innerHTML = Icons.html('close', {size:14}) + ' ' + escapeAttr(msg);
   el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', 4000);
 }

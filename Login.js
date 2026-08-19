@@ -326,7 +326,7 @@ async function openRegisterStep(id, mode, prefillPassword) {
   const nicknameField = document.getElementById("reg-nickname-field");
 
   if (mode === "new") {
-    document.getElementById("reg-title").textContent = "新規登録 👋";
+    document.getElementById("reg-title").innerHTML = "新規登録 " + Icons.html('wave', {size:20});
     document.getElementById("reg-desc").innerHTML =
       `<strong id="reg-id-label">${escHtml(id)}</strong> はまだ登録されていません。<br>` +
       `呼ばれたいニックネームとパスワードを入力して登録してください。<br>` +
@@ -341,7 +341,7 @@ async function openRegisterStep(id, mode, prefillPassword) {
       const check = await checkStudent(id);
       if (check.exists && check.nickname) nicknameLabel = check.nickname;
     } catch {}
-    document.getElementById("reg-title").textContent = "パスワード設定 🔑";
+    document.getElementById("reg-title").innerHTML = "パスワード設定 " + Icons.html('key', {size:20});
     document.getElementById("reg-desc").innerHTML =
       `<strong id="reg-id-label">${escHtml(nicknameLabel)}（${escHtml(id)}）</strong> はまだパスワードが設定されていません。<br>` +
       `今後ログインに使うパスワードを設定してください。`;
@@ -398,7 +398,7 @@ async function submitRegister() {
   } catch {
     showRegErr("サーバーに接続できません。時間をおいて再試行してください。");
   } finally {
-    setBtn(btnEl, false, "登録してログイン ✓");
+    setBtn(btnEl, false, "登録してログイン " + Icons.html('check', {size:15}));
   }
 }
 
@@ -448,7 +448,7 @@ async function submitForgotSendCode() {
     const result = await requestPasswordResetCode(id);
     if (result.ok) {
       document.getElementById("forgot-pw-fields").style.display = "";
-      showForgotOk("✓ Discordに確認コードを送信しました（10分間有効）");
+      showForgotOk(Icons.html('check', {size:14}) + " Discordに確認コードを送信しました（10分間有効）");
       setTimeout(() => document.getElementById("inp-forgot-code")?.focus(), 60);
     } else if (result.error === "user_not_found") {
       showForgotErr("その学籍番号は登録されていません");
@@ -489,7 +489,7 @@ async function submitForgotConfirm() {
     // 再設定成功 → 続けてログインしてセッショントークンを取得する
     const loginResult = await loginRequest(id, newPw);
     if (!loginResult.ok) {
-      showForgotOk("✓ パスワードを再設定しました。ログイン画面からお入りください。");
+      showForgotOk(Icons.html('check', {size:14}) + " パスワードを再設定しました。ログイン画面からお入りください。");
       setTimeout(backToId, 1500);
       return;
     }
@@ -499,7 +499,7 @@ async function submitForgotConfirm() {
   } catch {
     showForgotErr("サーバーに接続できません。時間をおいて再試行してください。");
   } finally {
-    setBtn(btnEl, false, "パスワードを再設定してログイン ✓");
+    setBtn(btnEl, false, "パスワードを再設定してログイン " + Icons.html('check', {size:15}));
   }
 }
 
@@ -514,14 +514,14 @@ function validateForgotId(raw) {
 
 function showForgotErr(msg) {
   const el = document.getElementById("forgot-err");
-  el.textContent   = "✕ " + msg;
+  el.innerHTML     = Icons.html('close', {size:14}) + " " + escHtml(msg);
   el.style.color   = "";
   el.style.display = "block";
 }
 
 function showForgotOk(msg) {
   const el = document.getElementById("forgot-err");
-  el.textContent   = msg;
+  el.innerHTML     = msg;
   el.style.color   = "#16a34a";
   el.style.display = "block";
 }
@@ -595,7 +595,7 @@ async function submitDiscordRegister() {
   } catch {
     showDiscordRegErr("サーバーに接続できません。時間をおいて再試行してください。");
   } finally {
-    setBtn(btnEl, false, "登録してログイン ✓");
+    setBtn(btnEl, false, "登録してログイン " + Icons.html('check', {size:15}));
   }
 }
 
@@ -611,17 +611,19 @@ function validateDiscordId(raw) {
 
 function showDiscordRegErr(msg) {
   const el = document.getElementById("discord-reg-err");
-  el.textContent   = "✕ " + msg;
+  el.innerHTML     = Icons.html('close', {size:14}) + " " + escHtml(msg);
   el.style.display = "block";
 }
 
 // ============================================================
 //  ユーティリティ
 // ============================================================
+// ★ labelは常にこのファイル内の固定文字列（呼び出し側にユーザー入力を
+//   渡す箇所は無い）なので、innerHTMLで組み立てても安全。
 function setBtn(el, disabled, label) {
   if (!el) return;
   el.disabled     = disabled;
-  el.textContent  = label;
+  el.innerHTML    = label;
 }
 
 function escHtml(s) {
@@ -630,14 +632,14 @@ function escHtml(s) {
 
 function showIdErr(msg) {
   const el = document.getElementById("id-err");
-  el.textContent   = "✕ " + msg;
+  el.innerHTML     = Icons.html('close', {size:14}) + " " + escHtml(msg);
   el.style.display = "block";
   setTimeout(() => { el.style.display = "none"; }, 5000);
 }
 
 function showRegErr(msg) {
   const el = document.getElementById("reg-err");
-  el.textContent   = "✕ " + msg;
+  el.innerHTML     = Icons.html('close', {size:14}) + " " + escHtml(msg);
   el.style.display = "block";
   setTimeout(() => { el.style.display = "none"; }, 5000);
 }

@@ -91,7 +91,7 @@ function enhanceSelect(selectEl) {
       row.dataset.idx = String(i);
       const check = document.createElement('span');
       check.className = 'app-dd-check';
-      check.textContent = opt.selected ? '✓' : '';
+      check.innerHTML = opt.selected ? Icons.html('check', {size:12}) : '';
       const label = document.createElement('span');
       label.textContent = opt.textContent;
       row.appendChild(check);

@@ -155,7 +155,7 @@
     // ★ 公開済みなら並び順もサーバーへ反映する（通知はしない）
     if (deck.filename) {
       const ok = await queueSyncDeckToServer(deck);
-      if (!ok) showBanner('⚠ 並び替えのサーバー反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+      if (!ok) showBanner('並び替えのサーバー反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
     }
   }
 

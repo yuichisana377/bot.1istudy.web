@@ -74,13 +74,13 @@ function renderDrawerAccount() {
   const settingsLink = document.createElement('a');
   settingsLink.className = 'drawer-account-menu-item';
   settingsLink.href = '/StudyLog.html?openAccount=1';
-  settingsLink.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   menu.appendChild(settingsLink);
 
   const logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
-  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
   logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
@@ -181,14 +181,14 @@ function switchServiceTab(tab) {
 // ============================================================
 const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const LOG_CATEGORY_ICON = {
-  backup:    '💾',
-  schedule:  '📘',
-  timetable: '📒',
-  card:      '📇',
-  study:     '📊',
-  notice:    '📢',
-  task:      '✅',
-  user:      '👤',
+  backup:    Icons.html('save', {size:15}),
+  schedule:  Icons.html('plan', {size:15}),
+  timetable: Icons.html('timetable', {size:15}),
+  card:      Icons.html('cardmaker', {size:15}),
+  study:     Icons.html('studylog', {size:15}),
+  notice:    Icons.html('notice', {size:15}),
+  task:      Icons.html('checkCircle', {size:15}),
+  user:      Icons.html('person', {size:15}),
 };
 let logDisplayCount = 50; // ★「もっと見る」を押すたびに増やして再取得する（件数自体は多くないため単純な方式でよい）
 
@@ -198,7 +198,7 @@ function renderLogEntry(entry) {
 
   const icon = document.createElement('span');
   icon.className = 'log-item-icon';
-  icon.textContent = LOG_CATEGORY_ICON[entry.category] || '🛠️';
+  icon.innerHTML = LOG_CATEGORY_ICON[entry.category] || Icons.html('tools', {size:15});
 
   const body = document.createElement('div');
   body.className = 'log-item-body';

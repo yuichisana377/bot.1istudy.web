@@ -54,7 +54,7 @@
 
     const title = document.createElement('div');
     title.style.cssText = 'font-size:17px;font-weight:700;margin-bottom:10px;color:#1a1a18;';
-    title.textContent = '🗑 削除の確認依頼が届いています';
+    title.innerHTML = Icons.html('trash', {size:18}) + ' 削除の確認依頼が届いています';
     card.appendChild(title);
 
     const categoryLabel = req.category === 'deck' ? 'カードデッキ' : 'お知らせ';

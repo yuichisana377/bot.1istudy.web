@@ -39,8 +39,11 @@ async function openSearchScreen() {
   document.getElementById('search-input').value = '';
   document.getElementById('search-results').innerHTML = '';
   const scopeLabel = folderPathLabel(searchScopeFolderId);
-  document.getElementById('search-scope-label').textContent =
-    scopeLabel ? `📁 ${scopeLabel} の中を検索します` : '📚 すべてのデッキから検索します';
+  setIconText(
+    document.getElementById('search-scope-label'),
+    scopeLabel ? Icons.cmHtml('folder', {size:14}) : Icons.html('logo', {size:14}),
+    scopeLabel ? `${scopeLabel} の中を検索します` : 'すべてのデッキから検索します'
+  );
   showScreen('search');
   setTimeout(() => document.getElementById('search-input').focus(), 200);
   await prepareSearchScope();
@@ -76,7 +79,7 @@ function runSearch() {
   if (!searchTargetDecks) return; // まだ読み込み準備中（準備完了後に自動で1回呼ばれる）
 
   if (!raw) {
-    resultsEl.innerHTML = `<div class="search-hint">🔍 キーワードを入力してください</div>`;
+    resultsEl.innerHTML = `<div class="search-hint">${Icons.cmHtml('search', {size:16})} キーワードを入力してください</div>`;
     return;
   }
 

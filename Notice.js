@@ -97,13 +97,13 @@ function renderDrawerAccount() {
   const settingsLink = document.createElement('a');
   settingsLink.className = 'drawer-account-menu-item';
   settingsLink.href = '/StudyLog.html?openAccount=1';
-  settingsLink.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   menu.appendChild(settingsLink);
 
   const logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
-  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
   logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
@@ -264,7 +264,7 @@ function updateViewDoneBtn() {
   if (!btn || !currentViewFilename) return;
   const n = notices.find(x => x.filename === currentViewFilename);
   const isDone = !!(n && n.done);
-  btn.textContent = isDone ? '✓ 実行済み' : '実行済みにする';
+  btn.innerHTML = isDone ? (Icons.html('check', {size:14}) + ' 実行済み') : '実行済みにする';
   btn.classList.toggle('is-done', isDone);
 }
 
@@ -370,7 +370,7 @@ function saveDraftNow() {
   const key = isEditingNotice ? draftKeyForEdit(editingOriginalFilename) : DRAFT_KEY_NEW;
   try {
     localStorage.setItem(key, JSON.stringify({ filename, content, ts: Date.now() }));
-    statusEl.textContent = '💾 下書きを自動保存しました（' + new Date().toLocaleTimeString('ja-JP') + '）';
+    statusEl.innerHTML = Icons.html('save', {size:14}) + ' 下書きを自動保存しました（' + new Date().toLocaleTimeString('ja-JP') + '）';
   } catch (e) {
     // localStorage が使えない環境では何もしない
   }
@@ -490,7 +490,8 @@ async function submitRequestDelete() {
     closeNoticeModal('request-delete');
     closeNoticeModal('view');
     showAppAlert({
-      title: '📨 削除の確認を送りました',
+      icon: Icons.html('mailSent', {size:18}),
+      title: '削除の確認を送りました',
       desc: res.notified_via === 'web_pending'
         ? '投稿者がDiscord未連携のため、次回サイトを開いたときに確認されます。'
         : '投稿者にDiscordで確認を送りました。承認されると削除されます。',
@@ -675,7 +676,7 @@ function showNoticeOk(id) {
 }
 function showNoticeErr(id, msg) {
   const el = document.getElementById(id);
-  el.textContent = '✕ ' + msg;
+  el.innerHTML = Icons.html('close', {size:14}) + ' ' + String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', 4000);
 }

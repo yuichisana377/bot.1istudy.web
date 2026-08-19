@@ -96,13 +96,13 @@ function renderDrawerAccount() {
   const settingsLink = document.createElement('a');
   settingsLink.className = 'drawer-account-menu-item';
   settingsLink.href = '/StudyLog.html?openAccount=1';
-  settingsLink.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   menu.appendChild(settingsLink);
 
   const logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
-  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
   logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const ok = await showCmConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', okStyle: 'danger' });
@@ -558,7 +558,7 @@ function renderChoiceEditorRows(prefix, choices, correctIdx) {
     <div class="modal-choice-row" data-idx="${i}">
       <input type="checkbox" id="${prefix}-correct-${i}" value="${i}">
       <input type="text" class="modal-input" id="${prefix}-choice-${i}" placeholder="選択肢 ${CHOICE_LETTERS[i] || ''}" maxlength="80" style="margin-bottom:0">
-      ${n > CHOICE_MIN ? `<button type="button" class="choice-remove-btn" data-ridx="${i}" title="この選択肢を削除">✕</button>` : ''}
+      ${n > CHOICE_MIN ? `<button type="button" class="choice-remove-btn" data-ridx="${i}" title="この選択肢を削除">${Icons.html('close', {size:14})}</button>` : ''}
     </div>`).join('');
   const addBtnHtml = n < CHOICE_MAX
     ? `<button type="button" class="block-action-btn" id="${prefix}-add-btn" style="margin-top:.25rem">＋ 選択肢を追加</button>` : '';
@@ -848,7 +848,7 @@ function renderDeckListUI() {
   const isLoadingThisFolder = loadingFolderIds.has(f.id);
   const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;
   const folderUnsureBadge = unsureCount > 0                     // ★ 追加
-    ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
+    ? `<span class="unsure-badge">${Icons.cmHtml('bookmark', {size:13})} ${unsureCount}</span>` : '';
 
   // ★ 追加：クイズ用デッキ選択モードでは、通常のプレイ/メニューボタンの代わりに
   //   チェックボックスを出す。フォルダ本体をタップすれば中を見に行けるのはそのまま。
@@ -861,9 +861,9 @@ function renderDeckListUI() {
       ? (pickedFolderIds.has(f.id) ? 'pick-checkbox checked' : 'pick-checkbox implied') : 'pick-checkbox';
     return { key: `folder:${f.id}`, html: `
   <div class="deck-card folder-card${disabled && !checked ? ' pick-disabled' : ''}" data-key="folder:${f.id}" onclick="openFolder('${f.id}')">
-    <div class="${cbClass}" onclick="togglePickFolder('${f.id}', event)">${checked ? '✓' : ''}</div>
+    <div class="${cbClass}" onclick="togglePickFolder('${f.id}', event)">${checked ? Icons.html('check', {size:12}) : ''}</div>
     <div class="deck-card-info">
-      <div class="deck-card-title">📁 ${esc(f.name)}</div>
+      <div class="deck-card-title">${Icons.cmHtml('folder', {size:15})} ${esc(f.name)}</div>
       <div class="deck-card-meta">${eligibleCount > 0 ? `${eligibleCount} デッキが対象` : '対象にできるデッキがありません'}${folderUnsureBadge}</div>
     </div>
   </div>` };
@@ -872,13 +872,13 @@ function renderDeckListUI() {
   return { key: `folder:${f.id}`, html: `
   <div class="deck-card folder-card" data-key="folder:${f.id}" onclick="openFolder('${f.id}')">
     <div class="deck-card-info">
-      <div class="deck-card-title">📁 ${esc(f.name)}</div>
+      <div class="deck-card-title">${Icons.cmHtml('folder', {size:15})} ${esc(f.name)}</div>
       <div class="deck-card-meta">${cnt} デッキ・${totalCards} 問${folderUnsureBadge}</div>
     </div>
     <div class="deck-card-actions">
       <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
         ${folderPlayDisabled?'disabled':''}>${isLoadingThisFolder ? '読み込み中…' : '▶ プレイ'}</button>
-      <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">✏️</button>
+      <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">Icons.html('edit', {size:14})</button>
     </div>
   </div>` };
 });
@@ -896,7 +896,7 @@ function renderDeckListUI() {
     if (d.cardsLoaded !== false) {
       const unsureSet   = getUnsureSet(d.id);
       const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
-      unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">🔖 ${unsureCount}</span>` : '';
+      unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">${Icons.cmHtml('bookmark', {size:13})} ${unsureCount}</span>` : '';
     }
     // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
     //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
@@ -916,23 +916,23 @@ function renderDeckListUI() {
     //     ・「公開して保存」で「完成として公開する」を選んだ（その後の状態） → 「公開済み」
     const pubBadge = !d.filename
       ? (d.planPublish !== false
-          ? `<span class="pub-badge inprogress">🟠 作成中</span>`
-          : `<span class="pub-badge local">🔴 非公開</span>`)
+          ? `<span class="pub-badge inprogress">${Icons.html('dot', {size:10})} 作成中</span>`
+          : `<span class="pub-badge local">${Icons.html('dot', {size:10})} 非公開</span>`)
       : (d.notYetPublished !== false)
-        ? `<span class="pub-badge inprogress">🟠 作成中${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+        ? `<span class="pub-badge inprogress">${Icons.html('dot', {size:10})} 作成中${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
         : d.incomplete
-          ? `<span class="pub-badge draft">🟡 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
-          : `<span class="pub-badge published">🔵 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
+          ? `<span class="pub-badge draft">${Icons.html('dot', {size:10})} 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+          : `<span class="pub-badge published">${Icons.html('dot', {size:10})} 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
     // ★ 「クイズ過去問」フォルダの中のデッキだと分かるようにバッジを付ける
     //   （プレイ時の挙動が通常のフラッシュカードと違う＝一人用選択式モードになるため）
     const quizArchiveBadge = isDeckInFolderScope(d.id, QUIZ_ARCHIVE_FOLDER_ID)
-      ? `<span class="pub-badge archive">🎯 過去問</span>` : '';
+      ? `<span class="pub-badge archive">${Icons.html('dot', {size:10})} 過去問</span>` : '';
     // ★ 追加：多肢選択デッキ（choiceMode有り）にも、同じ理由で分かるようにバッジを付ける
     //   （「クイズ過去問」フォルダの中でなくてもプレイ時は一人用選択式モードになるため）
     //   ★ quizArchiveBadge と意味が重複するため、そちらが出る場合はこちらは出さない。
     //   ★ 単一/複数は問題ごとに違いうるためデッキ単位では区別せず、常に「選択式」とだけ表示する。
     const choiceModeBadge = (!quizArchiveBadge && d.choiceMode)
-      ? `<span class="pub-badge archive">🔘 選択式</span>` : '';
+      ? `<span class="pub-badge archive">${Icons.html('dot', {size:10})} 選択式</span>` : '';
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
@@ -963,7 +963,7 @@ function renderDeckListUI() {
         ? `<div class="deck-card-note-ineligible">クイズには使えません（非公開・作成中のデッキ）</div>` : '';
       return { key: orderKey, html: `
     <div class="deck-card${disabled && !checked ? ' pick-disabled' : ''}" data-key="${orderKey}" onclick="togglePickDeck('${d.id}', event)">
-      <div class="${cbClass}">${checked ? '✓' : ''}</div>
+      <div class="${cbClass}">${checked ? Icons.html('check', {size:12}) : ''}</div>
       <div class="deck-card-info">
         ${subjectLabel}
         <div class="deck-card-title">${esc(displayName)}</div>
@@ -995,7 +995,7 @@ function renderDeckListUI() {
       <div class="deck-card-actions">
         <button class="btn btn-blue btn-sm" onclick="openPlayMode('${d.id}')"
           ${playDisabled?'disabled':''}>${isLoadingThis ? '読み込み中…' : '▶ プレイ'}</button>
-        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>✏️</button>
+        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>Icons.html('edit', {size:14})</button>
       </div>
     </div>` };
   });
@@ -1023,7 +1023,7 @@ function renderBreadcrumb() {
   let cur = folders.find(f => f.id === currentFolderId);
   while (cur) { chain.unshift(cur); cur = folders.find(f => f.id === cur.parentId); }
   bar.style.display = 'flex';
-  bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">🏠 ホーム</span>` +
+  bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">Icons.html('home', {size:14}) ホーム</span>` +
     chain.map(f => `<span class="crumb-sep">/</span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
 }
 
@@ -1074,7 +1074,7 @@ function getInProgressItems(scopeFolderId) {
       const folder = folders.find(f => f.id === id);
       if (!folder) continue; // フォルダが削除済みなら無視
       if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
-      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: '📁',
+      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: Icons.cmHtml('folder', {size:16}),
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     } else {
       const deck = decks.find(d => d.id === id);
@@ -1083,7 +1083,7 @@ function getInProgressItems(scopeFolderId) {
       // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
       const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
         ? deck.name.slice(deck.subject.length + 1) : deck.name;
-      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: '📇',
+      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: Icons.html('cardmaker', {size:16}),
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     }
   }
@@ -1139,7 +1139,7 @@ function getCompletedItems(scopeFolderId) {
       const folder = folders.find(f => f.id === id);
       if (!folder) continue; // フォルダが削除済みなら無視
       if (!isFolderInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
-      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: '📁',
+      items.push({ isFolder: true, id, name: folder.name, subject: '', icon: Icons.cmHtml('folder', {size:16}),
         total: data.total, completedAt: data.completedAt });
     } else {
       const deck = decks.find(d => d.id === id);
@@ -1148,7 +1148,7 @@ function getCompletedItems(scopeFolderId) {
       // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
       const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
         ? deck.name.slice(deck.subject.length + 1) : deck.name;
-      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: '📇',
+      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: Icons.html('cardmaker', {size:16}),
         total: data.total, completedAt: data.completedAt });
     }
   }
@@ -1173,8 +1173,8 @@ function renderCompletedUI() {
     <div class="completed-card" onclick="replayFromHome(${it.isFolder}, '${it.id}')">
       ${it.subject ? `<div class="completed-subject">${esc(it.subject)}</div>` : ''}
       <div class="completed-title">${it.icon} ${esc(it.name)}</div>
-      <div class="completed-meta">✅ ${it.total} 問 完了</div>
-      <div class="completed-replay-btn">🔁 もう一度プレイ</div>
+      <div class="completed-meta">${Icons.html('checkCircle', {size:14})} ${it.total} 問 完了</div>
+      <div class="completed-replay-btn">Icons.html('refresh', {size:14}) もう一度プレイ</div>
     </div>`).join('');
 }
 
@@ -1443,12 +1443,15 @@ function renderMovePickerList() {
     : (targetId) => canMoveDeckTo(movePickerTargetId, targetId);
 
   const rows = [];
-  rows.push({ id: null, label: '🏠 ルート', level: 0, disabled: !canMoveTo(null) });
+  // ★ アイコン（固定HTML）とラベル（フォルダ名＝ユーザー入力）を分けて持たせ、
+  //   ラベル側だけをesc()に通す（icon側を一緒にesc()すると<svg>タグ自体が
+  //   文字列としてエスケープされてしまい描画できなくなるため）。
+  rows.push({ id: null, icon: Icons.html('home', {size:14}), label: 'ルート', level: 0, disabled: !canMoveTo(null) });
 
   function walk(parentId, level) {
     folderChildren(parentId).forEach(f => {
       const disabled = !canMoveTo(f.id);
-      rows.push({ id: f.id, label: '📁 ' + f.name, level, disabled });
+      rows.push({ id: f.id, icon: Icons.cmHtml('folder', {size:14}), label: f.name, level, disabled });
       walk(f.id, level + 1);
     });
   }
@@ -1461,7 +1464,7 @@ function renderMovePickerList() {
       + (isCurrent ? ' current' : '');
     const idAttr = r.id === null ? 'null' : `'${r.id}'`;
     const clickAttr = r.disabled ? '' : ` onclick="selectMoveTarget(${idAttr})"`;
-    return `<div class="${cls}" style="padding-left:${8 + r.level * 18}px"${clickAttr}>${esc(r.label)}${isCurrent ? ' <span class="move-picker-current-tag">現在</span>' : ''}</div>`;
+    return `<div class="${cls}" style="padding-left:${8 + r.level * 18}px"${clickAttr}>${r.icon} ${esc(r.label)}${isCurrent ? ' <span class="move-picker-current-tag">現在</span>' : ''}</div>`;
   }).join('');
 }
 
@@ -1486,7 +1489,7 @@ async function selectMoveTarget(targetId) {
     // ★ 公開済みデッキはサーバー側（みんなの共有フォルダ情報）にも反映する
     if (d.filename) {
       const ok = await queueSyncDeckToServer(d);
-      if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+      if (!ok) showBanner('サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
     }
     return;
   }
@@ -1723,8 +1726,8 @@ async function loadDeckCardsWithRecovery(deckId) {
         title: '問題データの読み込みに不整合があります',
         desc: `一覧では${result.expectedCount}問のはずですが、サーバーから0問しか取得できませんでした。\nこのまま開いて保存すると、サーバー側のデータが消える可能性があります。`,
         choices: [
-          { icon: '🔄', label: 'もう一度試す', sub: 'まずはこちらをおすすめします', value: 'retry' },
-          { icon: '⚠️', label: '空のまま開く（上級者向け）', sub: '保存すると中身が消える可能性があります', value: 'force' },
+          { icon: Icons.html('refresh', {size:20}), label: 'もう一度試す', sub: 'まずはこちらをおすすめします', value: 'retry' },
+          { icon: Icons.html('warning', {size:20}), label: '空のまま開く（上級者向け）', sub: '保存すると中身が消える可能性があります', value: 'force' },
         ],
         cancelLabel: 'やめる',
       });
@@ -1840,7 +1843,7 @@ async function menuUnpublish() {
     deck.planPublish = false; // ★ 追加：明示的に非公開へ戻した場合は「作成中」ではなく「非公開」表示にする
     deck.notYetPublished = true; // ★ 追加：再度公開する場合は改めて「公開して保存」を経る必要がある状態に戻す
     saveDecks(decks); renderDeckListUI();
-    showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
+    showBanner('非公開に戻しました', '#f1f5f9', '#334155', Icons.cmHtml('unpublish', {size:15}));
   } catch(e) {
     await showCmAlert({ title: 'GitHubからの削除に失敗しました', desc: e.message });
   }
@@ -1891,7 +1894,7 @@ async function submitRequestDelete() {
     const via = data.notified_via === 'web_pending'
       ? '作成者がDiscord未連携のため、次回サイトを開いたときに確認されます。'
       : '作成者にDiscordで確認を送りました。承認されると削除されます。';
-    showBanner('📨 ' + via, '#dcfce7', '#166534');
+    showBanner(via, '#dcfce7', '#166534', Icons.html('mailSent', {size:15}));
   } catch (e) {
     btn.disabled = false; btn.textContent = '送信する';
     errEl.textContent = e.message;
@@ -2233,8 +2236,8 @@ async function saveCard(mode) {
       title: 'このデッキは完成していますか？',
       desc: '未完成として公開すると、Discordへの通知は送られません。\nあとから編集して完成にできます。',
       choices: [
-        { icon: '✅', label: '完成として公開する',   sub: '通知が送信されます',   value: 'complete' },
-        { icon: '🟡', label: '未完成として公開する', sub: '通知は送信されません', value: 'draft' },
+        { icon: Icons.html('checkCircle', {size:20}), label: '完成として公開する',   sub: '通知が送信されます',   value: 'complete' },
+        { icon: Icons.html('dot', {size:20}), label: '未完成として公開する', sub: '通知は送信されません', value: 'draft' },
       ],
     });
     if (!choice) return; // キャンセル
@@ -2255,7 +2258,7 @@ async function saveCard(mode) {
       setBtnLoading(saveBtn, true, '保存中…');
       const ok = await queueSyncDeckToServer(deck);
       setBtnLoading(saveBtn, false);
-      if (!ok) showBanner('⚠ サーバーへの保存に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+      if (!ok) showBanner('サーバーへの保存に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
     }
     showScreen('list');
   } else {
@@ -2338,12 +2341,13 @@ async function publishDeck(deckId, isComplete = true) {
     }
     renderDeckListUI();
     showBanner(
-      isComplete ? '✓ 保存して公開しました！' : '🟡 未完成として公開しました（通知なし）',
+      isComplete ? '保存して公開しました！' : '未完成として公開しました（通知なし）',
       isComplete ? '#dcfce7' : '#fef9c3',
-      isComplete ? '#166534' : '#854d0e'
+      isComplete ? '#166534' : '#854d0e',
+      isComplete ? Icons.html('checkCircle', {size:15}) : Icons.html('dot', {size:15})
     );
   } catch(e) {
-    showBanner('💾 ローカルに保存しました（GitHub同期失敗）', '#fffbeb', '#92400e');
+    showBanner('ローカルに保存しました（GitHub同期失敗）', '#fffbeb', '#92400e', Icons.html('save', {size:15}));
   }
 }
 
@@ -2684,9 +2688,9 @@ function renderCreatedList() {
           body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetFolderId, nickname: getLoginSession()?.nickname }),
           signal: AbortSignal.timeout(8000),
         }).then(res => res.json()).then(data => {
-          if (!data.ok) showBanner('⚠ フォルダ移動のサーバー反映に失敗しました', '#fffbeb', '#92400e');
+          if (!data.ok) showBanner('フォルダ移動のサーバー反映に失敗しました', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
           else fetchAndMergeFolders();
-        }).catch(() => showBanner('⚠ フォルダ移動のサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e'));
+        }).catch(() => showBanner('フォルダ移動のサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15})));
       } else {
         const d = key.startsWith('deck:')
           ? decks.find(x => x.filename === key.slice('deck:'.length))
@@ -2700,7 +2704,7 @@ function renderCreatedList() {
         saveDecks(decks);
         if (d.filename) {
           queueSyncDeckToServer(d).then(ok => {
-            if (!ok) showBanner('⚠ サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+            if (!ok) showBanner('サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
           });
         }
       }
@@ -2781,7 +2785,7 @@ function renderCreatedList() {
     //   自分だけの下書きデッキしか含まれていない場合はサーバー通信自体を省略する。
     if (orderedKeys.some(isSharedOrderKey)) {
       pushSharedOrderToServer(currentFolderId, orderedKeys).then(ok => {
-        if (!ok) showBanner('⚠ 並び替えのサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e');
+        if (!ok) showBanner('並び替えのサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
       });
     }
 
@@ -3129,7 +3133,7 @@ async function saveCardEdit() {
   const a = document.getElementById('modal-edit-a').value.trim();
   const e = document.getElementById('modal-edit-e').value.trim();
   if (!q || !a) {
-    errBar.textContent = '✕ 問題文と解答は必須です';
+    errBar.innerHTML = 'Icons.html('close', {size:14}) 問題文と解答は必須です';
     errBar.style.display = 'block';
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
@@ -3183,13 +3187,13 @@ async function saveCardEdit() {
   if (deck.filename) {
     const ok = await queueSyncDeckToServer(deck);
     if (ok) {
-      showBanner('💾 保存しました', '#dcfce7', '#166534');
+      showBanner('保存しました', '#dcfce7', '#166534', Icons.html('save', {size:15}));
     } else {
-      showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+      showBanner('サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
     }
   } else {
     // 未公開デッキはローカル保存のみ
-    showBanner('💾 保存しました（ローカル）', '#dcfce7', '#166534');
+    showBanner('保存しました（ローカル）', '#dcfce7', '#166534', Icons.html('save', {size:15}));
   }
 }
 
@@ -3200,7 +3204,7 @@ async function saveQuizChoiceCardEdit(q, errBar) {
   // ★ 単一/複数正解は問題ごとに正解チェックの数で自動的に決まる（1個＝択一、2個以上＝複数回答）。
   //   ここでは「1つも選ばれていない」ことだけをエラーにする。
   if (!q || choices.some(c => !c) || correct.length === 0) {
-    errBar.textContent = '✕ 問題文・すべての選択肢・正解を1つ以上選ぶことはすべて必須です';
+    errBar.innerHTML = 'Icons.html('close', {size:14}) 問題文・すべての選択肢・正解を1つ以上選ぶことはすべて必須です';
     errBar.style.display = 'block';
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
@@ -3236,12 +3240,12 @@ async function saveQuizChoiceCardEdit(q, errBar) {
   if (deck.filename) {
     const ok = await queueSyncDeckToServer(deck);
     if (ok) {
-      showBanner('💾 保存しました', '#dcfce7', '#166534');
+      showBanner('保存しました', '#dcfce7', '#166534', Icons.html('save', {size:15}));
     } else {
-      showBanner('⚠ サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e');
+      showBanner('サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
     }
   } else {
-    showBanner('💾 保存しました（ローカル）', '#dcfce7', '#166534');
+    showBanner('保存しました（ローカル）', '#dcfce7', '#166534', Icons.html('save', {size:15}));
   }
 }
 
@@ -3346,11 +3350,11 @@ async function saveRename() {
     await waitForPendingSync(deck.id);
     const loaded = await loadDeckCardsWithRecovery(deck.id);
     if (!loaded) {
-      showBanner('⚠ 名前の変更はローカルには反映されています（サーバーへの反映は未実施）', '#fffbeb', '#92400e');
+      showBanner('名前の変更はローカルには反映されています（サーバーへの反映は未実施）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
       return;
     }
     const ok = await queueSyncDeckToServer(deck);
-    if (!ok) showBanner('⚠ サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e');
+    if (!ok) showBanner('サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
   }
 }
 
@@ -3570,7 +3574,7 @@ async function loadUnderstandingBadge() {
     // ★ まだ誰も（自分も含め）1枚も学習していなければ、0%という誤解を招く表示はしない
     if (!data.ok || !data.studied) return;
     const pct = Math.round((data.understood / data.studied) * 100);
-    badge.textContent = `🌐 わかる率 ${pct}%`;
+    badge.innerHTML = `${Icons.cmHtml('globe', {size:13})} わかる率 ${pct}%`;
     badge.title = `学習済みカードのうち「わからない」が付いていない割合（みんなの合計 ${data.understood}/${data.studied}）`;
     badge.style.display = '';
   } catch (e) {} // 通信失敗時は出さないだけ（学習自体は止めない）
@@ -3635,6 +3639,19 @@ let studyDeckId = null;
 let studyShuffled = false;   // ★ 追加：現在シャッフル済みの並びで学習中かどうか（続きから再開時の表示・保存用）
 let studyIsFolder = false;   // ★ 追加：フォルダ単位のプレイ中かどうか
 let studyFolderId = null;    // ★ 追加：プレイ中のフォルダid
+let studyBaseTitle = '';     // ★ 追加：学習画面タイトルの元テキスト（デッキ名/フォルダ名、アイコン・逆順/シャッフル表示は含まない）
+
+// ★ 追加：study-titleを安全に描画する共通処理。studyBaseTitle（デッキ名/
+//   フォルダ名＝ユーザー入力）は必ずescで、アイコンはこのファイル内の
+//   固定HTMLとして組み立てる（絵文字を末尾に付け足すregex文字列操作を
+//   やめ、常にここから再描画する方式にした）。
+function renderStudyTitle() {
+  const prefixIcon = studyIsFolder ? Icons.cmHtml('folder', {size:16}) + ' ' : '';
+  const suffixIcons =
+    (studyReverse  ? ' ' + Icons.html('refresh', {size:14})  : '') +
+    (studyShuffled ? ' ' + Icons.html('shuffle', {size:14}) : '');
+  document.getElementById('study-title').innerHTML = prefixIcon + esc(studyBaseTitle) + suffixIcons;
+}
 let folderPlayDecks = [];    // ★ 追加：フォルダプレイの対象デッキ一覧
 let loadingFolderIds = new Set(); // ★ 追加：カード読み込み中のフォルダid
 
@@ -3681,7 +3698,7 @@ async function openFolderPlayMode(folderId) {
   document.getElementById('reverse-mode-checkbox').checked = false;
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：モーダルを開くたびに未チェックへリセット
   onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
-  document.getElementById('play-mode-deck-name').textContent = folder ? `📁 ${folder.name}` : 'フォルダ';
+  setIconText(document.getElementById('play-mode-deck-name'), folder ? Icons.cmHtml('folder', {size:15}) : '', folder ? folder.name : 'フォルダ');
 
   const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
   document.getElementById('play-mode-all-sub').textContent = `${allCount} 問`;
@@ -3746,8 +3763,8 @@ async function openPlayMode(deckId) {
     const choice = await showCmChoiceDialog({
       title: deck.name,
       choices: [
-        { icon: '🔘', label: '一人でプレイ', sub: '選択式クイズに一人で挑戦する', value: 'solo' },
-        { icon: '🎮', label: 'みんなでクイズを始める', sub: '友達とオンラインで早押し4択', value: 'multi' },
+        { icon: Icons.cmHtml('choice', {size:20}), label: '一人でプレイ', sub: '選択式クイズに一人で挑戦する', value: 'solo' },
+        { icon: Icons.cmHtml('quiz', {size:20}), label: 'みんなでクイズを始める', sub: '友達とオンラインで早押し4択', value: 'multi' },
       ],
     });
     if (choice === 'multi') return startQuizFromDeck(deckId);
@@ -3844,8 +3861,6 @@ async function startStudyMode(mode) {
 
   closeModal('modal-play-mode');
 
-  let title;
-
   if (mode === 'resume') {
     // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定・シャッフル済みか）を復元する。
     //   カード本体は常に最新の decks / folderPlayDecks から引き直すので、
@@ -3862,11 +3877,11 @@ async function startStudyMode(mode) {
       pool = [];
       folderPlayDecks.forEach(d => d.cards.forEach(c => pool.push({ ...c, __deckId: d.id })));
       const folder = folders.find(f => f.id === studyFolderId);
-      title = folder ? `📁 ${folder.name}` : 'フォルダ';
+      studyBaseTitle = folder ? folder.name : 'フォルダ';
     } else {
       const deck = decks.find(d => d.id === studyDeckId);
       pool = deck ? [...deck.cards] : [];
-      title = deck ? deck.name : '';
+      studyBaseTitle = deck ? deck.name : '';
     }
     const byKey = new Map(pool.map(c => [cardKey(c), c]));
     // ★ order は保存時点の並び順（シャッフル済みならその並び）をそのまま記録しているので、
@@ -3889,7 +3904,7 @@ async function startStudyMode(mode) {
       });
       studyCards = merged;
       const folder = folders.find(f => f.id === studyFolderId);
-      title = folder ? `📁 ${folder.name}` : 'フォルダ';
+      studyBaseTitle = folder ? folder.name : 'フォルダ';
     } else {
       const deck = decks.find(d => d.id === studyDeckId);
       if (mode === 'unsure') {
@@ -3898,7 +3913,7 @@ async function startStudyMode(mode) {
       } else {
         studyCards = [...deck.cards];
       }
-      title = deck.name;
+      studyBaseTitle = deck.name;
     }
     studyIdx = 0;
     // ★ 「すべて」「わからないだけ」を新しく選び直した場合は、
@@ -3906,7 +3921,7 @@ async function startStudyMode(mode) {
     clearStudyProgress(studyIsFolder, progressId);
   }
 
-  document.getElementById('study-title').textContent = title + (studyReverse ? ' 🔄' : '') + (studyShuffled ? ' 🔀' : '');
+  renderStudyTitle();
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
   showScreen('study');
   document.getElementById('study-done').style.display    = 'none';
@@ -3985,7 +4000,7 @@ function renderStudyCard() {
   if (studyIsFolder) {
     const srcDeck = decks.find(d => d.id === c.__deckId);
     if (srcDeck) {
-      deckTag.textContent = `📇 ${srcDeck.name}`;
+      setIconText(deckTag, Icons.html('cardmaker', {size:14}), srcDeck.name);
       deckTag.style.display = '';
     } else {
       deckTag.style.display = 'none';
@@ -4022,7 +4037,7 @@ function renderStudyCard() {
   // ★ 答えを見る前・見た後、両方の「前へ」ボタンの有効/無効を同期
   document.getElementById('study-prev').disabled     = studyIdx === 0;
   document.getElementById('study-prev-pre').disabled = studyIdx === 0;
-  document.getElementById('study-next').textContent = studyIdx === studyCards.length-1 ? '完了 ✓' : '次へ →';
+  document.getElementById('study-next').innerHTML = studyIdx === studyCards.length-1 ? ('完了 ' + Icons.html('check', {size:14})) : '次へ →';
   updateUnsureBtn();
   saveStudyProgress(); // ★ カードを表示するたびに現在位置を保存し、次回「続きから」を出せるようにする
 }
@@ -4058,7 +4073,7 @@ function gradeCurrentAnswer() {
   const userAnswerEl = document.getElementById('grade-user-answer');
   result.style.display = 'flex';
   result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
-  mark.textContent = isCorrect ? '○ 正解' : '✕ 不正解';
+  mark.innerHTML = isCorrect ? '○ 正解' : ('Icons.html('close', {size:14}) 不正解');
   userAnswerEl.textContent = 'あなたの解答：' + (input.trim() ? input : '（未入力）');
 
   if (!isCorrect) {
@@ -4120,8 +4135,7 @@ function shuffleStudy() {
   studyIdx = 0;
   studyShuffled = true; // ★ 追加：シャッフル済み状態にする。以降の saveStudyProgress で保存され、
                         //   「続きから」で再開したときもこのシャッフル順のまま復元される。
-  document.getElementById('study-title').textContent =
-    document.getElementById('study-title').textContent.replace(/\s*🔀$/, '') + ' 🔀'; // ★ タイトルにシャッフル中を表示
+  renderStudyTitle(); // ★ タイトルにシャッフル中を表示（studyShuffledは直前にtrueへ更新済み）
   document.getElementById('study-done').style.display    = 'none';
   document.getElementById('study-content').style.display = 'flex';
   renderStudyCard();
@@ -4264,7 +4278,7 @@ imgInput.addEventListener('change', async () => {
 function renderImgStrip(k) {
   document.getElementById('imgs-'+k).innerHTML = imgBuf[k].map((b,i)=>`
     <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
-      <button class="img-thumb-del" onclick="removeImg('${k}',${i})">✕</button></div>`).join('');
+      <button class="img-thumb-del" onclick="removeImg('${k}',${i})">${Icons.html('close', {size:12})}</button></div>`).join('');
 }
 function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
 
@@ -4272,7 +4286,7 @@ function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
 function renderModalImgStrip(k) {
   document.getElementById('modal-imgs-'+k).innerHTML = editImgBuf[k].map((b,i)=>`
     <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
-      <button class="img-thumb-del" onclick="removeModalImg('${k}',${i})">✕</button></div>`).join('');
+      <button class="img-thumb-del" onclick="removeModalImg('${k}',${i})">${Icons.html('close', {size:12})}</button></div>`).join('');
 }
 function removeModalImg(k,i) { editImgBuf[k].splice(i,1); renderModalImgStrip(k); }
 
@@ -4344,9 +4358,13 @@ document.querySelectorAll('.drawer-item[href]').forEach(a => {
 });
 
 // ── バナー ────────────────────────────
-function showBanner(msg, bg, color) {
+// ★ iconHtml（Icons.html()/Icons.cmHtml()の戻り値）を渡すと、絵文字の
+//   代わりに自作アイコンを先頭に添える。msg は常にこのファイル内の固定
+//   文字列（呼び出し側にユーザー入力を渡す箇所は無い）なので、innerHTMLで
+//   組み立てても安全。
+function showBanner(msg, bg, color, iconHtml) {
   const banner = document.getElementById('save-ok-banner');
-  banner.textContent = msg;
+  banner.innerHTML = (iconHtml ? iconHtml + ' ' : '') + esc(msg);
   banner.style.background = bg;
   banner.style.color = color;
   banner.style.display = 'block';
@@ -4413,6 +4431,17 @@ async function loadChunksInBackground() {
 //   属性値コンテキストでも安全に使えるようにするため。&quot;/&#39;はHTMLとして
 //   描画されれば元の文字に戻るので、テキストとして使う箇所には影響しない）。
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// ★ 追加：絵文字の代わりに自作アイコン（Icons.js）を使うため、これまで
+//   .textContent = アイコン絵文字 + ユーザー入力（デッキ名・フォルダ名等）
+//   としていた箇所をDOM APIで安全に組み立て直す共通ヘルパー。アイコン部分は
+//   このファイル内の固定HTML（insertAdjacentHTMLで挿入）、テキスト部分は
+//   textNodeとして追加するので、フォルダ名・デッキ名に何が入っていても
+//   HTMLとしては解釈されない（保存型XSS対策、textContentの時と同じ安全性）。
+function setIconText(el, iconHtml, text) {
+  el.innerHTML = '';
+  if (iconHtml) el.insertAdjacentHTML('beforeend', iconHtml);
+  el.appendChild(document.createTextNode((iconHtml ? ' ' : '') + text));
+}
 // ★ セキュリティ：問題・解答の画像は、直接APIを叩けば任意の文字列を
 //   imgs_q/imgs_aへ入れられてしまう（save_cardsはこの中身を検証していない）。
 //   `<img src="${s}">` のようにテンプレート文字列でHTMLを組み立てると、
@@ -4680,8 +4709,8 @@ const MATH_PAD_HTML = (function(){
   const keyBtn = c => `<button type="button" class="math-key" data-ch="${c}">${c}</button>`;
   return `
     <div class="math-pad-header">
-      <span class="math-pad-title">🧮 理数モード</span>
-      <button type="button" class="math-pad-close" onclick="toggleMathPad(this.closest('.math-pad').id)" aria-label="閉じる">✕</button>
+      <span class="math-pad-title">Icons.cmHtml('tally', {size:15}) 理数モード</span>
+      <button type="button" class="math-pad-close" onclick="toggleMathPad(this.closest('.math-pad').id)" aria-label="閉じる">Icons.html('close', {size:16})</button>
     </div>
     <div class="math-pad-body">
       <div class="math-preview-label">プレビュー</div>
@@ -4704,7 +4733,7 @@ const MATH_PAD_HTML = (function(){
         <span class="math-row-label">記号</span>
         ${symKeys.map(keyBtn).join('')}
       </div>
-      <div class="math-pad-tip">💡 分数・ルートは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
+      <div class="math-pad-tip">Icons.html('hint', {size:16}) 分数・ルートは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
     </div>`;
 })();
 
