@@ -1222,12 +1222,27 @@ body {
 }
 .log-item.is-error .log-item-summary { color: #dc2626; }
 
+.log-item-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+
 .log-item-time {
   font-size: 10.5px;
   color: var(--text-tertiary);
-  margin-top: 3px;
   letter-spacing: .01em;
 }
+
+.log-item-actor {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  text-align: right;
+}
+.log-item-actor::before { content: '実行者: '; }
 
 .log-empty, .log-error {
   padding: 18px 14px;

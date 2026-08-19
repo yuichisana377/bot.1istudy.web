@@ -111,12 +111,25 @@ function renderLogEntry(entry) {
   summary.className = 'log-item-summary';
   summary.textContent = entry.summary || '';
 
-  const time = document.createElement('div');
+  // ★ 追加：日時（左）と実行者（右下）を1行に並べる。実行者が無い場合
+  //   （バックアップ等サーバー主導の処理）は日時だけを表示する。
+  const footer = document.createElement('div');
+  footer.className = 'log-item-footer';
+
+  const time = document.createElement('span');
   time.className = 'log-item-time';
   time.textContent = (entry.time || '').replace('T', ' ');
+  footer.appendChild(time);
+
+  if (entry.actor) {
+    const actor = document.createElement('span');
+    actor.className = 'log-item-actor';
+    actor.textContent = entry.actor;
+    footer.appendChild(actor);
+  }
 
   body.appendChild(summary);
-  body.appendChild(time);
+  body.appendChild(footer);
   li.appendChild(icon);
   li.appendChild(body);
   return li;

@@ -6,6 +6,14 @@
 const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const GUILD_ID = "1509880344806162544";
 
+// ★ 追加：運用ログ（サービス情報ページ）の実行者表示用。ログインしていれば
+//   ニックネームを添えて送る（Notice.js/Cardmaker.js と同じ sl_session キー）。
+//   このページ自体はログイン必須ではないため、未ログインならundefinedのまま送る。
+const SESSION_KEY = 'sl_session';
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
 // ★ 追加：表示テキスト／HTML属性値の両方に安全なHTMLエスケープ。
 //   予定のsubject/content（カテゴリの【】部分も含む）は生徒が自由に入力できる
 //   文字列で、これまで未エスケープのままinnerHTMLへ挿入していたため、
@@ -716,7 +724,7 @@ async function submitAdd() {
   const note = document.getElementById('add-note').value.trim();
   const contentToSend = note ? `${content}${NOTE_SEP}${note}` : content;
 
-  const body = { guild_id: GUILD_ID, date, subject, category, content: contentToSend };
+  const body = { guild_id: GUILD_ID, date, subject, category, content: contentToSend, nickname: getLoginSession()?.nickname };
 
   if (POINT_CATEGORIES.includes(category)) {
     const points = selectedPoints['add'];
@@ -754,7 +762,7 @@ async function submitAdd() {
 
 async function submitEdit() {
   if (!editTarget) { showErr('edit-err', '予定を選択してください'); return; }
-  const body = { guild_id: GUILD_ID, target: editTarget };
+  const body = { guild_id: GUILD_ID, target: editTarget, nickname: getLoginSession()?.nickname };
   const d = calState['edit']?.selected; if (d) body.date = d;
   const s = document.getElementById('edit-subject').value;   if (s) body.subject = s;
   const c = getCatValue('edit'); if (c) body.category = c;
@@ -797,7 +805,7 @@ async function submitDelete() {
   setLoading(btn, '削除中…', true);
   try {
     const res = await api('/delete_schedule', {
-      method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, target: delTarget })
+      method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, target: delTarget, nickname: getLoginSession()?.nickname })
     });
     resetLoading(btn, '削除する');
     if (res.ok) {

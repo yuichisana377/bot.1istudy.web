@@ -1212,6 +1212,7 @@ async function saveFolderName() {
   const body = {
     name,
     parent_id: folderNameMode === 'rename' ? (targetFolder ? targetFolder.parentId : null) : currentFolderId,
+    nickname: getLoginSession()?.nickname, // ★ 追加：運用ログの実行者表示用
   };
   if (folderNameMode === 'rename') body.id = folderNameTargetId;
 
@@ -1274,7 +1275,7 @@ async function folderMenuDelete() {
       try {
         await fetch(`${API_BASE}delete_cards`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: d.filename }),
+          body: JSON.stringify({ filename: d.filename, nickname: getLoginSession()?.nickname }),
         });
       } catch(e) {}
     }
@@ -1284,7 +1285,7 @@ async function folderMenuDelete() {
   try {
     const res = await fetch(`${API_BASE}delete_folder`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: folder.id }), signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({ id: folder.id, nickname: getLoginSession()?.nickname }), signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
@@ -1381,7 +1382,7 @@ async function selectMoveTarget(targetId) {
   try {
     const res = await fetch(`${API_BASE}save_folder`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetId }),
+      body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetId, nickname: getLoginSession()?.nickname }),
       signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
@@ -1707,7 +1708,7 @@ async function menuUnpublish() {
     const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(`${API_BASE}delete_cards`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: deck.filename }), signal: controller.signal,
+      body: JSON.stringify({ filename: deck.filename, nickname: getLoginSession()?.nickname }), signal: controller.signal,
     });
     clearTimeout(timer);
     const data = await res.json();
@@ -1734,7 +1735,7 @@ async function menuDelete() {
     try {
       await fetch(`${API_BASE}delete_cards`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: deck.filename }),
+        body: JSON.stringify({ filename: deck.filename, nickname: getLoginSession()?.nickname }),
       });
     } catch(e) {
       const localOnly = await showCmConfirm({
@@ -2488,7 +2489,7 @@ function renderCreatedList() {
         saveFoldersCache(folders);
         fetch(`${API_BASE}save_folder`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetFolderId }),
+          body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetFolderId, nickname: getLoginSession()?.nickname }),
           signal: AbortSignal.timeout(8000),
         }).then(res => res.json()).then(data => {
           if (!data.ok) showBanner('⚠ フォルダ移動のサーバー反映に失敗しました', '#fffbeb', '#92400e');

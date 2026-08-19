@@ -6,6 +6,14 @@
 const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const GUILD_ID = "1509880344806162544";
 
+// ★ 追加：運用ログ（サービス情報ページ）の実行者表示用。ログインしていれば
+//   ニックネームを添えて送る（Notice.js/Cardmaker.js と同じ sl_session キー）。
+//   このページ自体はログイン必須ではないため、未ログインならundefinedのまま送る。
+const SESSION_KEY = 'sl_session';
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
 // ★ ポイント付与対象カテゴリ
 const POINT_CATEGORIES = ['提出', '宿題'];
 
@@ -810,19 +818,19 @@ function renderDayChangePreview(dateStr) {
 // ============================================================
 async function applyHolidayForDate(date, reason, note) {
   const key = `holiday:${date}`;
-  try { await api(TT_API.HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, reason, note, key }) }); } catch(_) {}
+  try { await api(TT_API.HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, reason, note, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
   ttOverrides[key] = { key, type: 'holiday', date, reason, note };
 }
 
 async function applyPeriodHolidayForDate(date, period, reason, note) {
   const key = `period_holiday:${date}:${period}`;
-  try { await api(TT_API.PERIOD_HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period, reason, note, key }) }); } catch(_) {}
+  try { await api(TT_API.PERIOD_HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period, reason, note, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
   ttOverrides[key] = { key, type: 'period_holiday', date, period, reason, note };
 }
 
 async function applyChangeForDate(date, period, subject, items, note) {
   const key = `change:${date}:${period}`;
-  try { await api(TT_API.UPDATE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period, subject, items, note, key }) }); } catch(_) {}
+  try { await api(TT_API.UPDATE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period, subject, items, note, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
   ttOverrides[key] = { key, type: 'change', date, period, subject, items, note };
 }
 
@@ -1052,7 +1060,7 @@ async function deleteTermFromList(id) {
   if (!t) return;
   if (!confirm(`「${t.name}」（${t.start_date}〜${t.end_date}）を削除しますか？`)) return;
   try {
-    const res = await api(TERM_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, id }) });
+    const res = await api(TERM_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, id, nickname: getLoginSession()?.nickname }) });
     if (res.ok) {
       await loadTerms();
       renderTermList();
@@ -1089,6 +1097,7 @@ async function submitTermSave() {
         start_date: startDate,
         end_date:   endDate,
         timetable:  termEditState.timetable,
+        nickname:   getLoginSession()?.nickname,
       })
     });
     resetLoading(btn, '保存する');
@@ -1179,7 +1188,7 @@ async function submitTTEdit() {
   }
 }
 async function deleteTTOverride(key) {
-  try { await api(TT_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, key }) }); } catch(_) {}
+  try { await api(TT_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
   delete ttOverrides[key];
   saveTTOverrideLocal();
   renderTTOverridesList();

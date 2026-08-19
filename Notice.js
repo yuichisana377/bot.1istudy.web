@@ -136,7 +136,7 @@ async function setNoticeDone(filename, nextDone) {
   try {
     const res = await api('/set_notice_done', {
       method: 'POST',
-      body: JSON.stringify({ filename, done: nextDone }),
+      body: JSON.stringify({ filename, done: nextDone, nickname: getLoginSession()?.nickname }),
     });
     if (!res.ok) throw new Error(res.error || '');
   } catch (e) {
@@ -316,7 +316,7 @@ async function deleteCurrentNotice() {
   try {
     const res = await api('/delete_notice', {
       method: 'POST',
-      body: JSON.stringify({ filename: currentViewFilename })
+      body: JSON.stringify({ filename: currentViewFilename, nickname: getLoginSession()?.nickname })
     });
     btn.disabled = false;
     btn.textContent = '削除する';
@@ -480,7 +480,7 @@ async function submitUpload() {
         try {
           await api('/delete_notice', {
             method: 'POST',
-            body: JSON.stringify({ filename: editingOriginalFilename })
+            body: JSON.stringify({ filename: editingOriginalFilename, nickname: uploader })
           });
         } catch (e) {
           // 古いファイルの削除に失敗しても、新しい内容の保存自体は成功しているため処理は続行する
