@@ -561,8 +561,9 @@ async function submitPasswordChange() {
 }
 
 // ── ログアウト ──────────────────────────────────────────
-function doLogout() {
-  if (!confirm("ログアウトしますか？")) return;
+async function doLogout() {
+  const ok = await showAppConfirm({ title: "ログアウトしますか？", okLabel: "ログアウト", danger: true });
+  if (!ok) return;
   localStorage.removeItem(SESSION_KEY);
   location.replace("/Login.html");
 }
@@ -570,9 +571,9 @@ function doLogout() {
 // ★ サーバー側でセッションが無効（期限切れ・別端末でログアウト等）と
 //   判定された場合に、ログイン画面へ強制的に戻す
 
-function forceReLogin() {
+async function forceReLogin() {
   localStorage.removeItem(SESSION_KEY);
-  alert("ログインが切れました。もう一度ログインしてください。");
+  await showAppAlert({ title: "ログインが切れました", desc: "もう一度ログインしてください。" });
   location.replace("/Login.html");
 }
 
@@ -941,7 +942,11 @@ function initMyLogsEvents() {
 //   成功したらそのtotalでポイント表示を更新する。
 async function deleteMyLog(timeKey, btn) {
   if (!timeKey) return;
-  if (!confirm("この記録を削除しますか？\n記録した時間・ポイントが取り消されます。")) return;
+  const ok = await showAppConfirm({
+    title: "この記録を削除しますか？", desc: "記録した時間・ポイントが取り消されます。",
+    okLabel: "削除する", danger: true,
+  });
+  if (!ok) return;
   if (btn) { btn.disabled = true; btn.textContent = "…"; }
   var data;
   try {
@@ -954,7 +959,7 @@ async function deleteMyLog(timeKey, btn) {
   }
   if (!data || data.ok === false) {
     if (data && data.error === "not_logged_in") { forceReLogin(); return; }
-    alert("削除に失敗しました" + (data && data.error ? "：" + data.error : ""));
+    showAppAlert({ title: "削除に失敗しました", desc: data && data.error ? data.error : "" });
     if (btn) { btn.disabled = false; btn.textContent = "🗑"; }
     return;
   }
@@ -1239,7 +1244,7 @@ async function toggleTask(id) {
       updatePointDisplay();
       floatPoints("+" + pts + "pt");
     } catch (e) {
-      alert("通信エラーのため達成にできませんでした。もう一度お試しください。");
+      showAppAlert({ title: "通信エラーのため達成にできませんでした", desc: "もう一度お試しください。" });
     }
   } else {
     // ── 未達成に戻す ────────────────────────────────
@@ -1274,7 +1279,9 @@ async function toggleTask(id) {
       myPoints = revertedTotal;
       updatePointDisplay();
     } catch (e) {
-      alert("通信エラーのため未達成に戻せませんでした。もう一度お試しください。\n（サーバー側に /uncomplete_task が実装されていない可能性があります）");
+      showAppAlert({
+        title: "通信エラーのため未達成に戻せませんでした", desc: "もう一度お試しください。\n（サーバー側に /uncomplete_task が実装されていない可能性があります）",
+      });
     }
   }
 
@@ -1455,7 +1462,7 @@ function startInterval() {
 }
 
 // ── ブラウザ通知（他のタブを見ていても気づけるように） ──────
-// 許可されていれば端末通知、未許可・未対応ならalert()にフォールバック。
+// 許可されていれば端末通知、未許可・未対応なら自作ダイアログ（showAppAlert）にフォールバック。
 // ※ タブそのものを閉じている場合はどちらも動作しません（JSが動いていないため）。
 function ensureNotifyPermission() {
   if (typeof Notification === "undefined") return;
@@ -1488,7 +1495,7 @@ function notifyUserBrowserOnly(title, body) {
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     try { new Notification(title, { body: body }); return; } catch(e) {}
   }
-  alert(body);
+  showAppAlert({ title: title, desc: body });
 }
 
 async function timerStart() {
@@ -1517,7 +1524,7 @@ async function timerStart() {
       return;
     }
     if (btn) btn.disabled = false;
-    alert("通信エラーのためタイマーを開始できませんでした。もう一度お試しください。");
+    showAppAlert({ title: "通信エラーのためタイマーを開始できませんでした", desc: "もう一度お試しください。" });
     return;
   }
 
@@ -1558,7 +1565,7 @@ async function timerPauseResume() {
     var res2 = await timerApiResume();
     if (!res2 || res2.ok === false) {
       if (res2 && res2.error === "not_logged_in") { forceReLogin(); return; }
-      alert("通信エラーのため再開できませんでした。もう一度お試しください。");
+      showAppAlert({ title: "通信エラーのため再開できませんでした", desc: "もう一度お試しください。" });
       if (btn) btn.disabled = false;
       return;
     }
@@ -1588,7 +1595,7 @@ async function timerStop() {
 
   var mins = Math.floor(timerSec / 60);
   if (mins < 1) {
-    alert("1分未満のため記録できません");
+    await showAppAlert({ title: "1分未満のため記録できません" });
     timerApiStop(); // 記録として残す価値が無いので、ここでサーバー側もクリアする
     timerReset(); return;
   }
@@ -1616,7 +1623,10 @@ async function saveTimer() {
     var requiredMs = mins * 60 * 1000;
     if (elapsedMs < requiredMs) {
       var remainMin = Math.ceil((requiredMs - elapsedMs) / 60000);
-      alert("前回の記録からまだ十分な時間が経過していないため、この記録は保存できません。（あと約" + remainMin + "分待つ必要があります）");
+      await showAppAlert({
+        title: "この記録は保存できません",
+        desc: "前回の記録からまだ十分な時間が経過していないため、あと約" + remainMin + "分待つ必要があります。",
+      });
       return;
     }
   }
@@ -1634,7 +1644,7 @@ async function saveTimer() {
     setButtonLoading(btnEl, false);
     if (editBtn) editBtn.disabled = false;
     if (discBtn) discBtn.disabled = false;
-    alert(result.error);
+    showAppAlert({ title: "保存に失敗しました", desc: result.error || "" });
     return;
   }
 
@@ -1652,16 +1662,17 @@ async function saveTimer() {
   }, 1200);
 }
 
-function editTimer() {
+async function editTimer() {
   var el  = document.getElementById("conf-time");
   var cur = parseInt(el.dataset.min);
-  var v   = prompt("分数を修正してください:", cur);
+  var v   = await showAppPrompt({ title: "分数を修正", label: "分数を修正してください", value: String(cur), inputType: "number" });
   if (v && parseInt(v) >= 1) {
     el.dataset.min = parseInt(v); el.textContent = parseInt(v) + "分 00秒";
   }
 }
-function discardTimer() {
-  if (confirm("この計測結果を破棄しますか？")) {
+async function discardTimer() {
+  const ok = await showAppConfirm({ title: "この計測結果を破棄しますか？", okLabel: "破棄する", danger: true });
+  if (ok) {
     timerApiStop(); // ★ サーバー側のタイマー状態も後片付け（結果は待たない）
     timerReset(); showTab("home");
   }

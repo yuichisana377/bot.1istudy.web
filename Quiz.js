@@ -896,7 +896,7 @@ async function hostStart() {
   const btn = document.getElementById('hl-start-btn');
   btn.disabled = true;
   const data = await apiPost('quiz_start', withAuth({ code: roomCode }));
-  if (!data.ok) { btn.disabled = false; alert(quizErrorText(data.error)); return; }
+  if (!data.ok) { btn.disabled = false; showAppAlert({ title: 'エラー', desc: quizErrorText(data.error) }); return; }
   applyServerNow(data);
   renderRoom(data.room);
 }

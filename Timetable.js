@@ -93,9 +93,10 @@ function renderDrawerAccount() {
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
   logoutBtn.textContent = '🚪 ログアウト';
-  logoutBtn.addEventListener('click', (e) => {
+  logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    if (!confirm('ログアウトしますか？')) return;
+    const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
+    if (!ok) return;
     localStorage.removeItem(SESSION_KEY);
     location.href = LOGIN_PATH;
   });
@@ -1159,7 +1160,11 @@ async function deleteTermFromList(id) {
   if (!session) return;
   const t = terms.find(x => x.id === id);
   if (!t) return;
-  if (!confirm(`「${t.name}」（${t.start_date}〜${t.end_date}）を削除しますか？`)) return;
+  const ok = await showAppConfirm({
+    title: '削除しますか？', desc: `「${t.name}」（${t.start_date}〜${t.end_date}）を削除します。`,
+    okLabel: '削除する', danger: true,
+  });
+  if (!ok) return;
   try {
     const res = await api(TERM_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, id, nickname: session.nickname }) });
     if (res.ok) {

@@ -16,97 +16,8 @@ let pendingDraft = null;            // 復元候補の下書き（バナー表�
 let draftSaveTimer = null;
 const DRAFT_KEY_NEW = 'notice_draft_new';
 
-// ============================================================
-//  自前のダイアログUI（デバイスのOS/ブラウザ標準の confirm()/alert() を
-//  使わない）
-//  ─────────────────────────────
-//  Cardmaker.jsのshowCmConfirm/showCmAlertと同じ考え方（端末やブラウザに
-//  依存する見た目にしない）。Notice.js側は既存の保存型XSS対策
-//  （renderNotices()等をinnerHTMLではなくDOM API/textContentで組み立てる
-//  方針、CLAUDE.md参照）に合わせ、ここでもinnerHTMLは使わずcreateElementで
-//  組み立てる。Notice.htmlの既存モーダルと同じクラス（.modal-bg/.modal/
-//  .modal-handle/.btn-primary/.btn-danger）を流用するので、新規CSSを
-//  追加せずに他のモーダルと統一感のある見た目になる。
-// ============================================================
-function _noticeDialogSkeleton(title, desc) {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-bg open';
-  const box = document.createElement('div');
-  box.className = 'modal';
-  const handle = document.createElement('span');
-  handle.className = 'modal-handle';
-  box.appendChild(handle);
-  const h3 = document.createElement('h3');
-  h3.textContent = title;
-  h3.style.marginBottom = '.6rem';
-  box.appendChild(h3);
-  if (desc) {
-    const p = document.createElement('p');
-    p.style.cssText = 'font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:1.1rem;white-space:pre-line';
-    p.textContent = desc;
-    box.appendChild(p);
-  }
-  overlay.appendChild(box);
-  return { overlay, box };
-}
-
-// 選択肢が2つの確認ダイアログ（キャンセル + 実行）。confirm()の代替。
-function showNoticeConfirm({ title, desc = '', okLabel = 'OK', cancelLabel = 'キャンセル', danger = false }) {
-  return new Promise(resolve => {
-    const { overlay, box } = _noticeDialogSkeleton(title, desc);
-
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:8px';
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.textContent = cancelLabel;
-    cancelBtn.style.cssText = 'flex:1;margin-top:0;padding:13px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;cursor:pointer';
-
-    const okBtn = document.createElement('button');
-    okBtn.type = 'button';
-    okBtn.textContent = okLabel;
-    okBtn.className = danger ? 'btn-danger' : 'btn-primary';
-    okBtn.style.cssText = 'flex:1;margin-top:0';
-
-    btnRow.appendChild(cancelBtn);
-    btnRow.appendChild(okBtn);
-    box.appendChild(btnRow);
-    document.body.appendChild(overlay);
-
-    function finish(value) {
-      overlay.classList.remove('open');
-      setTimeout(() => overlay.remove(), 180);
-      resolve(value);
-    }
-    cancelBtn.addEventListener('click', () => finish(false));
-    okBtn.addEventListener('click', () => finish(true));
-    overlay.addEventListener('click', e => { if (e.target === overlay) finish(false); });
-  });
-}
-
-// ボタン1つだけの通知ダイアログ。alert()の代替。
-function showNoticeAlert({ title, desc = '', okLabel = '閉じる' }) {
-  return new Promise(resolve => {
-    const { overlay, box } = _noticeDialogSkeleton(title, desc);
-
-    const okBtn = document.createElement('button');
-    okBtn.type = 'button';
-    okBtn.textContent = okLabel;
-    okBtn.className = 'btn-primary';
-    okBtn.style.marginTop = '0';
-    box.appendChild(okBtn);
-    document.body.appendChild(overlay);
-
-    function finish() {
-      overlay.classList.remove('open');
-      setTimeout(() => overlay.remove(), 180);
-      resolve(true);
-    }
-    okBtn.addEventListener('click', finish);
-    overlay.addEventListener('click', e => { if (e.target === overlay) finish(); });
-  });
-}
+// ★ OS標準のconfirm()/alert()の代替（showAppConfirm/showAppAlert）は
+//   全ページ共通の /Dialog.js に移した（Notice.html側で読み込み済み）。
 
 // ── ログインセッション（Login.js / Cardmaker.js と共通） ──────
 const SESSION_KEY = 'sl_session';
@@ -195,7 +106,7 @@ function renderDrawerAccount() {
   logoutBtn.textContent = '🚪 ログアウト';
   logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    const ok = await showNoticeConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
+    const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
     if (!ok) return;
     localStorage.removeItem(SESSION_KEY);
     location.href = LOGIN_PATH;
@@ -335,7 +246,7 @@ async function setNoticeDone(filename, nextDone) {
     n.done = !nextDone;
     renderNotices();
     updateViewDoneBtn();
-    showNoticeAlert({ title: '実行済みの切り替えに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
+    showAppAlert({ title: '実行済みの切り替えに失敗しました', desc: '通信環境を確認してもう一度お試しください。' });
   }
 }
 
@@ -501,7 +412,7 @@ async function deleteCurrentNotice() {
   const session = requireLoginOrRedirect();
   if (!session) return;
   if (!currentViewFilename) return;
-  const ok = await showNoticeConfirm({
+  const ok = await showAppConfirm({
     title: '削除しますか？', desc: `「${currentViewFilename}」を削除します。この操作は取り消せません。`,
     okLabel: '削除する', danger: true,
   });
@@ -525,12 +436,12 @@ async function deleteCurrentNotice() {
       //   代わりに投稿者への削除依頼フォームを開く。
       openRequestDeleteModal(currentViewFilename, res.owner_nickname);
     } else {
-      showNoticeAlert({ title: '削除に失敗しました', desc: res.error || '' });
+      showAppAlert({ title: '削除に失敗しました', desc: res.error || '' });
     }
   } catch (e) {
     btn.disabled = false;
     btn.textContent = '削除する';
-    showNoticeAlert({ title: 'サーバーに接続できませんでした' });
+    showAppAlert({ title: 'サーバーに接続できませんでした' });
   }
 }
 
@@ -578,7 +489,7 @@ async function submitRequestDelete() {
     if (!res.ok) throw new Error(res.error || '送信に失敗しました');
     closeNoticeModal('request-delete');
     closeNoticeModal('view');
-    showNoticeAlert({
+    showAppAlert({
       title: '📨 削除の確認を送りました',
       desc: res.notified_via === 'web_pending'
         ? '投稿者がDiscord未連携のため、次回サイトを開いたときに確認されます。'
@@ -698,7 +609,7 @@ async function submitUpload() {
   const excludeName = isEditingNotice ? editingOriginalFilename : null;
   const isDuplicate = notices.some(n => n.filename === filename && n.filename !== excludeName);
   if (isDuplicate) {
-    const overwriteOk = await showNoticeConfirm({
+    const overwriteOk = await showAppConfirm({
       title: '上書きしますか？',
       desc: `「${filename}」という名前のお知らせは既に存在します。\n上書きしてもよろしいですか？`,
       okLabel: '上書きする', danger: true,
