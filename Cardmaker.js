@@ -3133,7 +3133,7 @@ async function saveCardEdit() {
   const a = document.getElementById('modal-edit-a').value.trim();
   const e = document.getElementById('modal-edit-e').value.trim();
   if (!q || !a) {
-    errBar.innerHTML = 'Icons.html('close', {size:14}) 問題文と解答は必須です';
+    errBar.innerHTML = Icons.html('close', {size:14}) + ' 問題文と解答は必須です';
     errBar.style.display = 'block';
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
@@ -3204,7 +3204,7 @@ async function saveQuizChoiceCardEdit(q, errBar) {
   // ★ 単一/複数正解は問題ごとに正解チェックの数で自動的に決まる（1個＝択一、2個以上＝複数回答）。
   //   ここでは「1つも選ばれていない」ことだけをエラーにする。
   if (!q || choices.some(c => !c) || correct.length === 0) {
-    errBar.innerHTML = 'Icons.html('close', {size:14}) 問題文・すべての選択肢・正解を1つ以上選ぶことはすべて必須です';
+    errBar.innerHTML = Icons.html('close', {size:14}) + ' 問題文・すべての選択肢・正解を1つ以上選ぶことはすべて必須です';
     errBar.style.display = 'block';
     setTimeout(() => errBar.style.display = 'none', 3000);
     return;
@@ -4073,7 +4073,7 @@ function gradeCurrentAnswer() {
   const userAnswerEl = document.getElementById('grade-user-answer');
   result.style.display = 'flex';
   result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
-  mark.innerHTML = isCorrect ? '○ 正解' : ('Icons.html('close', {size:14}) 不正解');
+  mark.innerHTML = isCorrect ? '○ 正解' : (Icons.html('close', {size:14}) + ' 不正解');
   userAnswerEl.textContent = 'あなたの解答：' + (input.trim() ? input : '（未入力）');
 
   if (!isCorrect) {
