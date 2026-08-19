@@ -1381,6 +1381,20 @@ body {
 .log-item-file.is-collapsed .log-item-file-lines { display: none; }
 .log-item-file-name { overflow-wrap: anywhere; }
 
+/* ★ 追加：ファイル自体の新規作成/削除を示すバッジ（GitHubの「new file」
+   「deleted」表示と同じ考え方。中身を書き換えただけの場合は付けない） */
+.log-item-file-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.log-item-file-badge.is-add { background: rgba(34, 197, 94, .18); color: #15803d; }
+.log-item-file-badge.is-del { background: rgba(220, 38, 38, .16); color: #b91c1c; }
+
 /* ★ 追加：GitHubのコミット差分のような行単位の色分け表示
    （+ 行＝追加は緑、- 行＝削除は赤、それ以外はプレーン表示） */
 .log-item-diff-line {

@@ -295,6 +295,16 @@ function renderLogFileBlock(f) {
     name.textContent = f.file;
     header.appendChild(name);
 
+    // ★ 追加：ファイル自体を新規作成/削除した場合はバッジを添える
+    //   （GitHubの「new file」「deleted」表示と同じ考え方）。既存ファイルの
+    //   中身を書き換えただけ（status: "modified"）の場合は何も付けない。
+    if (f.status === 'added' || f.status === 'deleted') {
+      const badge = document.createElement('span');
+      badge.className = 'log-item-file-badge is-' + (f.status === 'added' ? 'add' : 'del');
+      badge.textContent = f.status === 'added' ? '新規作成' : '削除';
+      header.appendChild(badge);
+    }
+
     header.addEventListener('click', (e) => {
       e.stopPropagation(); // ★ 親（ログ行全体の開閉）に伝播させない
       wrap.classList.toggle('is-collapsed');
