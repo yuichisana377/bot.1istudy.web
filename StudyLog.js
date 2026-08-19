@@ -84,6 +84,26 @@ const STUDENT = {
 //   クライアントが送る student_id 自体は（表示用途を除き）信用されない。
 const SESSION_TOKEN = _s.session_token;
 
+// ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
+function renderDrawerAccount() {
+  const el = document.getElementById('drawer-account');
+  if (!el) return;
+  el.innerHTML = '';
+  if (STUDENT.nickname) {
+    const name = document.createElement('div');
+    name.className = 'drawer-account-name';
+    name.textContent = `👤 ${STUDENT.nickname}`;
+    el.appendChild(name);
+  } else {
+    const link = document.createElement('a');
+    link.className = 'drawer-account-login-link';
+    link.href = '/Login.html';
+    link.textContent = 'ログインしていません';
+    el.appendChild(link);
+  }
+}
+renderDrawerAccount();
+
 
 // ── 課題 JSON（動的に読み込む） ────────────────────────
 let TASKS_JSON = [];

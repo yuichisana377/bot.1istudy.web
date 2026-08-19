@@ -21,6 +21,38 @@ const SESSION_KEY = 'sl_session';
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+// ★ 追加：変更系の操作（投稿・実行済み切替・削除）はサーバー側もログイン必須に
+//   なった（2026/08/19）。以前あった「匿名のまま投稿する」選択肢は廃止し、
+//   未ログインなら必ずログイン画面へ誘導する。
+function requireLoginOrRedirect() {
+  const s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.href = LOGIN_PATH;
+    return null;
+  }
+  return s;
+}
+// ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
+function renderDrawerAccount() {
+  const el = document.getElementById('drawer-account');
+  if (!el) return;
+  el.innerHTML = '';
+  const s = getLoginSession();
+  if (s && s.session_token && s.nickname) {
+    const name = document.createElement('div');
+    name.className = 'drawer-account-name';
+    name.textContent = `👤 ${s.nickname}`;
+    el.appendChild(name);
+  } else {
+    const link = document.createElement('a');
+    link.className = 'drawer-account-login-link';
+    link.href = LOGIN_PATH;
+    link.textContent = 'ログインしていません';
+    el.appendChild(link);
+  }
+}
+renderDrawerAccount();
 
 // ============================================================
 //  起動
@@ -128,6 +160,8 @@ function renderNotices() {
 //   一覧の下へ薄く移動する。詳細モーダルの「実行済みにする」ボタン
 //   （編集する・削除するの並び）からのみ呼ばれる。
 async function setNoticeDone(filename, nextDone) {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   const n = notices.find(x => x.filename === filename);
   if (!n) return;
   n.done = nextDone; // ★ 楽観的に即座に反映（サーバー応答を待たず見た目を切り替える）
@@ -136,7 +170,7 @@ async function setNoticeDone(filename, nextDone) {
   try {
     const res = await api('/set_notice_done', {
       method: 'POST',
-      body: JSON.stringify({ filename, done: nextDone, nickname: getLoginSession()?.nickname }),
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, filename, done: nextDone, nickname: session.nickname }),
     });
     if (!res.ok) throw new Error(res.error || '');
   } catch (e) {
@@ -307,6 +341,8 @@ function clearDraftAfterSubmit() {
 }
 
 async function deleteCurrentNotice() {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   if (!currentViewFilename) return;
   if (!confirm(`「${currentViewFilename}」を削除しますか？`)) return;
 
@@ -316,7 +352,7 @@ async function deleteCurrentNotice() {
   try {
     const res = await api('/delete_notice', {
       method: 'POST',
-      body: JSON.stringify({ filename: currentViewFilename, nickname: getLoginSession()?.nickname })
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, filename: currentViewFilename, nickname: session.nickname })
     });
     btn.disabled = false;
     btn.textContent = '削除する';
@@ -423,6 +459,8 @@ function onLocalFileSelected(e) {
 }
 
 async function submitUpload() {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   const filename = document.getElementById('upload-filename').value.trim();
   const content  = document.getElementById('upload-content').value;
 
@@ -443,21 +481,7 @@ async function submitUpload() {
     if (!overwriteOk) return;
   }
 
-  // ★ Cardmaker.js と同じ考え方：未ログインなら「匿名のまま投稿」か「ログイン画面へ」を確認する
-  const session = getLoginSession();
-  if (!session) {
-    const proceedAnon = confirm(
-      'ログインしていません。\n' +
-      'このまま投稿すると「匿名」として投稿されます。\n\n' +
-      'OK：匿名のまま投稿する\nキャンセル：ログイン画面へ移動する'
-    );
-    if (!proceedAnon) {
-      sessionStorage.setItem('post_login_redirect', location.href); // ログイン後に戻ってくる先を記憶
-      location.href = LOGIN_PATH;
-      return;
-    }
-  }
-  const uploader = session ? session.nickname : '匿名';
+  const uploader = session.nickname;
 
   const editing = isEditingNotice;
   const btnLabel = editing ? '更新する' : 'アップロードする';
@@ -470,7 +494,7 @@ async function submitUpload() {
     // 新規投稿・編集どちらもこのエンドポイントを使う
     const res = await api('/upload_notice', {
       method: 'POST',
-      body: JSON.stringify({ filename, content, uploader, guild_id: GUILD_ID })
+      body: JSON.stringify({ filename, content, uploader, guild_id: GUILD_ID, session_token: session.session_token })
     });
     btn.disabled = false;
     btn.textContent = btnLabel;
@@ -480,7 +504,7 @@ async function submitUpload() {
         try {
           await api('/delete_notice', {
             method: 'POST',
-            body: JSON.stringify({ filename: editingOriginalFilename, nickname: uploader })
+            body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, filename: editingOriginalFilename, nickname: uploader })
           });
         } catch (e) {
           // 古いファイルの削除に失敗しても、新しい内容の保存自体は成功しているため処理は続行する

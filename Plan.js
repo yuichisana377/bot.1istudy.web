@@ -6,13 +6,47 @@
 const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const GUILD_ID = "1509880344806162544";
 
-// ★ 追加：運用ログ（サービス情報ページ）の実行者表示用。ログインしていれば
-//   ニックネームを添えて送る（Notice.js/Cardmaker.js と同じ sl_session キー）。
-//   このページ自体はログイン必須ではないため、未ログインならundefinedのまま送る。
+// ★ このページ自体は閲覧にログイン不要（誰でも予定を見られる）だが、
+//   追加・編集・削除はサーバー側もログイン必須になった（2026/08/19）。
+//   Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
 const SESSION_KEY = 'sl_session';
+const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+// ★ 追加：変更系の操作（追加・編集・削除）を行う直前に呼ぶ。未ログインなら
+//   ログイン画面へ誘導し、falseを返す（呼び出し側はそのまま処理を中断する）。
+//   ログイン後にこのページへ戻ってこられるよう、遷移先をsessionStorageに記憶しておく
+//  （Login.js側の getRedirectTarget() が post_login_redirect を見て使う）。
+function requireLoginOrRedirect() {
+  const s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.href = LOGIN_PATH;
+    return null;
+  }
+  return s;
+}
+// ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
+function renderDrawerAccount() {
+  const el = document.getElementById('drawer-account');
+  if (!el) return;
+  el.innerHTML = '';
+  const s = getLoginSession();
+  if (s && s.session_token && s.nickname) {
+    const name = document.createElement('div');
+    name.className = 'drawer-account-name';
+    name.textContent = `👤 ${s.nickname}`;
+    el.appendChild(name);
+  } else {
+    const link = document.createElement('a');
+    link.className = 'drawer-account-login-link';
+    link.href = LOGIN_PATH;
+    link.textContent = 'ログインしていません';
+    el.appendChild(link);
+  }
+}
+renderDrawerAccount();
 
 // ★ 追加：表示テキスト／HTML属性値の両方に安全なHTMLエスケープ。
 //   予定のsubject/content（カテゴリの【】部分も含む）は生徒が自由に入力できる
@@ -715,6 +749,8 @@ function pickPoints(prefix, val) {
 //  API 送信
 // ============================================================
 async function submitAdd() {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   const date     = calState['add']?.selected;
   const subject  = document.getElementById('add-subject').value;
   const category = getCatValue('add');
@@ -724,7 +760,7 @@ async function submitAdd() {
   const note = document.getElementById('add-note').value.trim();
   const contentToSend = note ? `${content}${NOTE_SEP}${note}` : content;
 
-  const body = { guild_id: GUILD_ID, date, subject, category, content: contentToSend, nickname: getLoginSession()?.nickname };
+  const body = { guild_id: GUILD_ID, session_token: session.session_token, date, subject, category, content: contentToSend, nickname: session.nickname };
 
   if (POINT_CATEGORIES.includes(category)) {
     const points = selectedPoints['add'];
@@ -761,8 +797,10 @@ async function submitAdd() {
 }
 
 async function submitEdit() {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   if (!editTarget) { showErr('edit-err', '予定を選択してください'); return; }
-  const body = { guild_id: GUILD_ID, target: editTarget, nickname: getLoginSession()?.nickname };
+  const body = { guild_id: GUILD_ID, session_token: session.session_token, target: editTarget, nickname: session.nickname };
   const d = calState['edit']?.selected; if (d) body.date = d;
   const s = document.getElementById('edit-subject').value;   if (s) body.subject = s;
   const c = getCatValue('edit'); if (c) body.category = c;
@@ -800,12 +838,14 @@ async function submitEdit() {
 }
 
 async function submitDelete() {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   if (!delTarget) return;
   const btn = document.querySelector('#del-confirm .btn-danger');
   setLoading(btn, '削除中…', true);
   try {
     const res = await api('/delete_schedule', {
-      method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, target: delTarget, nickname: getLoginSession()?.nickname })
+      method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, target: delTarget, nickname: session.nickname })
     });
     resetLoading(btn, '削除する');
     if (res.ok) {

@@ -583,6 +583,30 @@ body {
 .drawer-item:hover { background: var(--bg); }
 .drawer-item.active { background: #dbeafe; color: #1e40af; }
 
+/* ★ 追加：ドロワー下部の「だれとしてログインしているか」表示（2026/08/19） */
+.drawer-account {
+  flex-shrink: 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-light);
+}
+.drawer-account-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.drawer-account-login-link {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e40af;
+  text-decoration: none;
+}
+.drawer-account-login-link:hover { text-decoration: underline; }
+
 .menu-btn {
   background: none;
   border: none;

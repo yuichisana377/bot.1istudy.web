@@ -6,13 +6,45 @@
 const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
 const GUILD_ID = "1509880344806162544";
 
-// ★ 追加：運用ログ（サービス情報ページ）の実行者表示用。ログインしていれば
-//   ニックネームを添えて送る（Notice.js/Cardmaker.js と同じ sl_session キー）。
-//   このページ自体はログイン必須ではないため、未ログインならundefinedのまま送る。
+// ★ このページ自体は閲覧にログイン不要（誰でも時間割を見られる）だが、
+//   追加・編集・削除はサーバー側もログイン必須になった（2026/08/19）。
+//   Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
 const SESSION_KEY = 'sl_session';
+const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+// ★ 追加：変更系の操作（追加・編集・削除）を行う直前に呼ぶ。未ログインなら
+//   ログイン画面へ誘導し、falseを返す（呼び出し側はそのまま処理を中断する）。
+function requireLoginOrRedirect() {
+  const s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.href = LOGIN_PATH;
+    return null;
+  }
+  return s;
+}
+// ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
+function renderDrawerAccount() {
+  const el = document.getElementById('drawer-account');
+  if (!el) return;
+  el.innerHTML = '';
+  const s = getLoginSession();
+  if (s && s.session_token && s.nickname) {
+    const name = document.createElement('div');
+    name.className = 'drawer-account-name';
+    name.textContent = `👤 ${s.nickname}`;
+    el.appendChild(name);
+  } else {
+    const link = document.createElement('a');
+    link.className = 'drawer-account-login-link';
+    link.href = LOGIN_PATH;
+    link.textContent = 'ログインしていません';
+    el.appendChild(link);
+  }
+}
+renderDrawerAccount();
 
 // ★ ポイント付与対象カテゴリ
 const POINT_CATEGORIES = ['提出', '宿題'];
@@ -818,19 +850,22 @@ function renderDayChangePreview(dateStr) {
 // ============================================================
 async function applyHolidayForDate(date, reason, note) {
   const key = `holiday:${date}`;
-  try { await api(TT_API.HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, reason, note, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
+  const session = getLoginSession();
+  try { await api(TT_API.HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, session_token: session?.session_token, date, reason, note, key, nickname: session?.nickname }) }); } catch(_) {}
   ttOverrides[key] = { key, type: 'holiday', date, reason, note };
 }
 
 async function applyPeriodHolidayForDate(date, period, reason, note) {
   const key = `period_holiday:${date}:${period}`;
-  try { await api(TT_API.PERIOD_HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period, reason, note, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
+  const session = getLoginSession();
+  try { await api(TT_API.PERIOD_HOLIDAY, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, session_token: session?.session_token, date, period, reason, note, key, nickname: session?.nickname }) }); } catch(_) {}
   ttOverrides[key] = { key, type: 'period_holiday', date, period, reason, note };
 }
 
 async function applyChangeForDate(date, period, subject, items, note) {
   const key = `change:${date}:${period}`;
-  try { await api(TT_API.UPDATE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, date, period, subject, items, note, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
+  const session = getLoginSession();
+  try { await api(TT_API.UPDATE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, session_token: session?.session_token, date, period, subject, items, note, key, nickname: session?.nickname }) }); } catch(_) {}
   ttOverrides[key] = { key, type: 'change', date, period, subject, items, note };
 }
 
@@ -1056,11 +1091,13 @@ function editTermFromList(id) {
 }
 
 async function deleteTermFromList(id) {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   const t = terms.find(x => x.id === id);
   if (!t) return;
   if (!confirm(`「${t.name}」（${t.start_date}〜${t.end_date}）を削除しますか？`)) return;
   try {
-    const res = await api(TERM_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, id, nickname: getLoginSession()?.nickname }) });
+    const res = await api(TERM_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, id, nickname: session.nickname }) });
     if (res.ok) {
       await loadTerms();
       renderTermList();
@@ -1075,6 +1112,8 @@ async function deleteTermFromList(id) {
 }
 
 async function submitTermSave() {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   if (!termEditState) return;
   const name      = getTermNameValue();
   const startDate = calState['tt-term-start']?.selected;
@@ -1092,12 +1131,13 @@ async function submitTermSave() {
       method: 'POST',
       body: JSON.stringify({
         guild_id:   GUILD_ID,
+        session_token: session.session_token,
         id:         termEditState.id || undefined,
         name,
         start_date: startDate,
         end_date:   endDate,
         timetable:  termEditState.timetable,
-        nickname:   getLoginSession()?.nickname,
+        nickname:   session.nickname,
       })
     });
     resetLoading(btn, '保存する');
@@ -1129,6 +1169,7 @@ function enumerateDates(startStr, endStr) {
 }
 
 async function submitTTEdit() {
+  if (!requireLoginOrRedirect()) return;
   const startDate = calState['tt-edit']?.selected;
   if (!startDate) { showErr('tt-edit-err', '日付を選択してください'); return; }
 
@@ -1188,7 +1229,9 @@ async function submitTTEdit() {
   }
 }
 async function deleteTTOverride(key) {
-  try { await api(TT_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, key, nickname: getLoginSession()?.nickname }) }); } catch(_) {}
+  const session = requireLoginOrRedirect();
+  if (!session) return;
+  try { await api(TT_API.DELETE, { method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, key, nickname: session.nickname }) }); } catch(_) {}
   delete ttOverrides[key];
   saveTTOverrideLocal();
   renderTTOverridesList();

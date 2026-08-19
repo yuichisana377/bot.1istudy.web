@@ -38,6 +38,26 @@ const STUDENT = (function() {
   };
 })();
 
+// ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
+function renderDrawerAccount() {
+  const el = document.getElementById('drawer-account');
+  if (!el) return;
+  el.innerHTML = '';
+  if (STUDENT.nickname) {
+    const name = document.createElement('div');
+    name.className = 'drawer-account-name';
+    name.textContent = `👤 ${STUDENT.nickname}`;
+    el.appendChild(name);
+  } else {
+    const link = document.createElement('a');
+    link.className = 'drawer-account-login-link';
+    link.href = LOGIN_PATH;
+    link.textContent = 'ログインしていません';
+    el.appendChild(link);
+  }
+}
+renderDrawerAccount();
+
 function applyAccountHeader() {
   var avatarEl   = document.getElementById("header-avatar");
   var nicknameEl = document.getElementById("header-nickname");
@@ -1210,6 +1230,8 @@ async function saveFolderName() {
   const btn = document.querySelector('#modal-folder-name .btn-blue');
   const targetFolder = folderNameMode === 'rename' ? folders.find(f => f.id === folderNameTargetId) : null;
   const body = {
+    guild_id: GUILD_ID,
+    session_token: getLoginSession()?.session_token, // ★ 追加：変更にはログイン必須
     name,
     parent_id: folderNameMode === 'rename' ? (targetFolder ? targetFolder.parentId : null) : currentFolderId,
     nickname: getLoginSession()?.nickname, // ★ 追加：運用ログの実行者表示用
@@ -1275,7 +1297,7 @@ async function folderMenuDelete() {
       try {
         await fetch(`${API_BASE}delete_cards`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: d.filename, nickname: getLoginSession()?.nickname }),
+          body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, filename: d.filename, nickname: getLoginSession()?.nickname }),
         });
       } catch(e) {}
     }
@@ -1285,7 +1307,7 @@ async function folderMenuDelete() {
   try {
     const res = await fetch(`${API_BASE}delete_folder`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: folder.id, nickname: getLoginSession()?.nickname }), signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, id: folder.id, nickname: getLoginSession()?.nickname }), signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
@@ -1382,7 +1404,7 @@ async function selectMoveTarget(targetId) {
   try {
     const res = await fetch(`${API_BASE}save_folder`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: f.id, name: f.name, parent_id: targetId, nickname: getLoginSession()?.nickname }),
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, id: f.id, name: f.name, parent_id: targetId, nickname: getLoginSession()?.nickname }),
       signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
@@ -1708,7 +1730,7 @@ async function menuUnpublish() {
     const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(`${API_BASE}delete_cards`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: deck.filename, nickname: getLoginSession()?.nickname }), signal: controller.signal,
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, filename: deck.filename, nickname: getLoginSession()?.nickname }), signal: controller.signal,
     });
     clearTimeout(timer);
     const data = await res.json();
@@ -1735,7 +1757,7 @@ async function menuDelete() {
     try {
       await fetch(`${API_BASE}delete_cards`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: deck.filename, nickname: getLoginSession()?.nickname }),
+        body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, filename: deck.filename, nickname: getLoginSession()?.nickname }),
       });
     } catch(e) {
       const localOnly = await showCmConfirm({
@@ -1835,6 +1857,7 @@ async function announceNewDeckToServer(deckId) {
         name: deck.name,
         cards,
         guild_id: GUILD_ID,
+        session_token: session ? session.session_token : undefined,
         subject: deck.subject || null,
         folder_id: deck.folderId || null,
         publisher_id: session ? session.student_id : null,
@@ -2109,6 +2132,7 @@ async function publishDeck(deckId, isComplete = true) {
     name: deck.name,
     cards,
     guild_id: GUILD_ID,
+    session_token: session ? session.session_token : undefined,
     subject: deck.subject || null,                       // ★ 科目ごとのチャンネル振り分け用
     folder_id: deck.folderId || null,                     // ★ フォルダ所属（みんなで共有）
     publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
@@ -3198,6 +3222,7 @@ async function syncDeckToServer(deck) {
         cards,
         filename: deck.filename,
         guild_id: GUILD_ID,
+        session_token: session ? session.session_token : undefined,
         subject: deck.subject || null,
         folder_id: deck.folderId || null, // ★ フォルダ所属（みんなで共有）
         publisher_id: session ? session.student_id : null,

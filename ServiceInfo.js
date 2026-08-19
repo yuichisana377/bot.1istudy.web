@@ -3,6 +3,35 @@
 //  → 現状は静的なアップデート履歴を表示するだけなので、
 //    ドロワー（他ページと共通の挙動）の開閉のみ実装
 // ============================================================
+
+// ★ このページ自体は閲覧にログイン不要（利用者11人の小規模運用のため、
+//   このページの他の情報と同じ扱い）。ドロワー下部に「だれとしてログイン
+//   しているか」を表示するためだけに、他ページと同じ sl_session を読む
+//  （2026/08/19追加）。
+const SESSION_KEY = 'sl_session';
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+function renderDrawerAccount() {
+  const el = document.getElementById('drawer-account');
+  if (!el) return;
+  el.innerHTML = '';
+  const s = getLoginSession();
+  if (s && s.session_token && s.nickname) {
+    const name = document.createElement('div');
+    name.className = 'drawer-account-name';
+    name.textContent = `👤 ${s.nickname}`;
+    el.appendChild(name);
+  } else {
+    const link = document.createElement('a');
+    link.className = 'drawer-account-login-link';
+    link.href = '/Login.html';
+    link.textContent = 'ログインしていません';
+    el.appendChild(link);
+  }
+}
+renderDrawerAccount();
+
 function openDrawer() {
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('open');
