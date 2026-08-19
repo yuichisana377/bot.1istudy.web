@@ -391,12 +391,14 @@ html, body {
   border-radius: 20px; white-space: nowrap;
 }
 .pub-badge.published  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.pub-badge.local      { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+/* ★ 非公開＝赤系に変更（ユーザー指定） */
+.pub-badge.local      { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 .pub-badge.draft      { background: #fefce8; color: #a16207; border: 1px solid #fde68a; }
 /* ★ 追加：公開予定だがまだ公開されていない（作成中）デッキ用バッジ */
 .pub-badge.inprogress { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
-/* ★ 追加：「クイズ過去問」フォルダ内（一人用4択モードでプレイする）デッキ用バッジ */
-.pub-badge.archive    { background: #EFF4FF; color: #2563EB; border: 1px solid #bfdbfe; }
+/* ★ 「クイズ過去問」フォルダ内（一人用4択モードでプレイする）デッキ用バッジ、および
+   選択式デッキ用バッジ。どちらも黒（灰色）系に変更（ユーザー指定） */
+.pub-badge.archive    { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
 
 /* ── カード編集/作成フォームの選択式入力欄（choice-mode） ── */
 /* ★ 正解は常にチェックボックスで選ぶ（チェック数で択一/複数回答が自動的に決まる） */
