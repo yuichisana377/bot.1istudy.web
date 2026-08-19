@@ -15,7 +15,7 @@
 
   <!-- ロゴ -->
   <div class="login-logo">
-    <div class="login-logo-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 6.2c-2-1.3-4.6-2-7.2-2v13c2.6 0 5.2.7 7.2 2 2-1.3 4.6-2 7.2-2v-13c-2.6 0-5.2.7-7.2 2Z"/><path d="M12 6.2v13"/></svg></div>
+    <div class="login-logo-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 6.2c-2-1.3-4.6-2-7.2-2v13c2.6 0 5.2.7 7.2 2 2-1.3 4.6-2 7.2-2v-13c-2.6 0-5.2.7-7.2 2Z"/><path d="M12 6.2v13"/></svg></div>
     <div class="login-logo-name">1I 勉強会web</div>
     <div class="login-logo-sub">勉強ログ・予定管理・カード学習</div>
   </div>
@@ -61,7 +61,7 @@
             style="width:100%;padding:10px;border:none;border-radius:8px;background:#5865F2;color:#fff;
                    font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;
                    justify-content:center;gap:8px;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5l1.8-1.8a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5l-1.8 1.8a3.5 3.5 0 0 1-5-5L8 12.5"/></svg> Discordでログイン
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5l1.8-1.8a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5l-1.8 1.8a3.5 3.5 0 0 1-5-5L8 12.5"/></svg> Discordでログイン
     </button>
 
     <p class="login-hint" style="text-align:center">
@@ -75,7 +75,7 @@
 
   <!-- ══ STEP 4: Discordログイン → 初回のみ学籍番号の登録 ══ -->
   <div class="login-step login-card" id="step-discord-reg" style="display:none">
-    <h1 class="login-title">学籍番号の登録 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M8 12V6.2a2 2 0 1 1 4 0V11"/><path d="M12 11V5a2 2 0 1 1 4 0v6"/><path d="M16 11.4V7a2 2 0 1 1 4 0v7c0 3.5-2.5 6-6 6h-2c-2 0-3-.7-4-2l-3-4.5a1.7 1.7 0 0 1 2.6-2.1L9 12.4"/></svg></h1>
+    <h1 class="login-title">学籍番号の登録 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M8 12V6.2a2 2 0 1 1 4 0V11"/><path d="M12 11V5a2 2 0 1 1 4 0v6"/><path d="M16 11.4V7a2 2 0 1 1 4 0v7c0 3.5-2.5 6-6 6h-2c-2 0-3-.7-4-2l-3-4.5a1.7 1.7 0 0 1 2.6-2.1L9 12.4"/></svg></h1>
 
     <p class="login-reg-desc">
       Discordでの認証が完了しました。<br>
@@ -115,7 +115,7 @@
     </div>
 
     <button class="btn-primary login-btn" id="btn-discord-reg-submit" onclick="submitDiscordRegister()">
-      登録してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+      登録してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
     </button>
 
     <button class="login-back-btn" onclick="backToId()">
@@ -125,7 +125,7 @@
 
   <!-- ══ STEP 2: 新規登録 ／ パスワード設定（初回のみ） ══ -->
   <div class="login-step login-card" id="step-register" style="display:none">
-    <h1 class="login-title" id="reg-title">新規登録 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M8 12V6.2a2 2 0 1 1 4 0V11"/><path d="M12 11V5a2 2 0 1 1 4 0v6"/><path d="M16 11.4V7a2 2 0 1 1 4 0v7c0 3.5-2.5 6-6 6h-2c-2 0-3-.7-4-2l-3-4.5a1.7 1.7 0 0 1 2.6-2.1L9 12.4"/></svg></h1>
+    <h1 class="login-title" id="reg-title">新規登録 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M8 12V6.2a2 2 0 1 1 4 0V11"/><path d="M12 11V5a2 2 0 1 1 4 0v6"/><path d="M16 11.4V7a2 2 0 1 1 4 0v7c0 3.5-2.5 6-6 6h-2c-2 0-3-.7-4-2l-3-4.5a1.7 1.7 0 0 1 2.6-2.1L9 12.4"/></svg></h1>
 
     <p class="login-reg-desc" id="reg-desc">
       <strong id="reg-id-label"></strong> はまだ登録されていません。<br>
@@ -163,7 +163,7 @@
     </div>
 
     <button class="btn-primary login-btn" id="btn-register" onclick="submitRegister()">
-      登録してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+      登録してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
     </button>
 
     <button class="login-back-btn" onclick="backToId()">
@@ -173,7 +173,7 @@
 
   <!-- ══ STEP 3: パスワードを忘れた場合 ══ -->
   <div class="login-step login-card" id="step-forgot" style="display:none">
-    <h1 class="login-title">パスワードの再設定 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="7.3" cy="14.5" r="3.5"/><path d="M9.9 12l7.9-7.9"/><path d="M15 6.7l2.4 2.4"/><path d="M18 3.7l2 2"/></svg></h1>
+    <h1 class="login-title">パスワードの再設定 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="7.3" cy="14.5" r="3.5"/><path d="M9.9 12l7.9-7.9"/><path d="M15 6.7l2.4 2.4"/><path d="M18 3.7l2 2"/></svg></h1>
 
     <p class="login-reg-desc">
       学籍番号を入力すると、Discordに確認コードを送信します。<br>
@@ -222,7 +222,7 @@
       </div>
 
       <button class="btn-primary login-btn" id="btn-forgot-confirm" onclick="submitForgotConfirm()">
-        パスワードを再設定してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+        パスワードを再設定してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
       </button>
     </div>
 

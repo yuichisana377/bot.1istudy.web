@@ -93,6 +93,35 @@ const Icons = (function () {
     dot: '<circle cx="12" cy="12" r="7.2" fill="currentColor" stroke="none"/>',
   };
 
+  // ── 各アイコンの既定色（2026/08/19追加）─────────────────
+  // ★ 最初は絵文字と同じく「線だけ・currentColor（文脈の色をそのまま
+  //   継承）」で全ページ統一していたが、ユーザーから「その他の絵文字にも
+  //   色を付けてほしい、色は任せる」との要望があり、アイコンの意味ごとに
+  //   既定色を持たせることにした。呼び出し側で明示的に{color:...}を
+  //   渡した場合はそちらが優先される（既存の呼び出しは無改修で動く）。
+  // ★ dotだけは意図的にここに含めていない：CardMakerの公開状態バッジ
+  //   （.pub-badge.*のcolor）のように、置かれた場所のCSS側の色を
+  //   currentColorでそのまま継承させる用途のアイコンなので、固定の既定色を
+  //   持たせると逆に用途が壊れる。
+  const LINE_COLOR = {
+    // ナビゲーション（ドロワーの各項目に固有の色。タブバーのような見た目に）
+    logo: '#0d9488', plan: '#2563eb', timetable: '#7c3aed', cardmaker: '#c2410c',
+    studylog: '#16a34a', notice: '#db2777', tools: '#475569', menu: '#475569', home: '#2563eb',
+    // 操作
+    trash: '#dc2626', mailSent: '#16a34a', edit: '#4f46e5', memo: '#d97706', save: '#2563eb',
+    refresh: '#0891b2', search: '#2563eb', link: '#4f46e5', list: '#0d9488',
+    // 状態・フィードバック
+    checkCircle: '#16a34a', check: '#16a34a', close: '#dc2626', warning: '#d97706',
+    forbidden: '#dc2626', wrong: '#dc2626', celebrate: '#db2777', hint: '#d97706',
+    lock: '#475569', bolt: '#eab308', medal: '#d97706', trophy: '#d97706', star: '#eab308',
+    // モノ
+    logFolder: '#475569', file: '#475569', calendar: '#7c3aed', paperclip: '#475569',
+    globe: '#0891b2', bot: '#4f46e5', school: '#c2410c',
+    // アカウント・人
+    person: '#7c3aed', people: '#7c3aed', wave: '#7c3aed', key: '#7c3aed',
+    logout: '#dc2626', settings: '#475569', avatar: '#7c3aed',
+  };
+
   // ── CardMaker専用（塗りつぶし多め・色付き）────────────
   // color: アイコン本体の色 / bg: 乗せる角丸チップの背景色
   const CM = {
@@ -137,7 +166,7 @@ const Icons = (function () {
     if (!inner) { console.warn('[Icons] unknown line icon:', name); return ''; }
     const o = opts || {};
     const size = o.size || 20;
-    const color = o.color || 'currentColor';
+    const color = o.color || LINE_COLOR[name] || 'currentColor';
     const cls = o.class ? ` class="${o.class}"` : '';
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${o.strokeWidth || 1.8}" stroke-linecap="round" stroke-linejoin="round"${cls}>${inner}</svg>`;
   }
