@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>削除の確認 — 1I勉強会</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/Style.css">
+<link rel="stylesheet" href="/Login.css">
+<link rel="stylesheet" href="/DeleteApproval.css">
+</head>
+<body>
+
+<main class="login-wrap">
+
+  <div class="login-logo">
+    <div class="login-logo-icon">🗑</div>
+    <div class="login-logo-name">削除の確認</div>
+    <div class="login-logo-sub">Discordから届いたリンクの確認ページです</div>
+  </div>
+
+  <!-- 読み込み中 -->
+  <div class="login-card" id="step-loading">
+    <div class="login-loading-wrap">
+      <div class="login-spinner-lg"></div>
+      <div class="login-loading-msg">確認しています…</div>
+    </div>
+  </div>
+
+  <!-- エラー（リンク無効・期限切れなど） -->
+  <div class="login-card" id="step-error" style="display:none">
+    <h1 class="login-title">確認できませんでした</h1>
+    <div class="error-bar" id="error-msg"></div>
+  </div>
+
+  <!-- 本体 -->
+  <div class="login-card" id="step-body" style="display:none">
+    <h1 class="login-title" id="da-title">削除してよいか確認してください</h1>
+
+    <p class="login-reg-desc" id="da-already-gone" style="display:none">
+      対象は既に削除済み、または依頼が取り下げられているようです。以下の内容は依頼された時点のものです。
+    </p>
+
+    <div class="da-field">
+      <div class="da-field-label">依頼者</div>
+      <div class="da-field-value" id="da-requester"></div>
+    </div>
+
+    <div class="da-field">
+      <div class="da-field-label">理由</div>
+      <div class="da-field-value da-reason" id="da-reason"></div>
+    </div>
+
+    <div class="da-field">
+      <div class="da-field-label" id="da-target-label">対象</div>
+      <div class="da-field-value" id="da-target-name"></div>
+    </div>
+
+    <div class="da-detail" id="da-detail"></div>
+
+    <div class="error-bar" id="da-action-err" style="display:none"></div>
+    <div class="da-result" id="da-result" style="display:none"></div>
+
+    <div class="da-btn-row" id="da-btn-row">
+      <button class="btn-primary" id="btn-approve">承諾して削除する</button>
+      <button class="btn-danger" id="btn-reject">拒否する</button>
+    </div>
+  </div>
+
+</main>
+
+<script src="/DeleteApproval.js"></script>
+</body>
+</html>

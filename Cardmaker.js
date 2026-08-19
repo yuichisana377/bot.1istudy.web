@@ -1796,7 +1796,15 @@ async function menuUnpublish() {
     });
     clearTimeout(timer);
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '削除失敗');
+    if (!data.ok) {
+      // ★ 追加：作成者本人以外は直接削除できない（サーバー側の作成者確認機能）。
+      //   ローカルからは何も消さず、代わりに作成者への削除依頼フォームを開く。
+      if (data.error === 'creator_approval_required') {
+        openRequestDeleteModal('deck', deck.filename, deck.name, data.owner_nickname);
+        return;
+      }
+      throw new Error(data.error || '削除失敗');
+    }
     deck.filename = null; deck.count = undefined; deck.published_by = null; deck.incomplete = false;
     deck.planPublish = false; // ★ 追加：明示的に非公開へ戻した場合は「作成中」ではなく「非公開」表示にする
     deck.notYetPublished = true; // ★ 追加：再度公開する場合は改めて「公開して保存」を経る必要がある状態に戻す
@@ -1804,6 +1812,59 @@ async function menuUnpublish() {
     showBanner('🔴 非公開に戻しました', '#f1f5f9', '#334155');
   } catch(e) {
     await showCmAlert({ title: 'GitHubからの削除に失敗しました', desc: e.message });
+  }
+}
+
+// ── 削除の確認依頼（作成者本人以外が削除／非公開に戻そうとしたとき） ──
+// サーバーが creator_approval_required を返したときに menuDelete()/
+// menuUnpublish() から呼ばれる。ここでは何も削除せず、理由を添えて
+// /request_delete を叩き、作成者にDiscordで確認してもらうだけ。
+let requestDeleteCtx = null; // { category, filename, targetName }
+
+function openRequestDeleteModal(category, filename, targetName, ownerNickname) {
+  requestDeleteCtx = { category, filename, targetName };
+  document.getElementById('request-delete-desc').textContent =
+    `「${targetName}」の作成者（${ownerNickname || '作成者'}さん）に削除の確認が必要です。理由を書いて送信すると、作成者にDiscordで確認が届きます。`;
+  document.getElementById('request-delete-reason').value = '';
+  document.getElementById('request-delete-err').style.display = 'none';
+  const btn = document.getElementById('request-delete-submit-btn');
+  btn.disabled = false; btn.textContent = '送信する';
+  openModal('modal-request-delete');
+}
+
+async function submitRequestDelete() {
+  if (!requestDeleteCtx) return;
+  const reason = document.getElementById('request-delete-reason').value.trim();
+  const errEl = document.getElementById('request-delete-err');
+  errEl.style.display = 'none';
+  if (!reason) {
+    errEl.textContent = '理由を入力してください';
+    errEl.style.display = '';
+    return;
+  }
+  const btn = document.getElementById('request-delete-submit-btn');
+  btn.disabled = true; btn.textContent = '送信中…';
+  try {
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}request_delete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        guild_id: GUILD_ID, session_token: session?.session_token,
+        category: requestDeleteCtx.category, filename: requestDeleteCtx.filename, reason,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '送信に失敗しました');
+    closeModal('modal-request-delete');
+    const via = data.notified_via === 'web_pending'
+      ? '作成者がDiscord未連携のため、次回サイトを開いたときに確認されます。'
+      : '作成者にDiscordで確認を送りました。承認されると削除されます。';
+    showBanner('📨 ' + via, '#dcfce7', '#166534');
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '送信する';
+    errEl.textContent = e.message;
+    errEl.style.display = '';
   }
 }
 
@@ -1817,10 +1878,24 @@ async function menuDelete() {
   const deck = decks.find(d => d.id === menuTargetId);
   if (deck && deck.filename) {
     try {
-      await fetch(`${API_BASE}delete_cards`, {
+      const res = await fetch(`${API_BASE}delete_cards`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, filename: deck.filename, nickname: getLoginSession()?.nickname }),
       });
+      // ★ 修正：以前はレスポンスの中身（data.ok）を見ておらず、サーバー側が
+      //   削除に失敗（{ok:false}）しても例外にはならないため気付かず、
+      //   下のdecks.filter()でローカルの一覧からだけ消えてしまっていた
+      //   （サーバー上には残ったまま＝他の端末には残り続ける不整合）。
+      const data = await res.json();
+      if (!data.ok) {
+        // ★ 追加：作成者本人以外は直接削除できない（サーバー側の作成者確認機能）。
+        //   ローカルからは何も消さず、代わりに作成者への削除依頼フォームを開く。
+        if (data.error === 'creator_approval_required') {
+          openRequestDeleteModal('deck', deck.filename, deck.name, data.owner_nickname);
+          return;
+        }
+        throw new Error(data.error || '削除失敗');
+      }
     } catch(e) {
       const localOnly = await showCmConfirm({
         title: 'GitHubからの削除に失敗しました',

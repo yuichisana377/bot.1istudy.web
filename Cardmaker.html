@@ -590,6 +590,22 @@
   </div>
 </div>
 
+<!-- モーダル: 削除の確認依頼（作成者本人以外が削除／非公開に戻そうとしたとき） -->
+<div class="modal-overlay" id="modal-request-delete" onclick="onOverlayClick(event,'modal-request-delete')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">本人の確認が必要です</div>
+    <div id="request-delete-desc" style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:.85rem"></div>
+    <label class="modal-input-label" style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">削除したい理由</label>
+    <textarea class="modal-input" id="request-delete-reason" style="min-height:80px;margin-bottom:.5rem" maxlength="500" placeholder="例：内容が古いため／重複しているため など"></textarea>
+    <div id="request-delete-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal('modal-request-delete')">キャンセル</button>
+      <button class="btn btn-blue" id="request-delete-submit-btn" onclick="submitRequestDelete()">送信する</button>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: カード編集 -->
 <div class="modal-overlay" id="modal-card-edit" onclick="onOverlayClick(event,'modal-card-edit')">
   <div class="modal-sheet" style="padding-bottom:1.5rem">
@@ -650,5 +666,6 @@
 </div>
 
 <script src="/Cardmaker.js"></script>
+<script src="/PendingDeleteCheck.js"></script>
 </body>
 </html>

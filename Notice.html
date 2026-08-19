@@ -117,6 +117,26 @@
   </div>
 </div>
 
+<!-- 削除の確認依頼モーダル（投稿者本人以外が削除しようとしたとき） -->
+<div class="modal-bg" id="modal-request-delete" onclick="onBgClickNotice(event,'request-delete')">
+  <div class="modal">
+    <span class="modal-handle"></span>
+    <div class="modal-header">
+      <h3>本人の確認が必要です</h3>
+      <button class="modal-close" onclick="closeNoticeModal('request-delete')">✕</button>
+    </div>
+    <p id="request-delete-desc" style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:.85rem"></p>
+    <div class="field">
+      <label>削除したい理由</label>
+      <textarea id="request-delete-reason" rows="4" maxlength="500" placeholder="例：内容が古いため／重複しているため など"
+        style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-md);
+        font-size:14px;background:var(--bg);color:var(--text);outline:none;resize:vertical;font-family:inherit;"></textarea>
+    </div>
+    <div class="error-bar" id="request-delete-err"></div>
+    <button class="btn-primary" id="request-delete-submit-btn" onclick="submitRequestDelete()">送信する</button>
+  </div>
+</div>
+
 <!-- アップロードモーダル -->
 <div class="modal-bg" id="modal-upload" onclick="onBgClickNotice(event,'upload')">
   <div class="modal">
@@ -168,5 +188,6 @@
 </div>
 
 <script src="/Notice.js"></script>
+<script src="/PendingDeleteCheck.js"></script>
 </body>
 </html>

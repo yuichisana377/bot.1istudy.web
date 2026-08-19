@@ -423,6 +423,10 @@ async function deleteCurrentNotice() {
     if (res.ok) {
       closeNoticeModal('view');
       await loadNotices();
+    } else if (res.error === 'creator_approval_required') {
+      // ★ 追加：投稿者本人以外は直接削除できない（サーバー側の作成者確認機能）。
+      //   代わりに投稿者への削除依頼フォームを開く。
+      openRequestDeleteModal(currentViewFilename, res.owner_nickname);
     } else {
       alert('削除に失敗しました: ' + (res.error || ''));
     }
@@ -430,6 +434,61 @@ async function deleteCurrentNotice() {
     btn.disabled = false;
     btn.textContent = '削除する';
     alert('サーバーに接続できませんでした');
+  }
+}
+
+// ── 削除の確認依頼（投稿者本人以外が削除しようとしたとき） ──
+// サーバーが creator_approval_required を返したときに deleteCurrentNotice()
+// から呼ばれる。ここでは何も削除せず、理由を添えて /request_delete を叩き、
+// 投稿者にDiscordで確認してもらうだけ。
+let requestDeleteFilename = null;
+
+function openRequestDeleteModal(filename, ownerNickname) {
+  requestDeleteFilename = filename;
+  document.getElementById('request-delete-desc').textContent =
+    `「${filename}」の投稿者（${ownerNickname || '投稿者'}さん）に削除の確認が必要です。理由を書いて送信すると、投稿者にDiscordで確認が届きます。`;
+  document.getElementById('request-delete-reason').value = '';
+  const errEl = document.getElementById('request-delete-err');
+  errEl.style.display = 'none';
+  const btn = document.getElementById('request-delete-submit-btn');
+  btn.disabled = false; btn.textContent = '送信する';
+  document.getElementById('modal-request-delete').classList.add('open');
+}
+
+async function submitRequestDelete() {
+  const session = requireLoginOrRedirect();
+  if (!session) return;
+  if (!requestDeleteFilename) return;
+  const reason = document.getElementById('request-delete-reason').value.trim();
+  const errEl = document.getElementById('request-delete-err');
+  errEl.style.display = 'none';
+  if (!reason) {
+    errEl.textContent = '理由を入力してください';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('request-delete-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '送信中…';
+  try {
+    const res = await api('/request_delete', {
+      method: 'POST',
+      body: JSON.stringify({
+        guild_id: GUILD_ID, session_token: session.session_token,
+        category: 'notice', filename: requestDeleteFilename, reason,
+      }),
+    });
+    if (!res.ok) throw new Error(res.error || '送信に失敗しました');
+    closeNoticeModal('request-delete');
+    closeNoticeModal('view');
+    alert(res.notified_via === 'web_pending'
+      ? '投稿者がDiscord未連携のため、次回サイトを開いたときに確認されます。'
+      : '投稿者にDiscordで確認を送りました。承認されると削除されます。');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '送信する';
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
   }
 }
 
