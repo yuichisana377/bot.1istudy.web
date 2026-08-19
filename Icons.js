@@ -169,7 +169,14 @@ const Icons = (function () {
     const size = o.size || 20;
     const color = o.color || LINE_COLOR[name] || 'currentColor';
     const cls = o.class ? ` class="${o.class}"` : '';
-    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${o.strokeWidth || 1.8}" stroke-linecap="round" stroke-linejoin="round"${cls}>${inner}</svg>`;
+    // ★ stroke だけでなく color 属性（CSSのcolorプロパティ）も明示しておく。
+    //   dot/botのように内部でfill="currentColor"を使うアイコンは、strokeでは
+    //   なくCSSのcolorプロパティを見て塗り色が決まるため、strokeしか
+    //   指定していないとo.colorで明示的に色を渡しても反映されなかった
+    //   （cmHtml/cmBadgeHtmlは元からcolor属性も付けており、この不具合は
+    //   なかった）。color未指定時（'currentColor'のまま）は、そのまま
+    //   親要素の文字色を継承する（dotの意図通り）。
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${o.strokeWidth || 1.8}" stroke-linecap="round" stroke-linejoin="round" color="${color}"${cls}>${inner}</svg>`;
   }
 
   function cmHtml(name, opts) {

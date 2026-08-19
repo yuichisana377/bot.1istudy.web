@@ -2237,7 +2237,7 @@ async function saveCard(mode) {
       desc: '未完成として公開すると、Discordへの通知は送られません。\nあとから編集して完成にできます。',
       choices: [
         { icon: Icons.html('checkCircle', {size:20}), label: '完成として公開する',   sub: '通知が送信されます',   value: 'complete' },
-        { icon: Icons.html('dot', {size:20}), label: '未完成として公開する', sub: '通知は送信されません', value: 'draft' },
+        { icon: Icons.html('dot', {size:26, color:'#eab308'}), label: '未完成として公開する', sub: '通知は送信されません', value: 'draft' },
       ],
     });
     if (!choice) return; // キャンセル
