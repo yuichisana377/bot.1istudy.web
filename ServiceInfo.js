@@ -273,16 +273,19 @@ function renderLogEntry(entry) {
   return li;
 }
 
-// ★ 追加：1ファイル分の差分ブロックを作る（GitHubのコミット画面の
+// ★ 1ファイル分の差分ブロックを作る（GitHubのコミット画面の
 //   「変更されたファイル」表示と同じ考え方）。file名があればファイル名を
-//   見出しにして、その見出しをタップするとそのファイルだけ折りたためる
-//   （既定は開いた状態）。file名が無い（学習ログのメモ等、対象がファイル
-//   1つに対応しない）場合は見出し無しで差分行だけを表示する。
+//   見出しにして、その見出しをタップするとそのファイルだけ開閉できる
+//   （2026/08/19、ユーザーの要望により既定を「閉じた状態」に変更。
+//   タップして初めて+/-の差分行が見える）。file名が無い（削除依頼の
+//   理由等、対象がファイル1つに対応しない）場合は見出し（＝開閉の
+//   きっかけ）自体が無いため、常に中身を表示したままにする。
 function renderLogFileBlock(f) {
   const wrap = document.createElement('div');
   wrap.className = 'log-item-file';
 
   if (f.file) {
+    wrap.classList.add('is-collapsed'); // ★ 既定は閉じた状態
     const header = document.createElement('div');
     header.className = 'log-item-file-header';
 
