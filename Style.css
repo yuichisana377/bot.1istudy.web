@@ -1282,6 +1282,32 @@ body {
 }
 .log-item.is-open .log-item-detail { display: block; }
 
+/* ★ 追加：GitHubの「変更されたファイル」表示のように、ファイルごとの
+   見出し（タップで折りたたみ）+ 差分行のブロックを縦に並べる（2026/08/19） */
+.log-item-file + .log-item-file { border-top: 1px solid var(--border-light); }
+
+.log-item-file-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.log-item-file-header:hover { background: var(--border-light); }
+.log-item-file-chevron {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--text-tertiary);
+  transition: transform .15s ease;
+}
+.log-item-file.is-collapsed .log-item-file-chevron { transform: rotate(-90deg); }
+.log-item-file.is-collapsed .log-item-file-lines { display: none; }
+.log-item-file-name { overflow-wrap: anywhere; }
+
 /* ★ 追加：GitHubのコミット差分のような行単位の色分け表示
    （+ 行＝追加は緑、- 行＝削除は赤、それ以外はプレーン表示） */
 .log-item-diff-line {

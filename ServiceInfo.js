@@ -136,10 +136,12 @@ function renderLogEntry(entry) {
   const body = document.createElement('div');
   body.className = 'log-item-body';
 
-  // ★ 追加：具体的に何が変更されたか（entry.detail）がある場合、要約文の
-  //   横に開閉矢印を出し、行全体をタップすると詳細を展開できるようにする。
-  //   detail が無いエントリ（従来通り）はタップ不可のまま。
-  const hasDetail = !!(entry.detail && String(entry.detail).trim());
+  // ★ entry.detail は [{file, diff}, ...] 形式（bot.py側のfile_diff()が作る。
+  //   fileは実際のデータファイルのパス、diffはGitHubのコミットのような
+  //   +/-形式のテキスト）。要約文の横に開閉矢印を出し、行全体をタップすると
+  //   詳細を展開できるようにする。detail が無いエントリはタップ不可のまま。
+  const detailFiles = Array.isArray(entry.detail) ? entry.detail.filter(f => f && f.diff) : [];
+  const hasDetail = detailFiles.length > 0;
 
   const summary = document.createElement('div');
   summary.className = 'log-item-summary';
@@ -179,24 +181,7 @@ function renderLogEntry(entry) {
   if (hasDetail) {
     const detail = document.createElement('div');
     detail.className = 'log-item-detail';
-    // ★ 追加：detailが「+ 追加された内容」「- 削除された内容」形式の行を
-    //   含む場合、GitHubのコミット差分のように行ごとに色分け表示する
-    //   （bot.py側のdiff_cards/_text_diff_linesが生成する形式）。
-    //   どちらでもない行（例：「…ほかN件」）はそのまま表示する。
-    String(entry.detail).split('\n').forEach(line => {
-      const lineEl = document.createElement('div');
-      if (line.startsWith('+ ')) {
-        lineEl.className = 'log-item-diff-line is-add';
-        lineEl.textContent = line.slice(2);
-      } else if (line.startsWith('- ')) {
-        lineEl.className = 'log-item-diff-line is-del';
-        lineEl.textContent = line.slice(2);
-      } else {
-        lineEl.className = 'log-item-diff-line';
-        lineEl.textContent = line;
-      }
-      detail.appendChild(lineEl);
-    });
+    detailFiles.forEach(f => detail.appendChild(renderLogFileBlock(f)));
     body.appendChild(detail);
 
     li.classList.add('is-expandable');
@@ -219,6 +204,57 @@ function renderLogEntry(entry) {
   li.appendChild(icon);
   li.appendChild(body);
   return li;
+}
+
+// ★ 追加：1ファイル分の差分ブロックを作る（GitHubのコミット画面の
+//   「変更されたファイル」表示と同じ考え方）。file名があればファイル名を
+//   見出しにして、その見出しをタップするとそのファイルだけ折りたためる
+//   （既定は開いた状態）。file名が無い（学習ログのメモ等、対象がファイル
+//   1つに対応しない）場合は見出し無しで差分行だけを表示する。
+function renderLogFileBlock(f) {
+  const wrap = document.createElement('div');
+  wrap.className = 'log-item-file';
+
+  if (f.file) {
+    const header = document.createElement('div');
+    header.className = 'log-item-file-header';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'log-item-file-chevron';
+    chevron.textContent = '▾';
+    header.appendChild(chevron);
+
+    const name = document.createElement('span');
+    name.className = 'log-item-file-name';
+    name.textContent = f.file;
+    header.appendChild(name);
+
+    header.addEventListener('click', (e) => {
+      e.stopPropagation(); // ★ 親（ログ行全体の開閉）に伝播させない
+      wrap.classList.toggle('is-collapsed');
+    });
+    wrap.appendChild(header);
+  }
+
+  const lines = document.createElement('div');
+  lines.className = 'log-item-file-lines';
+  String(f.diff).split('\n').forEach(line => {
+    const lineEl = document.createElement('div');
+    if (line.startsWith('+ ')) {
+      lineEl.className = 'log-item-diff-line is-add';
+      lineEl.textContent = line.slice(2);
+    } else if (line.startsWith('- ')) {
+      lineEl.className = 'log-item-diff-line is-del';
+      lineEl.textContent = line.slice(2);
+    } else {
+      lineEl.className = 'log-item-diff-line';
+      lineEl.textContent = line;
+    }
+    lines.appendChild(lineEl);
+  });
+  wrap.appendChild(lines);
+
+  return wrap;
 }
 
 async function loadSystemLog() {
