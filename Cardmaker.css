@@ -725,7 +725,7 @@ html, body {
 .menu-item:last-child { border-bottom: none; }
 .menu-item:active { background: var(--bg); border-radius: var(--r-md); }
 .menu-item.danger { color: #EF4444; }
-.menu-icon { font-size: 20px; width: 28px; text-align: center; }
+.menu-icon { font-size: 20px; width: 32px; text-align: center; }
 
 /* わからないボタン */
 .unsure-btn {

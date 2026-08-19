@@ -211,7 +211,7 @@ async function loadRoomList() {
     const joinable = r.state === 'lobby' || r.allow_late_join;
     const statusText = !inProgress
       ? '参加受付中'
-      : (joinable ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="7.2" fill="currentColor" stroke="none"/></svg> プレイ中（第${r.current_q + 1}問）` : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><rect x="5" y="10.3" width="14" height="10.2" rx="2"/><path d="M8 10.3V7a4 4 0 0 1 8 0v3.3"/></svg> プレイ中・途中参加不可');
+      : (joinable ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#dc2626"><circle cx="12" cy="12" r="7.2" fill="currentColor" stroke="none"/></svg> プレイ中（第${r.current_q + 1}問）` : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><rect x="5" y="10.3" width="14" height="10.2" rx="2"/><path d="M8 10.3V7a4 4 0 0 1 8 0v3.3"/></svg> プレイ中・途中参加不可');
     const tag = joinable ? 'button' : 'div';
     const typeAttr = joinable ? ' type="button"' : '';
     const clickAttr = joinable ? ` onclick="joinRoomByCode('${r.code}')"` : '';

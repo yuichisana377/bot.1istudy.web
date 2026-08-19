@@ -878,7 +878,7 @@ function renderDeckListUI() {
     <div class="deck-card-actions">
       <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
         ${folderPlayDisabled?'disabled':''}>${isLoadingThisFolder ? '読み込み中…' : '▶ プレイ'}</button>
-      <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">Icons.html('edit', {size:14})</button>
+      <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">${Icons.html('edit', {size:14})}</button>
     </div>
   </div>` };
 });
@@ -916,23 +916,23 @@ function renderDeckListUI() {
     //     ・「公開して保存」で「完成として公開する」を選んだ（その後の状態） → 「公開済み」
     const pubBadge = !d.filename
       ? (d.planPublish !== false
-          ? `<span class="pub-badge inprogress">${Icons.html('dot', {size:10})} 作成中</span>`
-          : `<span class="pub-badge local">${Icons.html('dot', {size:10})} 非公開</span>`)
+          ? `<span class="pub-badge inprogress">${Icons.html('dot', {size:13})} 作成中</span>`
+          : `<span class="pub-badge local">${Icons.html('dot', {size:13})} 非公開</span>`)
       : (d.notYetPublished !== false)
-        ? `<span class="pub-badge inprogress">${Icons.html('dot', {size:10})} 作成中${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+        ? `<span class="pub-badge inprogress">${Icons.html('dot', {size:13})} 作成中${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
         : d.incomplete
-          ? `<span class="pub-badge draft">${Icons.html('dot', {size:10})} 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
-          : `<span class="pub-badge published">${Icons.html('dot', {size:10})} 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
+          ? `<span class="pub-badge draft">${Icons.html('dot', {size:13})} 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
+          : `<span class="pub-badge published">${Icons.html('dot', {size:13})} 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
     // ★ 「クイズ過去問」フォルダの中のデッキだと分かるようにバッジを付ける
     //   （プレイ時の挙動が通常のフラッシュカードと違う＝一人用選択式モードになるため）
     const quizArchiveBadge = isDeckInFolderScope(d.id, QUIZ_ARCHIVE_FOLDER_ID)
-      ? `<span class="pub-badge archive">${Icons.html('dot', {size:10})} 過去問</span>` : '';
+      ? `<span class="pub-badge archive">${Icons.html('dot', {size:13})} 過去問</span>` : '';
     // ★ 追加：多肢選択デッキ（choiceMode有り）にも、同じ理由で分かるようにバッジを付ける
     //   （「クイズ過去問」フォルダの中でなくてもプレイ時は一人用選択式モードになるため）
     //   ★ quizArchiveBadge と意味が重複するため、そちらが出る場合はこちらは出さない。
     //   ★ 単一/複数は問題ごとに違いうるためデッキ単位では区別せず、常に「選択式」とだけ表示する。
     const choiceModeBadge = (!quizArchiveBadge && d.choiceMode)
-      ? `<span class="pub-badge archive">${Icons.html('dot', {size:10})} 選択式</span>` : '';
+      ? `<span class="pub-badge archive">${Icons.html('dot', {size:13})} 選択式</span>` : '';
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
@@ -995,7 +995,7 @@ function renderDeckListUI() {
       <div class="deck-card-actions">
         <button class="btn btn-blue btn-sm" onclick="openPlayMode('${d.id}')"
           ${playDisabled?'disabled':''}>${isLoadingThis ? '読み込み中…' : '▶ プレイ'}</button>
-        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>Icons.html('edit', {size:14})</button>
+        <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>${Icons.html('edit', {size:14})}</button>
       </div>
     </div>` };
   });
@@ -1023,7 +1023,7 @@ function renderBreadcrumb() {
   let cur = folders.find(f => f.id === currentFolderId);
   while (cur) { chain.unshift(cur); cur = folders.find(f => f.id === cur.parentId); }
   bar.style.display = 'flex';
-  bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">Icons.html('home', {size:14}) ホーム</span>` +
+  bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">${Icons.html('home', {size:14})} ホーム</span>` +
     chain.map(f => `<span class="crumb-sep">/</span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
 }
 
@@ -1174,7 +1174,7 @@ function renderCompletedUI() {
       ${it.subject ? `<div class="completed-subject">${esc(it.subject)}</div>` : ''}
       <div class="completed-title">${it.icon} ${esc(it.name)}</div>
       <div class="completed-meta">${Icons.html('checkCircle', {size:14})} ${it.total} 問 完了</div>
-      <div class="completed-replay-btn">Icons.html('refresh', {size:14}) もう一度プレイ</div>
+      <div class="completed-replay-btn">${Icons.html('refresh', {size:14})} もう一度プレイ</div>
     </div>`).join('');
 }
 
@@ -4709,8 +4709,8 @@ const MATH_PAD_HTML = (function(){
   const keyBtn = c => `<button type="button" class="math-key" data-ch="${c}">${c}</button>`;
   return `
     <div class="math-pad-header">
-      <span class="math-pad-title">Icons.cmHtml('tally', {size:15}) 理数モード</span>
-      <button type="button" class="math-pad-close" onclick="toggleMathPad(this.closest('.math-pad').id)" aria-label="閉じる">Icons.html('close', {size:16})</button>
+      <span class="math-pad-title">${Icons.cmHtml('tally', {size:15})} 理数モード</span>
+      <button type="button" class="math-pad-close" onclick="toggleMathPad(this.closest('.math-pad').id)" aria-label="閉じる">${Icons.html('close', {size:16})}</button>
     </div>
     <div class="math-pad-body">
       <div class="math-preview-label">プレビュー</div>
@@ -4733,7 +4733,7 @@ const MATH_PAD_HTML = (function(){
         <span class="math-row-label">記号</span>
         ${symKeys.map(keyBtn).join('')}
       </div>
-      <div class="math-pad-tip">Icons.html('hint', {size:16}) 分数・ルートは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
+      <div class="math-pad-tip">${Icons.html('hint', {size:16})} 分数・ルートは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
     </div>`;
 })();
 
