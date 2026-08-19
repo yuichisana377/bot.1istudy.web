@@ -150,7 +150,24 @@ function renderLogEntry(entry) {
   if (hasDetail) {
     const detail = document.createElement('div');
     detail.className = 'log-item-detail';
-    detail.textContent = entry.detail;
+    // ★ 追加：detailが「+ 追加された内容」「- 削除された内容」形式の行を
+    //   含む場合、GitHubのコミット差分のように行ごとに色分け表示する
+    //   （bot.py側のdiff_cards/_text_diff_linesが生成する形式）。
+    //   どちらでもない行（例：「…ほかN件」）はそのまま表示する。
+    String(entry.detail).split('\n').forEach(line => {
+      const lineEl = document.createElement('div');
+      if (line.startsWith('+ ')) {
+        lineEl.className = 'log-item-diff-line is-add';
+        lineEl.textContent = line.slice(2);
+      } else if (line.startsWith('- ')) {
+        lineEl.className = 'log-item-diff-line is-del';
+        lineEl.textContent = line.slice(2);
+      } else {
+        lineEl.className = 'log-item-diff-line';
+        lineEl.textContent = line;
+      }
+      detail.appendChild(lineEl);
+    });
     body.appendChild(detail);
 
     li.classList.add('is-expandable');
