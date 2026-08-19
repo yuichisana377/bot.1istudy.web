@@ -1215,12 +1215,50 @@ body {
 .log-item-body { flex: 1; min-width: 0; }
 
 .log-item-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+.log-item-summary-text {
   font-size: 12.5px;
   color: var(--text-secondary);
   line-height: 1.6;
   overflow-wrap: anywhere; /* 長い文章・エラーメッセージでも横にはみ出さない */
 }
-.log-item.is-error .log-item-summary { color: #dc2626; }
+.log-item.is-error .log-item-summary-text { color: #dc2626; }
+
+/* ★ 追加：具体的に何が変更されたかをタップで開閉表示する（2026/08/19） */
+.log-item.is-expandable { cursor: pointer; }
+.log-item.is-expandable:hover,
+.log-item.is-expandable:focus-visible {
+  background: var(--bg);
+}
+.log-item.is-expandable:focus-visible { outline: none; }
+
+.log-item-chevron {
+  flex-shrink: 0;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  transition: transform .15s ease;
+}
+.log-item.is-open .log-item-chevron { transform: rotate(90deg); }
+
+.log-item-detail {
+  display: none;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap; /* 「編集前 → 編集後」のような改行を含む詳細も見やすく */
+  overflow-wrap: anywhere;
+}
+.log-item.is-open .log-item-detail { display: block; }
+.log-item.is-error .log-item-detail { background: rgba(220, 38, 38, .08); color: #dc2626; }
 
 .log-item-footer {
   display: flex;

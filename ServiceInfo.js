@@ -107,9 +107,25 @@ function renderLogEntry(entry) {
   const body = document.createElement('div');
   body.className = 'log-item-body';
 
+  // ★ 追加：具体的に何が変更されたか（entry.detail）がある場合、要約文の
+  //   横に開閉矢印を出し、行全体をタップすると詳細を展開できるようにする。
+  //   detail が無いエントリ（従来通り）はタップ不可のまま。
+  const hasDetail = !!(entry.detail && String(entry.detail).trim());
+
   const summary = document.createElement('div');
   summary.className = 'log-item-summary';
-  summary.textContent = entry.summary || '';
+
+  const summaryText = document.createElement('span');
+  summaryText.className = 'log-item-summary-text';
+  summaryText.textContent = entry.summary || '';
+  summary.appendChild(summaryText);
+
+  if (hasDetail) {
+    const chevron = document.createElement('span');
+    chevron.className = 'log-item-chevron';
+    chevron.textContent = '▸';
+    summary.appendChild(chevron);
+  }
 
   // ★ 追加：日時（左）と実行者（右下）を1行に並べる。実行者が無い場合
   //   （バックアップ等サーバー主導の処理）は日時だけを表示する。
@@ -130,6 +146,30 @@ function renderLogEntry(entry) {
 
   body.appendChild(summary);
   body.appendChild(footer);
+
+  if (hasDetail) {
+    const detail = document.createElement('div');
+    detail.className = 'log-item-detail';
+    detail.textContent = entry.detail;
+    body.appendChild(detail);
+
+    li.classList.add('is-expandable');
+    li.tabIndex = 0;
+    li.setAttribute('role', 'button');
+    li.setAttribute('aria-expanded', 'false');
+    const toggle = () => {
+      const open = li.classList.toggle('is-open');
+      li.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    li.addEventListener('click', toggle);
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+  }
+
   li.appendChild(icon);
   li.appendChild(body);
   return li;
