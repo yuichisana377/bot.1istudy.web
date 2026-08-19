@@ -196,3 +196,19 @@ const Icons = (function () {
 
   return { html, cmHtml, cmBadgeHtml, LINE, CM };
 })();
+
+// ============================================================
+//  hideLoadingFallback — 各ページの<body>先頭に生HTMLで埋め込んである
+//  「読み込み中…」の代替表示（JSが完全に動かない場合でも必ず表示される
+//  フォールバック。詳しくは各HTMLの#js-fail-fallback参照）を、そのページの
+//  メインJS（Plan.js/Timetable.js/Cardmaker.js/…）が最後まで正常に実行
+//  できたときにだけ消す。各メインJSの一番最後で1行呼ぶだけでよいように、
+//  全ページ共通で最初に読み込まれるこのIcons.jsに置いてある。
+//  ★ 呼び出しに辿り着く前にどこかでエラーが起きて処理が止まっていれば、
+//    この関数自体が呼ばれないため、フォールバック表示は消えずに残り続ける
+//    （＝生徒が真っ白/壊れた画面のまま抜け出せなくなるのを防ぐのが目的）。
+// ============================================================
+function hideLoadingFallback() {
+  const el = document.getElementById('js-fail-fallback');
+  if (el) el.remove();
+}

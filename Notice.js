@@ -795,3 +795,7 @@ window.addEventListener('pageshow', () => {
   const overlay = document.getElementById('page-nav-loading');
   if (overlay) overlay.classList.remove('show');
 });
+
+// ★ ここまでエラーなく実行できた＝JSが生きている合図として、<body>先頭の
+//   「読み込み中…」代替表示（js-fail-fallback、Icons.js参照）を消す。
+hideLoadingFallback();

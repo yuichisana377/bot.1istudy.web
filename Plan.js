@@ -1189,3 +1189,7 @@ function startRealtimeUpdates() {
 }
 startRealtimeUpdates();
 setInterval(checkScheduleUpdate, 10000);
+
+// ★ ここまでエラーなく実行できた＝JSが生きている合図として、<body>先頭の
+//   「読み込み中…」代替表示（js-fail-fallback、Icons.js参照）を消す。
+hideLoadingFallback();
