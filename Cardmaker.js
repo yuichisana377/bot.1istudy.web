@@ -103,9 +103,10 @@ function renderDrawerAccount() {
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
   logoutBtn.textContent = '🚪 ログアウト';
-  logoutBtn.addEventListener('click', (e) => {
+  logoutBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    if (!confirm('ログアウトしますか？')) return;
+    const ok = await showCmConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', okStyle: 'danger' });
+    if (!ok) return;
     localStorage.removeItem(SESSION_KEY);
     location.href = LOGIN_PATH;
   });
