@@ -34,24 +34,88 @@ function requireLoginOrRedirect() {
   return s;
 }
 // ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
+//   StudyLog.jsのヘッダーアバターと同じ見た目（色付き丸アバター＋ニックネーム）。
+//   タップでミニメニュー（アカウント設定／ログアウト）を開閉する。
 function renderDrawerAccount() {
   const el = document.getElementById('drawer-account');
   if (!el) return;
   el.innerHTML = '';
+  el.classList.remove('is-open');
   const s = getLoginSession();
-  if (s && s.session_token && s.nickname) {
-    const name = document.createElement('div');
-    name.className = 'drawer-account-name';
-    name.textContent = `👤 ${s.nickname}`;
-    el.appendChild(name);
-  } else {
+  if (!(s && s.session_token && s.nickname)) {
     const link = document.createElement('a');
     link.className = 'drawer-account-login-link';
     link.href = LOGIN_PATH;
     link.textContent = 'ログインしていません';
     el.appendChild(link);
+    return;
   }
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'drawer-account-btn';
+
+  const avatar = document.createElement('span');
+  avatar.className = 'drawer-account-avatar';
+  avatar.textContent = s.nickname.slice(0, 2).toUpperCase();
+  if (s.color) avatar.style.background = s.color;
+  if (s.text_color) avatar.style.color = s.text_color;
+  btn.appendChild(avatar);
+
+  const names = document.createElement('span');
+  names.className = 'drawer-account-names';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'drawer-account-name';
+  nameEl.textContent = s.nickname;
+  names.appendChild(nameEl);
+  if (s.student_id) {
+    const idEl = document.createElement('span');
+    idEl.className = 'drawer-account-id';
+    idEl.textContent = s.student_id;
+    names.appendChild(idEl);
+  }
+  btn.appendChild(names);
+
+  const chevron = document.createElement('span');
+  chevron.className = 'drawer-account-chevron';
+  chevron.textContent = '›';
+  btn.appendChild(chevron);
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    el.classList.toggle('is-open');
+  });
+
+  const menu = document.createElement('div');
+  menu.className = 'drawer-account-menu';
+
+  // ★ アカウント設定（Discord連携・パスワード変更）は勉強ログページに
+  //   実装があるので、そちらを開く（?openAccount=1 を見て自動でモーダルを開く）。
+  const settingsLink = document.createElement('a');
+  settingsLink.className = 'drawer-account-menu-item';
+  settingsLink.href = '/StudyLog.html?openAccount=1';
+  settingsLink.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  menu.appendChild(settingsLink);
+
+  const logoutBtn = document.createElement('button');
+  logoutBtn.type = 'button';
+  logoutBtn.className = 'drawer-account-menu-item is-danger';
+  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!confirm('ログアウトしますか？')) return;
+    localStorage.removeItem(SESSION_KEY);
+    location.href = LOGIN_PATH;
+  });
+  menu.appendChild(logoutBtn);
+
+  el.appendChild(btn);
+  el.appendChild(menu);
 }
+document.addEventListener('click', (e) => {
+  const el = document.getElementById('drawer-account');
+  if (el && !el.contains(e.target)) el.classList.remove('is-open');
+});
 renderDrawerAccount();
 
 // ============================================================

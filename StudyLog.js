@@ -85,25 +85,91 @@ const STUDENT = {
 const SESSION_TOKEN = _s.session_token;
 
 // ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
+//   ヘッダーのアバターと同じ見た目。タップでミニメニュー（アカウント設定／
+//   ログアウト）を開閉する。このページ自体にアカウント設定モーダル
+//   （openAccountModal）・ログアウト（doLogout）が既にあるので、他ページの
+//   ように別ページへ飛ばさずそれらを直接呼ぶ。
 function renderDrawerAccount() {
   const el = document.getElementById('drawer-account');
   if (!el) return;
   el.innerHTML = '';
-  if (STUDENT.nickname) {
-    const name = document.createElement('div');
-    name.className = 'drawer-account-name';
-    name.textContent = `👤 ${STUDENT.nickname}`;
-    el.appendChild(name);
-  } else {
+  el.classList.remove('is-open');
+  if (!STUDENT.nickname) {
     const link = document.createElement('a');
     link.className = 'drawer-account-login-link';
     link.href = '/Login.html';
     link.textContent = 'ログインしていません';
     el.appendChild(link);
+    return;
   }
-}
-renderDrawerAccount();
 
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'drawer-account-btn';
+
+  var avatar = document.createElement('span');
+  avatar.className = 'drawer-account-avatar';
+  avatar.textContent = STUDENT.nickname.slice(0, 2).toUpperCase();
+  if (STUDENT.color) avatar.style.background = STUDENT.color;
+  if (STUDENT.textColor) avatar.style.color = STUDENT.textColor;
+  btn.appendChild(avatar);
+
+  var names = document.createElement('span');
+  names.className = 'drawer-account-names';
+  var nameEl = document.createElement('span');
+  nameEl.className = 'drawer-account-name';
+  nameEl.textContent = STUDENT.nickname;
+  names.appendChild(nameEl);
+  if (STUDENT.id) {
+    var idEl = document.createElement('span');
+    idEl.className = 'drawer-account-id';
+    idEl.textContent = STUDENT.id;
+    names.appendChild(idEl);
+  }
+  btn.appendChild(names);
+
+  var chevron = document.createElement('span');
+  chevron.className = 'drawer-account-chevron';
+  chevron.textContent = '›';
+  btn.appendChild(chevron);
+
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    el.classList.toggle('is-open');
+  });
+
+  var menu = document.createElement('div');
+  menu.className = 'drawer-account-menu';
+
+  var settingsBtn = document.createElement('button');
+  settingsBtn.type = 'button';
+  settingsBtn.className = 'drawer-account-menu-item';
+  settingsBtn.textContent = '⚙️ アカウント設定（Discord連携・パスワード変更）';
+  settingsBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    el.classList.remove('is-open');
+    openAccountModal();
+  });
+  menu.appendChild(settingsBtn);
+
+  var logoutBtn = document.createElement('button');
+  logoutBtn.type = 'button';
+  logoutBtn.className = 'drawer-account-menu-item is-danger';
+  logoutBtn.textContent = '🚪 ログアウト';
+  logoutBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    doLogout();
+  });
+  menu.appendChild(logoutBtn);
+
+  el.appendChild(btn);
+  el.appendChild(menu);
+}
+document.addEventListener('click', function(e) {
+  var el = document.getElementById('drawer-account');
+  if (el && !el.contains(e.target)) el.classList.remove('is-open');
+});
+renderDrawerAccount();
 
 // ── 課題 JSON（動的に読み込む） ────────────────────────
 let TASKS_JSON = [];
@@ -209,6 +275,12 @@ window.addEventListener("load", function() {
   setTodayLabel();
   restoreTimer();
   initTaskListEvents(); // ★ 課題リストのクリックをイベント委譲で処理（IDに引用符が含まれても壊れないように）
+  initMyLogsEvents();   // ★ 自分の記録一覧の削除ボタンをイベント委譲で処理
+
+  // ★ 追加：他ページのドロワーから「アカウント設定」を押すと
+  //   /StudyLog.html?openAccount=1 に飛んでくるので、その場合は
+  //   自動でアカウント設定モーダルを開く。
+  if (new URLSearchParams(location.search).get("openAccount")) openAccountModal();
 
   // ★ 修正：「ログ一覧」の表示が、ポイント・達成済み課題・全ユーザー名簿
   //   など他のデータ取得が終わるまで待たされていて遅く感じられていた。
@@ -828,6 +900,10 @@ function rankHTML(sorted, valFn, valClass, nameKey) {
 }
 
 // ── ログ一覧（自分のみ） ───────────────────────────────
+// ★ 追加（2026/08/19）：自分の記録は削除できる。削除するとその分の時間が
+//   無くなるのはもちろん、加算されていたポイントも差し引かれ（サーバー側
+//   deleteMyLog参照）、study_logs_{guild_id}.jsonが全員共有のファイルなので
+//   「みんなの記録」からも自動的に消える。
 function renderLogs() {
   var el     = document.getElementById("log-list");
   var myLogs = logs.filter(function(l) { return l.student_id === STUDENT.id; });
@@ -838,12 +914,57 @@ function renderLogs() {
     return '<div class="sl-log-item">' +
       '<div class="sl-log-header">' +
         '<span class="sl-log-subject">' + esc(l.subject) + '</span>' +
-        '<span class="sl-log-min">' + l.minutes + '分</span>' +
+        '<span class="sl-log-right">' +
+          '<span class="sl-log-min">' + l.minutes + '分</span>' +
+          '<button class="sl-log-del-btn" data-log-time="' + escAttr(l.time) + '" title="この記録を削除">🗑</button>' +
+        '</span>' +
       '</div>' +
       '<div class="sl-log-meta">' + l.date + ' · ' + esc(l.nickname) + '</div>' +
       (l.memo ? '<div class="sl-log-memo">' + esc(l.memo) + '</div>' : '') +
     '</div>';
   }).join("");
+}
+
+// ★ 記録一覧のクリックをイベント委譲で処理する（一度だけ登録すればOK。
+//   課題リストのinitTaskListEventsと同じ考え方）
+function initMyLogsEvents() {
+  var el = document.getElementById("log-list");
+  if (!el || el.dataset.boundClick) return;
+  el.dataset.boundClick = "1";
+  el.addEventListener("click", function(e) {
+    var btn = e.target.closest(".sl-log-del-btn");
+    if (btn && !btn.disabled) deleteMyLog(btn.dataset.logTime, btn);
+  });
+}
+
+// ★ 自分の勉強ログを1件削除する。サーバー側でポイントも差し引かれるので、
+//   成功したらそのtotalでポイント表示を更新する。
+async function deleteMyLog(timeKey, btn) {
+  if (!timeKey) return;
+  if (!confirm("この記録を削除しますか？\n記録した時間・ポイントが取り消されます。")) return;
+  if (btn) { btn.disabled = true; btn.textContent = "…"; }
+  var data;
+  try {
+    data = await api("/delete_study_log", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN, time: timeKey }),
+    });
+  } catch (e) {
+    data = null;
+  }
+  if (!data || data.ok === false) {
+    if (data && data.error === "not_logged_in") { forceReLogin(); return; }
+    alert("削除に失敗しました" + (data && data.error ? "：" + data.error : ""));
+    if (btn) { btn.disabled = false; btn.textContent = "🗑"; }
+    return;
+  }
+  logs = logs.filter(function(l) { return !(l.student_id === STUDENT.id && l.time === timeKey); });
+  if (data.total != null) {
+    allPoints[STUDENT.id] = data.total;
+    myPoints = data.total;
+    updatePointDisplay();
+  }
+  renderAll();
 }
 
 // ── みんなの記録 ──────────────────────────────────────
