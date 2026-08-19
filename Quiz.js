@@ -751,7 +751,7 @@ function renderPlayScreen(room, opts) {
   } else if (revealed && yourAnswer === undefined) {
     feedbackEl.style.display = '';
     feedbackEl.className = 'qz-answer-feedback ng';
-    feedbackEl.textContent = '⏰ 時間切れで未回答でした';
+    feedbackEl.innerHTML = Icons.html('timer', {size:15}) + ' 時間切れで未回答でした';
     waitingNote.style.display = 'none';
   } else if (answered) {
     feedbackEl.style.display = 'none';

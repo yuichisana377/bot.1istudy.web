@@ -44,6 +44,7 @@ const Icons = (function () {
     search:    '<circle cx="10.3" cy="10.3" r="6.3"/><path d="M20 20l-5-5"/>',
     link:      '<path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5l1.8-1.8a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5l-1.8 1.8a3.5 3.5 0 0 1-5-5L8 12.5"/>',
     list:      '<rect x="6" y="4.5" width="12" height="16" rx="2"/><rect x="9" y="3" width="6" height="3" rx="1"/><path d="M9 11h6"/><path d="M9 15h6"/>',
+    timer:     '<path d="M9 3h6"/><path d="M12 6V3.5"/><circle cx="12" cy="14" r="7.5"/><path d="M12 14V10"/><path d="M17.5 8.2 19 6.8"/>',
 
     // 状態・フィードバック
     checkCircle: '<circle cx="12" cy="12" r="8.3"/><path d="M8.2 12.3l2.4 2.4 5.2-5.6"/>',
@@ -109,7 +110,7 @@ const Icons = (function () {
     studylog: '#16a34a', notice: '#db2777', tools: '#475569', menu: '#475569', home: '#2563eb',
     // 操作
     trash: '#dc2626', mailSent: '#16a34a', edit: '#4f46e5', memo: '#d97706', save: '#2563eb',
-    refresh: '#0891b2', search: '#2563eb', link: '#4f46e5', list: '#0d9488',
+    refresh: '#0891b2', search: '#2563eb', link: '#4f46e5', list: '#0d9488', timer: '#ea580c',
     // 状態・フィードバック
     checkCircle: '#16a34a', check: '#16a34a', close: '#dc2626', warning: '#d97706',
     forbidden: '#dc2626', wrong: '#dc2626', celebrate: '#db2777', hint: '#d97706',
