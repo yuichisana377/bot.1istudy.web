@@ -1353,16 +1353,49 @@ async function folderMenuDelete() {
   });
   if (!ok) return;
 
-  // 公開済みデッキはサーバー側からも削除
+  // 公開済みデッキはサーバー側からも削除する。ただし作成者本人以外の
+  // デッキが混ざっている場合、そのデッキだけはサーバー側でブロックされる
+  // （creator_approval_required）。以前はこのレスポンスを見ずに常に
+  // フォルダ本体まで削除してしまい、「フォルダは消えたのに中の他人の
+  // デッキだけ孤立して残る」という不整合が起きていた。1つでもブロック
+  // されたら、フォルダ自体の削除も含めて中断する（既に削除できた分だけは
+  // ローカルにも反映する）。
+  const deletedDecks = [];
+  const blockedDecks = [];
   for (const d of targetDecks) {
-    if (d.filename) {
-      try {
-        await fetch(`${API_BASE}delete_cards`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, filename: d.filename, nickname: getLoginSession()?.nickname }),
-        });
-      } catch(e) {}
+    if (!d.filename) { deletedDecks.push(d); continue; } // 非公開（ローカルのみの下書き）はそのまま対象
+    try {
+      const res = await fetch(`${API_BASE}delete_cards`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, filename: d.filename, nickname: getLoginSession()?.nickname }),
+      });
+      const data = await res.json();
+      if (data.ok) deletedDecks.push(d);
+      else blockedDecks.push({ deck: d, error: data.error });
+    } catch(e) {
+      blockedDecks.push({ deck: d, error: e.message });
     }
+  }
+
+  if (deletedDecks.length) {
+    const removedIds = new Set(deletedDecks.map(d => d.id));
+    decks = decks.filter(d => !removedIds.has(d.id));
+    saveDecks(decks);
+  }
+
+  if (blockedDecks.length) {
+    const notOwned = blockedDecks.filter(b => b.error === 'creator_approval_required');
+    if (notOwned.length) {
+      const names = notOwned.map(b => `「${b.deck.name}」`).join('、');
+      await showCmAlert({
+        title: 'フォルダを削除できませんでした',
+        desc: `${names} は他の人が作成したデッキのため、フォルダごとは削除できません。個別にデッキメニューの「デッキを削除する」から削除を依頼してください。`,
+      });
+    } else {
+      await showCmAlert({ title: '一部のデッキの削除に失敗しました', desc: 'フォルダの削除を中断しました。もう一度お試しください。' });
+    }
+    renderDeckListUI();
+    return;
   }
 
   // フォルダ自体もサーバー（みんなで共有）から削除
@@ -1378,10 +1411,7 @@ async function folderMenuDelete() {
     return;
   }
 
-  const removeIds = new Set(targetDecks.map(d => d.id));
-  decks = decks.filter(d => !removeIds.has(d.id));
   if (allFolderIds.includes(currentFolderId)) currentFolderId = folder.parentId || null;
-  saveDecks(decks);
   await fetchAndMergeFolders();
   renderDeckListUI();
 }
