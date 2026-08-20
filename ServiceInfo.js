@@ -177,9 +177,12 @@ function switchServiceTab(tab) {
 //  ・バックアップ実行結果・予定/時間割/カード/お知らせ等の変更を、
 //    1つの操作＝1件のイベントとしてサーバー側でまとめて記録したもの。
 //  ・ログインしていなくても閲覧できる（利用者11人の小規模運用のため、
-//    このページの他の情報と同じ扱いにしている）。
+//    このページの他の情報と同じ扱いにしている）。ただし、対象サーバーに
+//    参加していない制限付きアカウントでログイン中の場合だけは見せない
+//    （2026/08/20）。そのためログイン中はsession_tokenを一緒に送る。
 // ============================================================
 const API_BASE = "/api/";
+const GUILD_ID  = '1509880344806162544';
 const LOG_CATEGORY_ICON = {
   backup:    Icons.html('save', {size:15}),
   schedule:  Icons.html('plan', {size:15}),
@@ -346,7 +349,16 @@ async function loadSystemLog() {
   const oldMore = listEl.parentElement.querySelector('.log-load-more');
   if (oldMore) oldMore.remove();
   try {
-    const res = await fetch(`${API_BASE}system_log?limit=${logDisplayCount}`, { cache: 'no-store' });
+    // ★ ログイン中なら guild_id + session_token も送る（制限付きアカウントの場合
+    //   サーバー側で弾かれる。未ログインなら従来通り誰でも閲覧できる）。
+    const session = getLoginSession();
+    let url = `${API_BASE}system_log?limit=${logDisplayCount}`;
+    const headers = {};
+    if (session && session.session_token) {
+      url += `&guild_id=${GUILD_ID}`;
+      headers['Authorization'] = `Bearer ${session.session_token}`;
+    }
+    const res = await fetch(url, { cache: 'no-store', headers });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'unknown error');
 
