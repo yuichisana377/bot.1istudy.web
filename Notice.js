@@ -3,7 +3,7 @@
 //  Notice.html から読み込む
 // ============================================================
 
-const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE = "/api/";
 const GUILD_ID = "1509880344806162544";
 const LOGIN_PATH = '/Login.html'; // ★ Cardmaker.js と同じ基準のログインページパス
 
@@ -138,7 +138,7 @@ window.addEventListener('load', () => {
 //  API ヘルパー
 // ============================================================
 async function api(path, opts = {}) {
-  const res = await fetch(API_BASE + path, {
+  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), {
     headers: { "Content-Type": "application/json" }, ...opts
   });
   return res.json();

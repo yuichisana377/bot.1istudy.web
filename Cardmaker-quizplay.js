@@ -84,8 +84,10 @@ function renderQuizPlayQuestion() {
   document.getElementById('qp-prog-fill').style.width = pct + '%';
   document.getElementById('qp-prog-label').textContent = `${soloQuizIdx + 1} / ${soloQuizCards.length}`;
   setMathText(document.getElementById('qp-q-text'), card.question);
-  document.getElementById('qp-q-imgs').innerHTML = (card.imgs_q || []).map(s =>
-    `<img src="${s}" alt="" onclick="openImgLightbox(this.src)">`).join('');
+  // ★ Cardmaker.js側の共通ヘルパー（XSS対策：src属性をDOMプロパティで設定。
+  //   save_cardsはimgs_qの中身を検証していないため、共有デッキ経由で他人が
+  //   仕込んだ文字列が入りうる。テンプレート文字列でsrc属性を組み立てない）
+  renderImgList(document.getElementById('qp-q-imgs'), card.imgs_q);
 
   // ★ 修正：4択固定だったのを、カードの選択肢数（2〜5）に合わせて描画する。
   //   単一/複数正解はデッキ単位ではなく、この問題の正解が何個あるか（correct_indices.length）

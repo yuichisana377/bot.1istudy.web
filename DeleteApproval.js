@@ -9,7 +9,7 @@
 //    textContent/DOM APIで組み立てる（innerHTML+テンプレート文字列は禁止）。
 // ============================================================
 
-const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE = "/api/";
 
 function qs(id) { return document.getElementById(id); }
 

@@ -3,7 +3,7 @@
 //  timetable.html から読み込む
 // ============================================================
 
-const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE = "/api/";
 const GUILD_ID = "1509880344806162544";
 
 // ★ このページ自体は閲覧にログイン不要（誰でも時間割を見られる）だが、
@@ -238,10 +238,19 @@ window.addEventListener('load', () => {
 // ============================================================
 //  API ヘルパー
 // ============================================================
+// ★ 修正：list_schedule（予定・課題の取得元。宿題表示に使用）がサーバー側で
+//   閲覧にもログインを必須にしたため（2026/08/20）、ログイン済みなら常に
+//   Authorizationヘッダを自動で付ける。このページ自体（時間割の表示）は
+//   引き続き閲覧にログイン不要のままなので、未ログイン時は宿題の表示分だけ
+//   （list_schedule起因の部分だけ）空になる形で許容する。
 async function api(path, opts = {}) {
-  const res = await fetch(API_BASE + path, {
-    headers: { "Content-Type": "application/json" }, ...opts
-  });
+  const session = getLoginSession();
+  const headers = Object.assign(
+    { "Content-Type": "application/json" },
+    (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : {},
+    opts.headers || {}
+  );
+  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { ...opts, headers });
   return res.json();
 }
 
@@ -1785,8 +1794,8 @@ async function digestMessage(message) {
 }
 
 // 指定URLのレスポンス本文からハッシュを計算
-async function hashOfUrl(url) {
-  const res = await fetch(url);
+async function hashOfUrl(url, headers) {
+  const res = await fetch(url, headers ? { headers } : undefined);
   const txt = await res.text();
   return digestMessage(txt);
 }
@@ -1815,8 +1824,10 @@ async function refreshWatchedData() {
 // 変更チェック本体
 async function checkForUpdates() {
   try {
+    const session = getLoginSession();
+    const scheduleAuthHeaders = (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : null;
     const [scheduleHash, overridesHash, termsHash] = await Promise.all([
-      hashOfUrl(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`),
+      hashOfUrl(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`, scheduleAuthHeaders),
       hashOfUrl(`${API_BASE}${TT_API.LIST}?guild_id=${GUILD_ID}`),
       hashOfUrl(`${API_BASE}${TERM_API.LIST}?guild_id=${GUILD_ID}`),
     ]);

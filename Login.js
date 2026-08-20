@@ -17,7 +17,7 @@
 //    無ければ通常通り REDIRECT_PATH（StudyLog.html）へ遷移する。
 // ============================================================
 
-const API_BASE      = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE      = "/api/";
 const GUILD_ID      = "1509880344806162544";
 const SESSION_KEY   = "sl_session";
 const REDIRECT_PATH = "/StudyLog.html";
@@ -131,7 +131,7 @@ async function autoLogin(session) {
 //   /check_student は問い合わせた1件についてだけ最小限の情報を返す。
 async function checkStudent(id) {
   const res = await fetch(
-    `${API_BASE}/check_student?guild_id=${GUILD_ID}&id=${encodeURIComponent(id)}`,
+    `${API_BASE}check_student?guild_id=${GUILD_ID}&id=${encodeURIComponent(id)}`,
     { headers: { "Content-Type": "application/json" } }
   );
   const data = await res.json();
@@ -140,7 +140,7 @@ async function checkStudent(id) {
 }
 
 async function loginRequest(id, password) {
-  const res = await fetch(`${API_BASE}/login`, {
+  const res = await fetch(`${API_BASE}login`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ guild_id: GUILD_ID, id, password }),
@@ -149,7 +149,7 @@ async function loginRequest(id, password) {
 }
 
 async function addUser(id, nickname, password) {
-  const res = await fetch(`${API_BASE}/add_user`, {
+  const res = await fetch(`${API_BASE}add_user`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -164,7 +164,7 @@ async function addUser(id, nickname, password) {
 }
 
 async function setPasswordRequest(id, password) {
-  const res = await fetch(`${API_BASE}/set_password`, {
+  const res = await fetch(`${API_BASE}set_password`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ guild_id: GUILD_ID, id, password }),
@@ -173,7 +173,7 @@ async function setPasswordRequest(id, password) {
 }
 
 async function requestPasswordResetCode(id) {
-  const res = await fetch(`${API_BASE}/request_password_reset_code`, {
+  const res = await fetch(`${API_BASE}request_password_reset_code`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ guild_id: GUILD_ID, id }),
@@ -182,7 +182,7 @@ async function requestPasswordResetCode(id) {
 }
 
 async function confirmPasswordReset(id, code, newPassword) {
-  const res = await fetch(`${API_BASE}/confirm_password_reset`, {
+  const res = await fetch(`${API_BASE}confirm_password_reset`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ guild_id: GUILD_ID, id, code, new_password: newPassword }),
@@ -193,14 +193,14 @@ async function confirmPasswordReset(id, code, newPassword) {
 // ── Discordログイン関連 ──────────────────────────────────
 async function fetchDiscordRegInfo(dtoken) {
   const res = await fetch(
-    `${API_BASE}/discord_reg_info?dtoken=${encodeURIComponent(dtoken)}`,
+    `${API_BASE}discord_reg_info?dtoken=${encodeURIComponent(dtoken)}`,
     { headers: { "Content-Type": "application/json" } }
   );
   return res.json(); // { ok:true, discord_username } or { ok:false, error:"reg_token_invalid" }
 }
 
 async function completeDiscordRegistration(dtoken, studentId, nickname) {
-  const res = await fetch(`${API_BASE}/discord_complete_registration`, {
+  const res = await fetch(`${API_BASE}discord_complete_registration`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -408,9 +408,21 @@ function validateNickname(nickname) {
   return true;
 }
 
+// ★ サーバー側（bot.py の is_weak_password）と同じ簡易判定：同一文字の繰り返し、
+//   または文字種（小文字/大文字/数字/記号）が1種類しか無いものを弱いとみなす。
+function isWeakPassword(password) {
+  if (new Set(password).size <= 1) return true;
+  let classes = 0;
+  if (/[a-z]/.test(password)) classes++;
+  if (/[A-Z]/.test(password)) classes++;
+  if (/[0-9]/.test(password)) classes++;
+  if (/[^a-zA-Z0-9]/.test(password)) classes++;
+  return classes < 2;
+}
 function validatePassword(password, password2, errFn) {
   const show = errFn || showRegErr;
-  if (!password || password.length < 4) { show("パスワードは4文字以上で入力してください"); return false; }
+  if (!password || password.length < 8) { show("パスワードは8文字以上で入力してください"); return false; }
+  if (isWeakPassword(password)) { show("パスワードが単純すぎます（同じ文字の繰り返しや1種類の文字だけは避けてください）"); return false; }
   if (password !== password2) { show("パスワード（確認）が一致しません"); return false; }
   return true;
 }
@@ -537,7 +549,7 @@ function showForgotOk(msg) {
 //       openDiscordRegisterStep() が呼ばれる
 // ============================================================
 function loginWithDiscord() {
-  location.href = `${API_BASE}/discord_login_start?guild_id=${GUILD_ID}`;
+  location.href = `${API_BASE}discord_login_start?guild_id=${GUILD_ID}`;
 }
 
 async function openDiscordRegisterStep(dtoken) {

@@ -3,17 +3,25 @@
 //  index.html から読み込む
 // ============================================================
 
-const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE = "/api/";
 const GUILD_ID = "1509880344806162544";
 
-// ★ このページ自体は閲覧にログイン不要（誰でも予定を見られる）だが、
-//   追加・編集・削除はサーバー側もログイン必須になった（2026/08/19）。
-//   Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
+// ★ 以前は「閲覧にログイン不要（誰でも予定を見られる）」だったが、2026/08/20に
+//   サーバー側（/list_schedule）も閲覧にログインを必須にする方針に変更したため、
+//   このページ自体もCardmaker.js/StudyLog.jsと同様、開いた瞬間に未ログインなら
+//   ログイン画面へ誘導する。Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
 const SESSION_KEY = 'sl_session';
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+(function() {
+  var s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.replace(LOGIN_PATH);
+  }
+})();
 // ★ 追加：変更系の操作（追加・編集・削除）を行う直前に呼ぶ。未ログインなら
 //   ログイン画面へ誘導し、falseを返す（呼び出し側はそのまま処理を中断する）。
 //   ログイン後にこのページへ戻ってこられるよう、遷移先をsessionStorageに記憶しておく
@@ -256,10 +264,19 @@ function onTodayButton() {
 // ============================================================
 //  API ヘルパー
 // ============================================================
+// ★ 修正：以前はデフォルトで認証ヘッダを付けない作りだったため、list_schedule等
+//   ログインを要求するようになったGET APIに対してもsession_tokenが送られておらず、
+//   （そのAPI側で未実装だと）未ログインでも実データが返ってしまう抜け穴になっていた。
+//   ログイン済みなら常にAuthorizationヘッダを自動で付ける（session_tokenをURLクエリに
+//   載せないためでもある。個々の呼び出し側が明示的に付け忘れる心配がなくなる）。
 async function api(path, opts = {}) {
-  const res = await fetch(API_BASE + path, {
-    headers: { "Content-Type": "application/json" }, ...opts
-  });
+  const session = getLoginSession();
+  const headers = Object.assign(
+    { "Content-Type": "application/json" },
+    (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : {},
+    opts.headers || {}
+  );
+  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { ...opts, headers });
   return res.json();
 }
 
@@ -1139,7 +1156,10 @@ async function digestMessage(message) {
 //   未来分だけを最新のものに差し替える。
 async function checkScheduleUpdate() {
   try {
-    const res = await fetch(`${API_BASE}list_schedule?guild_id=${GUILD_ID}&scope=future`);
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}list_schedule?guild_id=${GUILD_ID}&scope=future`, {
+      headers: (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : {},
+    });
     const txt = await res.text();
     const hash = await digestMessage(txt);
 

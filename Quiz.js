@@ -4,7 +4,7 @@
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
 // ============================================================
 
-const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE = "/api/";
 const GUILD_ID = "1509880344806162544";
 const LOGIN_PATH = '/Login.html';
 const SESSION_KEY = 'sl_session';
@@ -35,11 +35,18 @@ function escapeHtml(str) {
 
 // ── 通信ヘルパー ──────────────────────────
 async function apiGet(path, params = {}, timeoutMs = 8000) {
-  const qs = new URLSearchParams(params).toString();
+  // ★ session_tokenはURLクエリに載せない（ブラウザ履歴・アクセスログ・Refererに
+  //   残るリスクがあるため）。withAuth()経由で来た場合はここで抜き出し、
+  //   Authorizationヘッダとして送る。
+  const { session_token, ...rest } = params;
+  const qs = new URLSearchParams(rest).toString();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${API_BASE}${path}?${qs}`, { signal: controller.signal, cache: 'no-store' });
+    const res = await fetch(`${API_BASE}${path}?${qs}`, {
+      signal: controller.signal, cache: 'no-store',
+      headers: session_token ? { 'Authorization': 'Bearer ' + session_token } : {},
+    });
     return await res.json();
   } catch (e) {
     return { ok: false, error: 'network' };

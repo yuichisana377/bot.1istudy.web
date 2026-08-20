@@ -3,7 +3,7 @@
 //  Cardmaker.html から読み込む
 // ============================================================
 
-const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE = "/api/";
 const GUILD_ID = "1509880344806162544";
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 
@@ -3473,8 +3473,13 @@ async function fetchAndMergeStudyData() {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
-    const qs = new URLSearchParams({ guild_id: GUILD_ID, session_token: session.session_token });
-    const res = await fetch(`${API_BASE}get_study_data?${qs.toString()}`, { signal: controller.signal, cache: 'no-store' });
+    // ★ session_tokenはURLクエリに載せない（ブラウザ履歴・アクセスログ・Refererに
+    //   残るリスクがあるため）。Authorizationヘッダで送る。
+    const qs = new URLSearchParams({ guild_id: GUILD_ID });
+    const res = await fetch(`${API_BASE}get_study_data?${qs.toString()}`, {
+      signal: controller.signal, cache: 'no-store',
+      headers: { 'Authorization': 'Bearer ' + session.session_token },
+    });
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) return false;
@@ -3567,8 +3572,12 @@ async function loadUnderstandingBadge() {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
-    const qs = new URLSearchParams({ guild_id: GUILD_ID, session_token: session.session_token, filenames: filenames.join(',') });
-    const res = await fetch(`${API_BASE}deck_understanding?${qs.toString()}`, { signal: controller.signal, cache: 'no-store' });
+    // ★ session_tokenはURLクエリに載せない（get_study_dataと同じ理由）。Authorizationヘッダで送る。
+    const qs = new URLSearchParams({ guild_id: GUILD_ID, filenames: filenames.join(',') });
+    const res = await fetch(`${API_BASE}deck_understanding?${qs.toString()}`, {
+      signal: controller.signal, cache: 'no-store',
+      headers: { 'Authorization': 'Bearer ' + session.session_token },
+    });
     clearTimeout(timer);
     const data = await res.json();
     // ★ まだ誰も（自分も含め）1枚も学習していなければ、0%という誤解を招く表示はしない
@@ -4275,18 +4284,38 @@ imgInput.addEventListener('change', async () => {
     await showCmAlert({ title: '画像の読み込みに失敗しました', desc: '別の画像で試してください。' });
   }
 });
+// ★ セキュリティ：renderImgList()と同じ理由（save_cardsはimgs_q/imgs_a/imgs_eの
+//   中身を検証していないため、共有デッキ経由で他人が仕込んだ文字列が入りうる）で、
+//   ここも`<img src="${b}">`のようなテンプレート文字列ではなく、削除ボタン込みで
+//   DOM APIで組み立てる共通ヘルパーに統一する（imgBuf側はJS内で作った data: URL
+//   しか入らないので実害は薄いが、editImgBuf側は既存カード＝他人の入力を
+//   そのまま引き継ぐため、同じ描画関数を使い回すここでは常に安全な方だけ用意する）。
+function renderImgThumbStrip(container, imgs, onRemove) {
+  container.innerHTML = '';
+  imgs.forEach((b, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'img-thumb';
+    const img = document.createElement('img');
+    img.src = b;
+    img.alt = '';
+    img.addEventListener('click', () => openImgLightbox(img.src));
+    const delBtn = document.createElement('button');
+    delBtn.className = 'img-thumb-del';
+    delBtn.innerHTML = Icons.html('close', {size:12}); // ★ Icons.jsの固定SVG（ユーザー入力を含まないため安全）
+    delBtn.addEventListener('click', () => onRemove(i));
+    wrap.appendChild(img);
+    wrap.appendChild(delBtn);
+    container.appendChild(wrap);
+  });
+}
 function renderImgStrip(k) {
-  document.getElementById('imgs-'+k).innerHTML = imgBuf[k].map((b,i)=>`
-    <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
-      <button class="img-thumb-del" onclick="removeImg('${k}',${i})">${Icons.html('close', {size:12})}</button></div>`).join('');
+  renderImgThumbStrip(document.getElementById('imgs-'+k), imgBuf[k], (i) => removeImg(k, i));
 }
 function removeImg(k,i) { imgBuf[k].splice(i,1); renderImgStrip(k); }
 
 // ★ 追加：カード編集モーダル用の画像ストリップ描画・削除
 function renderModalImgStrip(k) {
-  document.getElementById('modal-imgs-'+k).innerHTML = editImgBuf[k].map((b,i)=>`
-    <div class="img-thumb"><img src="${b}" alt="" onclick="openImgLightbox(this.src)">
-      <button class="img-thumb-del" onclick="removeModalImg('${k}',${i})">${Icons.html('close', {size:12})}</button></div>`).join('');
+  renderImgThumbStrip(document.getElementById('modal-imgs-'+k), editImgBuf[k], (i) => removeModalImg(k, i));
 }
 function removeModalImg(k,i) { editImgBuf[k].splice(i,1); renderModalImgStrip(k); }
 

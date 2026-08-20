@@ -17,7 +17,7 @@
 //    textContent/DOM APIで組み立てる（innerHTML+テンプレート文字列は禁止）。
 // ============================================================
 (function () {
-  const PDC_API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+  const PDC_API_BASE = "/api/";
   const PDC_GUILD_ID = "1509880344806162544";
 
   function pdcGetSession() {
@@ -28,8 +28,10 @@
     const session = pdcGetSession();
     if (!session || !session.session_token) return;
     try {
-      const url = `${PDC_API_BASE}pending_delete_requests?guild_id=${PDC_GUILD_ID}&session_token=${encodeURIComponent(session.session_token)}`;
-      const res = await fetch(url, { cache: 'no-store' });
+      // ★ session_tokenはURLクエリに載せない（ブラウザ履歴・アクセスログ・Refererに
+      //   残るリスクがあるため）。Authorizationヘッダで送る。
+      const url = `${PDC_API_BASE}pending_delete_requests?guild_id=${PDC_GUILD_ID}`;
+      const res = await fetch(url, { cache: 'no-store', headers: { 'Authorization': 'Bearer ' + session.session_token } });
       const data = await res.json();
       if (!data.ok || !data.requests || !data.requests.length) return;
       pdcQueue = data.requests.slice();

@@ -45,7 +45,7 @@ function setButtonLoading(btn, loading, label) {
   }
 }
 
-const API_BASE    = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE    = "/api/";
 const GUILD_ID    = "1509880344806162544";
 const SESSION_KEY = "sl_session";
 const DEFAULT_TASK_POINTS = 5;
@@ -404,7 +404,7 @@ function openAccountModal() {
         '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">確認コード（6桁）</label>' +
         '<input id="sl-acct-code" maxlength="6" inputmode="numeric" placeholder="123456" ' +
           'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
-        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">新しいパスワード（4文字以上）</label>' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">新しいパスワード（8文字以上）</label>' +
         '<input id="sl-acct-newpw" type="password" maxlength="64" ' +
           'style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:10px;">' +
         '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">新しいパスワード（確認）</label>' +
@@ -519,6 +519,18 @@ async function requestPasswordChangeCode() {
   }
 }
 
+// ★ サーバー側（bot.py の is_weak_password）と同じ簡易判定：同一文字の繰り返し、
+//   または文字種（小文字/大文字/数字/記号）が1種類しか無いものを弱いとみなす。
+function isWeakPassword(password) {
+  if (new Set(password).size <= 1) return true;
+  var classes = 0;
+  if (/[a-z]/.test(password)) classes++;
+  if (/[A-Z]/.test(password)) classes++;
+  if (/[0-9]/.test(password)) classes++;
+  if (/[^a-zA-Z0-9]/.test(password)) classes++;
+  return classes < 2;
+}
+
 // ── パスワード変更：STEP2 コード＋新パスワードで確定 ────
 async function submitPasswordChange() {
   var code     = (document.getElementById("sl-acct-code").value || "").trim();
@@ -527,7 +539,8 @@ async function submitPasswordChange() {
   var btn      = document.getElementById("sl-acct-confirm-pw");
 
   if (!/^[0-9]{6}$/.test(code)) { setAcctMsg("sl-acct-pw-msg", "確認コード（6桁の数字）を入力してください", true); return; }
-  if (!newPw || newPw.length < 4) { setAcctMsg("sl-acct-pw-msg", "パスワードは4文字以上で入力してください", true); return; }
+  if (!newPw || newPw.length < 8) { setAcctMsg("sl-acct-pw-msg", "パスワードは8文字以上で入力してください", true); return; }
+  if (isWeakPassword(newPw)) { setAcctMsg("sl-acct-pw-msg", "パスワードが単純すぎます（同じ文字の繰り返しや1種類の文字だけは避けてください）", true); return; }
   if (newPw !== newPw2) { setAcctMsg("sl-acct-pw-msg", "パスワード（確認）が一致しません", true); return; }
 
   btn.disabled = true;
@@ -655,11 +668,17 @@ async function loadAllCompletedTasks() {
 // ============================================================
 //  API ヘルパー
 // ============================================================
+// ★ 修正：list_schedule等、閲覧にもログインを要求するようになったGET APIのため、
+//   このページは元々ログイン必須（SESSION_TOKEN必ずあり）なので常にAuthorization
+//   ヘッダを自動で付ける。
 async function api(path, opts) {
   opts = opts || {};
-  var res = await fetch(API_BASE + path, Object.assign(
-    { headers: { "Content-Type": "application/json" } }, opts
-  ));
+  var headers = Object.assign(
+    { "Content-Type": "application/json" },
+    SESSION_TOKEN ? { "Authorization": "Bearer " + SESSION_TOKEN } : {},
+    opts.headers || {}
+  );
+  var res = await fetch(API_BASE + path.replace(/^\/+/, ''), Object.assign({}, opts, { headers: headers }));
   return res.json();
 }
 
@@ -1326,7 +1345,11 @@ function updateTimerUI() {
 // ============================================================
 async function timerApiState() {
   try {
-    return await api("/timer_state?guild_id=" + GUILD_ID + "&session_token=" + encodeURIComponent(SESSION_TOKEN));
+    // ★ session_tokenはURLクエリに載せない（ブラウザ履歴・アクセスログ・Refererに
+    //   残るリスクがあるため）。Authorizationヘッダで送る。
+    return await api("/timer_state?guild_id=" + GUILD_ID, {
+      headers: { "Authorization": "Bearer " + SESSION_TOKEN },
+    });
   } catch(e) { return null; }
 }
 async function timerApiStart() {
@@ -1828,8 +1851,12 @@ async function digestMessage(message) {
 }
 
 // 指定パスのレスポンス本文からハッシュを計算
+// ★ list_schedule閲覧にもログインが必要になったため、このページ（常にログイン済み）
+//   では常にAuthorizationヘッダを付けて呼ぶ（他の監視対象APIには無害）。
 async function hashOfEndpoint(path) {
-  const res = await fetch(API_BASE + path);
+  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), {
+    headers: SESSION_TOKEN ? { "Authorization": "Bearer " + SESSION_TOKEN } : {},
+  });
   const txt = await res.text();
   return digestMessage(txt);
 }

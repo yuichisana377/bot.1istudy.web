@@ -179,7 +179,7 @@ function switchServiceTab(tab) {
 //  ・ログインしていなくても閲覧できる（利用者11人の小規模運用のため、
 //    このページの他の情報と同じ扱いにしている）。
 // ============================================================
-const API_BASE = "https://chiro-ubuntuserver.tail1130ba.ts.net/";
+const API_BASE = "/api/";
 const LOG_CATEGORY_ICON = {
   backup:    Icons.html('save', {size:15}),
   schedule:  Icons.html('plan', {size:15}),
