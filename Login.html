@@ -49,34 +49,11 @@
     </div>
   </div>
 
-  <!-- ══ STEP 1: 学籍番号入力 ══ -->
+  <!-- ══ STEP 1: Discordログインのみ ══ -->
   <div class="login-step login-card" id="step-id" style="display:none">
     <h1 class="login-title">ログイン</h1>
 
     <div class="error-bar" id="id-err" style="display:none"></div>
-
-    <div class="field">
-      <label for="inp-student-id">学籍番号</label>
-      <input type="text" id="inp-student-id"
-             placeholder="例: 32600"
-             autocomplete="username"
-             autocapitalize="characters"
-             maxlength="20">
-    </div>
-
-    <div class="field">
-      <label for="inp-password">パスワード</label>
-      <input type="password" id="inp-password"
-             placeholder="パスワード（初めての場合は空欄）"
-             autocomplete="current-password"
-             maxlength="64">
-    </div>
-
-    <button class="btn-primary login-btn" id="btn-login" onclick="submitId()">
-      ログイン →
-    </button>
-
-    <div class="login-divider" style="text-align:center;font-size:12px;color:#94a3b8;margin:14px 0;">— または —</div>
 
     <button class="login-btn" id="btn-discord-login" onclick="loginWithDiscord()"
             style="width:100%;padding:10px;border:none;border-radius:8px;background:#5865F2;color:#fff;
@@ -85,25 +62,20 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5l1.8-1.8a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5l-1.8 1.8a3.5 3.5 0 0 1-5-5L8 12.5"/></svg> Discordでログイン
     </button>
 
-    <p class="login-hint" style="text-align:center">
-      <a href="javascript:void(0)" onclick="openForgotStep()">パスワードを忘れた場合はこちら</a>
-    </p>
-
     <p class="login-hint">
-      初めての方・パスワード未設定の方は登録画面へ自動で案内します。
+      1I勉強会のDiscordサーバーに参加している方のみログインできます。<br>
+      初めての方は、Discord認証後に学籍番号の登録へ自動で案内します。
     </p>
   </div>
 
-  <!-- ══ STEP 4: Discordログイン → 初回のみ学籍番号の登録 ══ -->
+  <!-- ══ STEP 2: Discordログイン → 初回のみ学籍番号の登録 ══ -->
   <div class="login-step login-card" id="step-discord-reg" style="display:none">
     <h1 class="login-title">学籍番号の登録 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M8 12V6.2a2 2 0 1 1 4 0V11"/><path d="M12 11V5a2 2 0 1 1 4 0v6"/><path d="M16 11.4V7a2 2 0 1 1 4 0v7c0 3.5-2.5 6-6 6h-2c-2 0-3-.7-4-2l-3-4.5a1.7 1.7 0 0 1 2.6-2.1L9 12.4"/></svg></h1>
 
     <p class="login-reg-desc">
       Discordでの認証が完了しました。<br>
       初めての方は、学籍番号とニックネームを入力してください。<br>
-      <span id="discord-reg-existing-note" style="display:none">
-        すでに登録済みの学籍番号の場合は、現在のパスワードも入力してください（本人確認のため）。
-      </span>
+      すでに登録済みの学籍番号を入力した場合は、そのままDiscordアカウントに紐付けてログインします。
     </p>
 
     <input type="hidden" id="inp-dtoken">
@@ -127,128 +99,12 @@
              autocomplete="nickname">
     </div>
 
-    <div class="field" id="discord-reg-password-field" style="display:none">
-      <label for="inp-discord-password">パスワード（既存アカウントの本人確認用）</label>
-      <input type="password" id="inp-discord-password"
-             placeholder="現在のパスワード"
-             autocomplete="current-password"
-             maxlength="64">
-    </div>
-
     <button class="btn-primary login-btn" id="btn-discord-reg-submit" onclick="submitDiscordRegister()">
       登録してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
     </button>
 
     <button class="login-back-btn" onclick="backToId()">
-      ← 学籍番号の入力に戻る
-    </button>
-  </div>
-
-  <!-- ══ STEP 2: 新規登録 ／ パスワード設定（初回のみ） ══ -->
-  <div class="login-step login-card" id="step-register" style="display:none">
-    <h1 class="login-title" id="reg-title">新規登録 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M8 12V6.2a2 2 0 1 1 4 0V11"/><path d="M12 11V5a2 2 0 1 1 4 0v6"/><path d="M16 11.4V7a2 2 0 1 1 4 0v7c0 3.5-2.5 6-6 6h-2c-2 0-3-.7-4-2l-3-4.5a1.7 1.7 0 0 1 2.6-2.1L9 12.4"/></svg></h1>
-
-    <p class="login-reg-desc" id="reg-desc">
-      <strong id="reg-id-label"></strong> はまだ登録されていません。<br>
-      呼ばれたいニックネームを入力して登録してください。<br>
-      <span class="login-reg-note">※ 本名は禁止・公開されます</span>
-    </p>
-
-    <input type="hidden" id="inp-student-id-hidden">
-    <input type="hidden" id="reg-mode"><!-- "new" or "setpw" -->
-
-    <div class="error-bar" id="reg-err" style="display:none"></div>
-
-    <div class="field" id="reg-nickname-field">
-      <label for="inp-nickname">ニックネーム</label>
-      <input type="text" id="inp-nickname"
-             placeholder="例: Taro・太郎（16文字以内）"
-             maxlength="16"
-             autocomplete="nickname">
-    </div>
-
-    <div class="field">
-      <label for="inp-reg-password">パスワード（8文字以上）</label>
-      <input type="password" id="inp-reg-password"
-             placeholder="パスワード"
-             autocomplete="new-password"
-             maxlength="64">
-    </div>
-
-    <div class="field">
-      <label for="inp-reg-password2">パスワード（確認）</label>
-      <input type="password" id="inp-reg-password2"
-             placeholder="もう一度入力"
-             autocomplete="new-password"
-             maxlength="64">
-    </div>
-
-    <button class="btn-primary login-btn" id="btn-register" onclick="submitRegister()">
-      登録してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
-    </button>
-
-    <button class="login-back-btn" onclick="backToId()">
-      ← 学籍番号の入力に戻る
-    </button>
-  </div>
-
-  <!-- ══ STEP 3: パスワードを忘れた場合 ══ -->
-  <div class="login-step login-card" id="step-forgot" style="display:none">
-    <h1 class="login-title">パスワードの再設定 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="7.3" cy="14.5" r="3.5"/><path d="M9.9 12l7.9-7.9"/><path d="M15 6.7l2.4 2.4"/><path d="M18 3.7l2 2"/></svg></h1>
-
-    <p class="login-reg-desc">
-      学籍番号を入力すると、Discordに確認コードを送信します。<br>
-      <span class="login-reg-note">※ Discordで /id連携 が済んでいる本人にのみ届きます</span>
-    </p>
-
-    <div class="error-bar" id="forgot-err" style="display:none"></div>
-
-    <div class="field">
-      <label for="inp-forgot-id">学籍番号</label>
-      <input type="text" id="inp-forgot-id"
-             placeholder="例: 32600"
-             autocomplete="username"
-             autocapitalize="characters"
-             maxlength="20">
-    </div>
-
-    <button class="btn-primary login-btn" id="btn-forgot-send" onclick="submitForgotSendCode()">
-      Discordに確認コードを送る
-    </button>
-
-    <div id="forgot-pw-fields" style="display:none">
-      <div class="field">
-        <label for="inp-forgot-code">確認コード（6桁）</label>
-        <input type="text" id="inp-forgot-code"
-               inputmode="numeric"
-               placeholder="123456"
-               maxlength="6"
-               autocomplete="one-time-code">
-      </div>
-
-      <div class="field">
-        <label for="inp-forgot-newpw">新しいパスワード（8文字以上）</label>
-        <input type="password" id="inp-forgot-newpw"
-               placeholder="パスワード"
-               autocomplete="new-password"
-               maxlength="64">
-      </div>
-
-      <div class="field">
-        <label for="inp-forgot-newpw2">新しいパスワード（確認）</label>
-        <input type="password" id="inp-forgot-newpw2"
-               placeholder="もう一度入力"
-               autocomplete="new-password"
-               maxlength="64">
-      </div>
-
-      <button class="btn-primary login-btn" id="btn-forgot-confirm" onclick="submitForgotConfirm()">
-        パスワードを再設定してログイン <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
-      </button>
-    </div>
-
-    <button class="login-back-btn" onclick="backToId()">
-      ← 学籍番号の入力に戻る
+      ← 戻る
     </button>
   </div>
 
