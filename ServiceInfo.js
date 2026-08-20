@@ -360,7 +360,11 @@ async function loadSystemLog() {
     }
     const res = await fetch(url, { cache: 'no-store', headers });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'unknown error');
+    if (!data.ok) {
+      const err = new Error(data.error || 'unknown error');
+      err.code = data.error;
+      throw err;
+    }
 
     listEl.innerHTML = '';
     if (!data.entries || data.entries.length === 0) {
@@ -387,7 +391,12 @@ async function loadSystemLog() {
     listEl.innerHTML = '';
     const li = document.createElement('li');
     li.className = 'log-error';
-    li.textContent = 'ログを読み込めませんでした。';
+    // ★ 追加：制限付きアカウント（対象Discordサーバー未参加）でログイン中の場合は
+    //   サーバー側が意図的に拒否しているだけで、通信・サーバー側の障害ではない。
+    //   「読み込めませんでした」という技術的失敗の表現は誤解を招くため区別する。
+    li.textContent = (e && e.code === 'guild_membership_required')
+      ? 'このアカウントでは運用ログを閲覧できません（対象のDiscordサーバーに参加していないため）。'
+      : 'ログを読み込めませんでした。';
     listEl.appendChild(li);
   } finally {
     if (btn) btn.classList.remove('is-loading');

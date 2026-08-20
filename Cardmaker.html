@@ -9,9 +9,13 @@
 <link rel="stylesheet" href="/Style.css">
 <link rel="stylesheet" href="/Cardmaker.css">
 <!-- ★ 追加：数式（分数・ルートなど）をきれいに表示するためのKaTeX -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<!-- ★ 更新（2026/08/20）：0.16.11に出力エスケープ不備の既知脆弱性（Snyk:
+     SNYK-JS-KATEX-8647963, Medium）があったため0.16.21以降へ更新。
+     他部員が公開したデッキの問題文・解答（信頼できない入力）がここで
+     レンダリングされる経路のため、単なる保守作業ではなくセキュリティ対応。 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"></script>
 <style>
   /* ★ 追加：作成済みカードのドラッグ並び替え用スタイル（Cardmaker.cssを汚さずここで完結） */
   .created-item {
