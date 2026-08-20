@@ -28,6 +28,10 @@
 html {
   overflow-x: hidden;
   overscroll-behavior-y: none;
+  /* ★ 追加（2026/08/20）：トラックパッドの2本指スワイプ等でブラウザの
+     「戻る/進む」に移動してしまうのを防ぐ（Chrome/Edge向け）。
+     スマホの画面端スワイプ対策はSwipeGuard.js（全ページ共通読み込み）側。 */
+  overscroll-behavior-x: none;
   scroll-behavior: smooth;
 }
 body {
@@ -38,6 +42,7 @@ body {
   min-height: 100vh;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
 }
 
 /* ============================
