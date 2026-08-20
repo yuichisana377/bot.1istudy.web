@@ -1,0 +1,173 @@
+/* ============================================================
+   TanCheck.css — 単位チェッカー専用スタイル
+   使用ページ: TanCheck.html
+============================================================ */
+
+.tc-notice {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #92400e;
+  margin-bottom: 14px;
+}
+.tc-notice strong { font-weight: 700; }
+
+.tc-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin: 18px 2px 8px;
+}
+.tc-group-title:first-of-type { margin-top: 2px; }
+
+.tc-list { display: flex; flex-direction: column; gap: 8px; }
+
+.tc-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.tc-card-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.tc-card-name { font-size: 13.5px; font-weight: 700; color: var(--text); flex: 1; }
+.tc-card-sub  { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.tc-card-chevron {
+  flex-shrink: 0;
+  transition: transform .15s;
+  color: var(--text-tertiary);
+}
+.tc-card.is-open .tc-card-chevron { transform: rotate(90deg); }
+
+.tc-grade-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--bg);
+  color: var(--text-tertiary);
+}
+.tc-grade-badge.grade-A { background: #dcfce7; color: #166534; }
+.tc-grade-badge.grade-B { background: #dbeafe; color: #1e40af; }
+.tc-grade-badge.grade-C { background: #fef9c3; color: #854d0e; }
+.tc-grade-badge.grade-F { background: #fee2e2; color: #991b1b; }
+
+.tc-card-body { display: none; padding: 0 14px 14px; }
+.tc-card.is-open .tc-card-body { display: block; }
+
+.tc-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.tc-item-label { flex: 1; font-size: 12.5px; color: var(--text-secondary); }
+.tc-item-weight { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; width: 34px; text-align: right; }
+.tc-item-input {
+  width: 64px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.tc-item-input::-webkit-outer-spin-button,
+.tc-item-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.tc-result {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.tc-result-score { font-weight: 700; color: var(--text); }
+.tc-result-need { display: block; margin-top: 2px; }
+.tc-result-need.is-ok   { color: #166534; }
+.tc-result-need.is-ng   { color: #991b1b; }
+
+.tc-multi-item { margin-bottom: 8px; }
+.tc-multi-item .tc-item-row { margin-bottom: 4px; }
+
+.tc-multi-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 4px 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.tc-multi-score, .tc-multi-max { width: 52px; }
+.tc-multi-slash { color: var(--text-tertiary); }
+.tc-multi-remove {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg);
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tc-multi-remove:hover { background: #fee2e2; color: #991b1b; }
+
+.tc-multi-add {
+  margin: 2px 0 8px 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 3px 0;
+}
+.tc-multi-add:hover { color: var(--text); }
+
+.tc-card-reset {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+}
+
+.tc-source {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 16px;
+  line-height: 1.7;
+}
+.tc-source a { color: var(--text-tertiary); }

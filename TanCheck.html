@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>単位チェッカー — 1I勉強会</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/Style.css">
+<link rel="stylesheet" href="/TanCheck.css">
+</head>
+<body>
+<div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
+  <div style="max-width:340px;width:100%;text-align:center;">
+    <div class="jsfb-spinner" style="width:40px;height:40px;margin:0 auto 16px;border:4px solid #cbd5e1;border-top-color:#2563eb;border-radius:50%;animation:jsfb-spin 1s linear infinite;"></div>
+    <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">読み込み中です…</div>
+    <div style="font-size:13px;color:#64748b;line-height:1.6;margin-bottom:18px;">しばらく待っても変わらない場合は、下から問題を報告できます</div>
+    <details style="text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#475569;">問題を報告する</summary>
+      <form method="POST" action="/api/report_problem" style="margin-top:10px;">
+        <input type="hidden" name="guild_id" value="1509880344806162544">
+        <input type="hidden" name="page" value="単位チェッカー（TanCheck.html）">
+        <textarea name="message" rows="3" maxlength="500" placeholder="症状を書いてください（省略可）" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+        <button type="submit" style="margin-top:8px;width:100%;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;">送信する</button>
+      </form>
+    </details>
+  </div>
+</div>
+<style>
+@keyframes jsfb-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .jsfb-spinner { animation: none; } }
+</style>
+
+
+<!-- ドロワーオーバーレイ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+<!-- ★ 追加：ページ遷移中ローディング（メニュー選択直後、読み込み中の合図） -->
+<div class="page-nav-loading" id="page-nav-loading"><div class="spinner-lg"></div></div>
+
+<!-- ドロワー -->
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="app-name"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M12 6.2c-2-1.3-4.6-2-7.2-2v13c2.6 0 5.2.7 7.2 2 2-1.3 4.6-2 7.2-2v-13c-2.6 0-5.2.7-7.2 2Z"/><path d="M12 6.2v13"/></svg> 1I 勉強会web</div>
+    <div class="app-sub">統合学習ツール</div>
+  </div>
+  <nav class="drawer-nav">
+    <a class="drawer-item" href="/index.html">
+      <span class="di-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M8.4 14.6l2 2 4.2-4.6"/></svg></span>予定管理
+    </a>
+    <a class="drawer-item" href="/Timetable.html">
+      <span class="di-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M9.5 9.5v10"/><path d="M15 9.5v10"/></svg></span>時間割
+    </a>
+    <a class="drawer-item" href="/Cardmaker.html">
+      <span class="di-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><rect x="3.5" y="8.5" width="13" height="9" rx="1.6"/><rect x="7.5" y="4.8" width="13" height="9" rx="1.6"/></svg></span>CardMaker
+    </a>
+    <a class="drawer-item" href="/StudyLog.html">
+      <span class="di-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M4 20h16"/></svg></span>勉強ログ
+    </a>
+    <a class="drawer-item" href="/Notice.html">
+      <span class="di-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M3 10.2v3.6h3.2l6.8 3.7V6.5l-6.8 3.7Z"/><path d="M15.5 9a3.8 3.8 0 0 1 0 6"/><path d="M18 6.7a7.3 7.3 0 0 1 0 10.6"/></svg></span>お知らせ
+    </a>
+    <a class="drawer-item" href="/ServiceInfo.html">
+      <span class="di-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M14.8 6.4a4 4 0 0 0-5.5 5.5L4 17.2 6.8 20l5.3-5.3a4 4 0 0 0 5.5-5.5l-2.7 2.7-2-2 2.7-2.7Z"/></svg></span>サービス情報
+    </a>
+    <a class="drawer-item active" href="/TanCheck.html">
+      <span class="di-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M3 9l9-4 9 4-9 4-9-4Z"/><path d="M7 11v4c0 1.5 2.5 3 5 3s5-1.5 5-3v-4"/><path d="M20 9v6"/></svg></span>単位チェッカー
+    </a>
+  </nav>
+  <!-- ★ 追加：だれとしてログインしているかを表示（2026/08/19） -->
+  <div class="drawer-account" id="drawer-account"></div>
+</div>
+
+<div class="scroll-body">
+
+  <!-- ヘッダー -->
+  <header class="header">
+    <button class="menu-btn" onclick="openDrawer()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px"><path d="M4 6.5h16"/><path d="M4 12h16"/><path d="M4 17.5h16"/></svg></button>
+    <span class="header-title">単位チェッカー</span>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="plan-main">
+    <section class="service-info">
+      <div class="service-info-head">
+        <span class="service-info-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M3 9l9-4 9 4-9 4-9-4Z"/><path d="M7 11v4c0 1.5 2.5 3 5 3s5-1.5 5-3v-4"/><path d="M20 9v6"/></svg></span>
+        <div>
+          <div class="service-info-title">単位チェッカー</div>
+          <div class="service-info-sub">情報工学科 1年生（2026年度）専用・試作版</div>
+        </div>
+      </div>
+
+      <div class="tc-notice">
+        <strong>このページについて：</strong>各科目の点数を入力すると、A/B/C判定と「Aまであとどれくらい必要か」を確認できます。「小テスト」「課題」は複数回に分かれることが多いため、何回分でも「得点／満点」を追加でき、合計から達成率を計算します（満点を空欄にすると100点満点として扱います）。<br>
+        評価割合は高専機構の公開シラバス検索システム（2026年度・情報工学科、前期・後期とも確認済み）を転記したもの、A/B/C基準（85点以上=A・70点以上=B・60点以上=C）は1I勉強会の申告に基づく参考値です。<strong>実際の成績・単位認定は必ず学校の発表で確認してください。</strong><br>
+        入力した点数はこの端末にのみ保存され、サーバーには送信されません。
+      </div>
+
+      <div class="tc-group-title">前期・専門科目</div>
+      <div class="tc-list" id="tc-list-zenki-specialized"></div>
+
+      <div class="tc-group-title">前期・一般科目</div>
+      <div class="tc-list" id="tc-list-zenki-general"></div>
+
+      <div class="tc-group-title">後期・専門科目</div>
+      <div class="tc-list" id="tc-list-koki-specialized"></div>
+
+      <div class="tc-group-title">後期・一般科目</div>
+      <div class="tc-list" id="tc-list-koki-general"></div>
+
+      <p class="tc-source">
+        データ出典：<a href="https://syllabus.kosen-k.go.jp/Pages/PublicSubjects?school_id=23&department_id=13&year=2026&lang=ja" target="_blank" rel="noopener">高専機構 公開シラバス（豊田高専 情報工学科・2026年度）</a>
+      </p>
+    </section>
+  </main>
+
+</div>
+
+<script src="/Icons.js"></script>
+<script src="/SwipeGuard.js"></script>
+<script src="/Dialog.js"></script>
+<script src="/TanCheck.js"></script>
+<script src="/PendingDeleteCheck.js"></script>
+</body>
+</html>
