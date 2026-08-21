@@ -20,6 +20,7 @@
       <form method="POST" action="/api/report_problem" style="margin-top:10px;">
         <input type="hidden" name="guild_id" value="1509880344806162544">
         <input type="hidden" name="page" value="サービス情報（ServiceInfo.html）">
+        <input type="hidden" name="return_url" value="/ServiceInfo.html">
         <textarea name="message" rows="3" maxlength="500" placeholder="症状を書いてください（省略可）" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
         <button type="submit" style="margin-top:8px;width:100%;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;">送信する</button>
       </form>
@@ -149,8 +150,8 @@
           </div>
           <ul class="service-update-list">
             <li class="service-update-item">
-              <span class="service-update-date">2026/08/20</span>
-              <span class="service-update-text">まれに通信状況などでページの読み込みがうまくいかなかった場合でも、「読み込み中」の画面から抜け出せずボタンが一切押せなくなる、という状態にならないよう改善しました。</span>
+              <span class="service-update-date">2026/08/21</span>
+              <span class="service-update-text">まれに通信状況などでページの読み込みがうまくいかなかった場合でも、「読み込み中」の画面から抜け出せずボタンが一切押せなくなる、という状態にならないよう改善しました。あわせて、この画面から「問題を報告する」を送信した後にサイトへ戻れなくなる不具合を修正し、報告内容はDiscordへの通知が届かなかった場合でもサーバー側に確実に保存されるようにしました。</span>
             </li>
             <li class="service-update-item">
               <span class="service-update-date">2026/08/20</span>
