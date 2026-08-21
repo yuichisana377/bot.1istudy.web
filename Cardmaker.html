@@ -431,8 +431,13 @@
         <div class="qp-submit-wrap" id="qp-submit-wrap" style="display:none">
           <button class="btn btn-blue" style="width:100%" onclick="submitQuizPlayMulti()" id="qp-submit-btn">この内容で回答する</button>
         </div>
+        <!-- ★ 追加：通常のフラッシュカード学習と同じ「わからない」トグル（answerQuizPlay/submitQuizPlayMultiで
+             間違えると自動でマークされる。手動でも付け外しできる） -->
         <div class="qp-next-wrap" id="qp-next-wrap" style="display:none">
-          <button class="btn btn-blue" style="width:100%" onclick="quizPlayNext()" id="qp-next-btn">次へ →</button>
+          <div style="display:flex;gap:.5rem;align-items:center;">
+            <button class="unsure-btn" id="qp-unsure-btn" onclick="toggleQuizPlayUnsure()">？ わからない</button>
+            <button class="btn btn-blue" style="flex:1" onclick="quizPlayNext()" id="qp-next-btn">次へ →</button>
+          </div>
         </div>
       </div>
 

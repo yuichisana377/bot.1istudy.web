@@ -7,8 +7,14 @@
 //    Cardmaker.jsが先に読み込まれている前提。decks/showScreen/esc/
 //    setMathText/CHOICE_LETTERS/CHOICE_MIN/waitForPendingSync/
 //    ensureDeckCardsLoaded/showCmConfirm/showCmAlert/getLoginSession/
-//    API_BASE/GUILD_ID などCardmaker.js側のグローバル関数・変数を
-//    そのまま使う）。
+//    API_BASE/GUILD_ID/cardKey/getUnsureSet/saveUnsureSet/markCardSeen
+//    などCardmaker.js側のグローバル関数・変数をそのまま使う）。
+//
+//  ★ 追加（2026/08/21）：以前は通常のフラッシュカード学習（自動採点・
+//    「わからない」マーク・「わかる率」への学習済み記録）と挙動が
+//    揃っておらず、選択式クイズだけ間違えても何も記録が残らなかった。
+//    通常の学習と同じ感覚で使えるよう、markCardSeen（学習済み記録）と
+//    「間違えたら自動でわからないマーク／手動トグルも可能」を追加した。
 //
 //  みんなでクイズ（Quiz.js）でホストが作ったオリジナル4択クイズは、
 //  bot.py側で自動的に「クイズ過去問」フォルダへデッキとしてアーカイブされる
@@ -79,6 +85,9 @@ function renderQuizPlayQuestion() {
   const card = soloQuizCards[soloQuizIdx];
   soloQuizAnswered = false;
   soloQuizSelected = new Set();
+  // ★ 追加：通常のフラッシュカード学習（renderStudyCard→markCardSeen）と同じく、
+  //   問題を表示した時点で「学習済み」として記録する（みんなの「わかる率」の対象にするため）。
+  markCardSeen(soloQuizDeckId, card);
   document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
   const pct = soloQuizCards.length > 1 ? (soloQuizIdx / soloQuizCards.length) * 100 : 0;
   document.getElementById('qp-prog-fill').style.width = pct + '%';
@@ -118,6 +127,41 @@ function toggleQuizPlayMultiChoice(idx) {
   }
 }
 
+// ★ 追加：間違えた問題を自動で「わからない」にマークする（通常のフラッシュカード
+//   学習の自動採点＝gradeCurrentAnswer と同じルール）。
+//   ×だった場合のみ、まだマークされていなければ追加する。○の場合は既存のマークを
+//   勝手に外したりはしない（gradeCurrentAnswerと同じ方針）。
+function autoMarkUnsureIfWrong(card, isCorrect) {
+  if (isCorrect) return;
+  const key = cardKey(card);
+  const unsure = getUnsureSet(soloQuizDeckId);
+  if (!unsure.has(key)) {
+    unsure.add(key);
+    saveUnsureSet(soloQuizDeckId, unsure);
+  }
+}
+
+// ★ 追加：通常のフラッシュカード学習の「わからない」トグルボタンと同じ役割。
+//   選択式クイズは回答すると次の問題へ自動的に進むため、「答えを見た後」の
+//   study-nav と同じタイミング（qp-next-wrapが表示されている間）だけ操作できる。
+function updateQuizPlayUnsureBtn() {
+  const card = soloQuizCards[soloQuizIdx];
+  const btn = document.getElementById('qp-unsure-btn');
+  if (!card || !btn) return;
+  const unsure = getUnsureSet(soloQuizDeckId);
+  btn.textContent = 'わからない';
+  btn.classList.toggle('marked', unsure.has(cardKey(card)));
+}
+function toggleQuizPlayUnsure() {
+  const card = soloQuizCards[soloQuizIdx];
+  if (!card) return;
+  const key = cardKey(card);
+  const unsure = getUnsureSet(soloQuizDeckId);
+  if (unsure.has(key)) unsure.delete(key); else unsure.add(key);
+  saveUnsureSet(soloQuizDeckId, unsure);
+  updateQuizPlayUnsureBtn();
+}
+
 // ★ 追加：複数正解モードの回答を確定する（qp-submit-btnから呼ばれる）
 function submitQuizPlayMulti() {
   if (soloQuizAnswered || soloQuizSelected.size === 0) return;
@@ -130,6 +174,7 @@ function submitQuizPlayMulti() {
     soloQuizScore++;
     document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
   }
+  autoMarkUnsureIfWrong(card, isCorrect);
 
   [...document.querySelectorAll('#qp-choices .qp-choice-btn')].forEach((btn, i) => {
     btn.disabled = true;
@@ -143,16 +188,19 @@ function submitQuizPlayMulti() {
   document.getElementById('qp-next-wrap').style.display = '';
   document.getElementById('qp-next-btn').textContent =
     soloQuizIdx === soloQuizCards.length - 1 ? '結果を見る →' : '次へ →';
+  updateQuizPlayUnsureBtn();
 }
 
 function answerQuizPlay(idx) {
   if (soloQuizAnswered) return;
   soloQuizAnswered = true;
   const card = soloQuizCards[soloQuizIdx];
-  if (card.correct_indices.includes(idx)) {
+  const isCorrect = card.correct_indices.includes(idx);
+  if (isCorrect) {
     soloQuizScore++;
     document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
   }
+  autoMarkUnsureIfWrong(card, isCorrect);
 
   [...document.querySelectorAll('#qp-choices .qp-choice-btn')].forEach((btn, i) => {
     btn.disabled = true;
@@ -164,6 +212,7 @@ function answerQuizPlay(idx) {
   document.getElementById('qp-next-wrap').style.display = '';
   document.getElementById('qp-next-btn').textContent =
     soloQuizIdx === soloQuizCards.length - 1 ? '結果を見る →' : '次へ →';
+  updateQuizPlayUnsureBtn();
 }
 
 function quizPlayNext() {
