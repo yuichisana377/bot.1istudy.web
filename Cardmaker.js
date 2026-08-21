@@ -381,13 +381,13 @@ function isFolderInFolderScope(fid, folderId) {
   return folderDescendants(folderId).some(f => f.id === fid);
 }
 
-// ★ デッキ版の canMoveFolderTo。今のところ制限は「クイズ過去問フォルダの中に
-//   あるデッキは、その外へ移動できない」の1つだけ（フォルダのような階層数
-//   制限はデッキには存在しないため）。
+// ★ デッキ版の canMoveFolderTo。フォルダのような階層数制限はデッキには
+//   存在しないため、今のところ特別な制限は無い（常にtrue）。
+//   ★ 以前は「クイズ過去問フォルダの中にあるデッキは、その外へ移動できない」
+//   という制限があったが、2026/08/21にユーザーの要望で撤廃した（クイズ過去問
+//   デッキも他のフォルダへ移動できる。代わりに「問題の編集はできない」という
+//   別の制限を設けている。openDeckMenu/save_cards参照）。
 function canMoveDeckTo(deckId, targetFolderId) {
-  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) && !isFolderInFolderScope(targetFolderId, QUIZ_ARCHIVE_FOLDER_ID)) {
-    return false;
-  }
   return true;
 }
 
@@ -923,10 +923,14 @@ function renderDeckListUI() {
         : d.incomplete
           ? `<span class="pub-badge draft">${Icons.html('dot', {size:13})} 未完成${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`
           : `<span class="pub-badge published">${Icons.html('dot', {size:13})} 公開済み${d.published_by ? `（${esc(d.published_by)}）` : ''}</span>`;
-    // ★ 「クイズ過去問」フォルダの中のデッキだと分かるようにバッジを付ける
-    //   （プレイ時の挙動が通常のフラッシュカードと違う＝一人用選択式モードになるため）
-    const quizArchiveBadge = isDeckInFolderScope(d.id, QUIZ_ARCHIVE_FOLDER_ID)
-      ? `<span class="pub-badge archive">${Icons.html('dot', {size:13})} 過去問</span>` : '';
+    // ★ クイズ過去問デッキだと分かるようにバッジを付ける（プレイ時の挙動が通常の
+    //   フラッシュカードと違う＝一人用選択式モードになるため。編集もできない）。
+    //   ★ 修正（2026/08/21）：以前はフォルダの位置（isDeckInFolderScope）で判定して
+    //   いたが、他のフォルダへ移動できるようにしたのに合わせ、デッキ自身が持つ
+    //   quizArchiveフラグ（フォルダを移動しても消えない）で判定するよう変更した。
+    //   バッジの文言も「過去問」→「クイズ過去問」に変更（フォルダ名と揃えた）。
+    const quizArchiveBadge = d.quizArchive
+      ? `<span class="pub-badge archive">${Icons.html('dot', {size:13})} クイズ過去問</span>` : '';
     // ★ 追加：多肢選択デッキ（choiceMode有り）にも、同じ理由で分かるようにバッジを付ける
     //   （「クイズ過去問」フォルダの中でなくてもプレイ時は一人用選択式モードになるため）
     //   ★ quizArchiveBadge と意味が重複するため、そちらが出る場合はこちらは出さない。
@@ -1436,8 +1440,9 @@ function renderMovePickerList() {
     ? (decks.find(d => d.id === movePickerTargetId)?.folderId || null)
     : (folders.find(f => f.id === movePickerTargetId)?.parentId || null);
 
-  // ★ 移動可否の判定は種類ごとに分ける（フォルダは階層数チェックも兼ねる canMoveFolderTo、
-  //   デッキは canMoveDeckTo）。どちらも「クイズ過去問フォルダの外へは出せない」を含む。
+  // ★ 移動可否の判定は種類ごとに分ける（フォルダは階層数チェック＋「クイズ過去問
+  //   フォルダの外へは出せない」を含む canMoveFolderTo、デッキは今のところ
+  //   制限の無い canMoveDeckTo）。
   const canMoveTo = movePickerKind === 'folder'
     ? (targetId) => canMoveFolderTo(movePickerTargetId, targetId)
     : (targetId) => canMoveDeckTo(movePickerTargetId, targetId);
@@ -1554,6 +1559,11 @@ async function fetchAndMergeDecks() {
       filename: s.filename,
       count: s.count,
       choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（旧データの互換のため "single"/"multi" 文字列も truthy として扱う）
+      // ★ 追加（2026/08/21）：クイズ過去問デッキかどうか。以前はフォルダの位置
+      //   （isDeckInFolderScope）だけで判定していたが、外のフォルダへ移動できる
+      //   ようにしたため、デッキ自身が持つこのフラグ（サーバー側で維持される。
+      //   save_cards参照）で判定する。
+      quizArchive: !!s.quiz_archive,
       subject: s.subject || (existing && existing.subject) || null,
       published_by: s.published_by || (existing && existing.published_by) || null,
       // ★ 未完成フラグはサーバー側の索引（list_cards）にも保存されるようになったため、
@@ -1785,6 +1795,12 @@ function openDeckMenu(id) {
   const deck = decks.find(d => d.id === id);
   document.getElementById('menu-deck-name').textContent = deck.name;
   document.getElementById('menu-unpublish-item').style.display = deck.filename ? '' : 'none';
+  // ★ 追加（2026/08/21）：クイズ過去問デッキは問題を編集できない
+  //   （フォルダ移動・デッキ名の変更・非公開に戻す・削除は引き続き可能）。
+  //   サーバー側（save_cards）でも強制しているが、そもそもメニューに
+  //   出さないことで迷わせない。
+  document.getElementById('menu-edit-item').style.display = deck.quizArchive ? 'none' : '';
+  document.getElementById('menu-quiz-archive-note').style.display = deck.quizArchive ? '' : 'none';
   openModal('modal-deck-menu');
 }
 
