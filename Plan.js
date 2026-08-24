@@ -151,6 +151,14 @@ let calState = {};
 let editTarget = null;
 let delTarget  = null;
 let detailTarget = null; // ★ 詳細モーダルで表示中の予定のlabel
+// ★ 追加：Safari／Discordアプリ内ブラウザ等で、まれにlist_scheduleの取得が
+//   （ネットワークの瞬断・タイムアウト等で）失敗することがあり、以前は
+//   catch(e){ plans = []; } で「本当に予定が0件」と区別せず握りつぶしていたため、
+//   ユーザーからは「たまに予定なしになる（リロード・開き直しでも直らず、
+//   ログインし直すと直る）」というバグに見えていた。実際にはログインし直す
+//   ことで直っていたのではなく、その際にもう一度読み込みが走って偶然成功して
+//   いただけと考えられる。取得失敗と「0件」を区別して表示するためのフラグ。
+let plansLoadFailed = false;
 
 // ============================================================
 //  ★ 予定一覧・ログの段階読み込み（ページング）
@@ -300,21 +308,41 @@ async function loadPlans() {
   document.getElementById('plan-loading').style.display = 'block';
   document.getElementById('plan-content').innerHTML = '';
   plans = [];
+  plansLoadFailed  = false;
   pastPlansOffset  = 0;
   pastPlansHasMore = false;
 
   // ① これからの予定（未来分）を先に読み込んで表示する
-  try {
-    const data = await api(`/list_schedule?guild_id=${GUILD_ID}&scope=future`);
-    plans = data.ok ? dedupePlans(data.plans) : [];
-  } catch(e) { plans = []; }
+  //   ★ 追加：ネットワークの瞬断等での取得失敗（例外 or {ok:false}）を
+  //   「0件」と区別せず表示していたバグの対策。まず1回だけ自動で再試行し、
+  //   それでも失敗した場合だけ plansLoadFailed を立てて renderPlans() 側で
+  //   「読み込みに失敗しました」を出す（＝本当に0件のときは従来通り
+  //   「予定はありません」のまま）。
+  let data = await fetchFutureSchedule();
+  if (!data.ok) data = await fetchFutureSchedule();
+  if (data.ok) {
+    plans = dedupePlans(data.plans);
+  } else {
+    plans = [];
+    plansLoadFailed = true;
+  }
   document.getElementById('plan-loading').style.display = 'none';
   renderPlans();
   scrollToToday();
 
   // ② 続けて、過去分を直近から1ページ分だけ自動で追加読み込みする
   //   （まだ多く残っている場合は「もっと読み込む」ボタンで手動追加）
-  await loadMorePastPlans();
+  //   ★ ①が失敗した状態で②まで走らせても混乱するだけなので、①が
+  //   成功したときだけ行う。
+  if (!plansLoadFailed) await loadMorePastPlans();
+}
+
+async function fetchFutureSchedule() {
+  try {
+    return await api(`/list_schedule?guild_id=${GUILD_ID}&scope=future`);
+  } catch (e) {
+    return { ok: false };
+  }
 }
 
 /** 過去の予定を1ページ分読み込んで既存の plans に追加する（「もっと読み込む」ボタンからも呼ばれる） */
@@ -545,6 +573,15 @@ function renderPlans() {
     : '';
 
   if (!filtered.length) {
+    // ★ 追加：取得自体に失敗した場合は「予定はありません」ではなく、
+    //   失敗したことが分かる表示＋再読み込みボタンを出す（本当に0件の
+    //   ときとの見分けがつかない、というバグへの対策）。
+    if (plansLoadFailed) {
+      el.innerHTML = loadMoreHtml +
+        '<div class="error-msg">予定の読み込みに失敗しました。通信環境をご確認ください。</div>' +
+        '<button type="button" class="load-more-btn" onclick="loadPlans()">もう一度読み込む</button>';
+      return;
+    }
     el.innerHTML = loadMoreHtml + (plans.length
       ? '<div class="empty-msg">条件に一致する予定はありません</div>'
       : '<div class="empty-msg">予定はありません</div>');
