@@ -173,6 +173,7 @@ let pastPlansOffset  = 0;
 let pastPlansHasMore = false;
 let pastPlansLoading = false;
 let logsData    = [];
+let logsLoadErrorCode = null; // ★ 追加：取得失敗の理由（'guild_membership_required'等）。0件との区別に使う
 let logsOffset  = 0;
 let logsHasMore = false;
 let logsLoading = false;
@@ -439,6 +440,7 @@ async function loadLogs() {
   logsData    = [];
   logsOffset  = 0;
   logsHasMore = false;
+  logsLoadErrorCode = null; // ★ 追加：0件と取得失敗を区別する（Plan.js側のplansLoadFailedと同じ考え方）
 
   // 最新から1ページ分だけ読み込んで、すべて読み込む前に表示する
   try {
@@ -447,8 +449,10 @@ async function loadLogs() {
       logsData    = data.logs;
       logsOffset  = data.logs.length;
       logsHasMore = !!data.has_more;
+    } else {
+      logsLoadErrorCode = data.error || 'unknown';
     }
-  } catch(e) { logsData = []; }
+  } catch(e) { logsData = []; logsLoadErrorCode = 'network_error'; }
   document.getElementById('log-loading').style.display = 'none';
   renderLogs();
 }
@@ -736,7 +740,22 @@ const TYPE_LABEL = { add:'追加', edit:'編集', delete:'削除', cleanup:'自�
 
 function renderLogs() {
   const el = document.getElementById('log-content');
-  if (!logsData.length) { el.innerHTML = '<div class="empty-msg">ログはありません</div>'; return; }
+  if (!logsData.length) {
+    // ★ 追加：0件と取得失敗を区別して表示する（Plan.js本体の予定一覧と同じ考え方）。
+    //   「ログ」タブはサーバー参加済みログインユーザー限定のため、ログインしていても
+    //   対象サーバーのメンバーでない場合はguild_membership_requiredになる。
+    if (logsLoadErrorCode === 'guild_membership_required') {
+      el.innerHTML = '<div class="error-msg">対象サーバーに参加しているアカウントでログインすると見られます。</div>';
+    } else if (logsLoadErrorCode === 'not_logged_in') {
+      el.innerHTML = '<div class="error-msg">ログインすると見られます。</div>';
+    } else if (logsLoadErrorCode) {
+      el.innerHTML = '<div class="error-msg">読み込みに失敗しました。</div>'
+        + '<button type="button" class="load-more-btn" onclick="loadLogs()">もう一度読み込む</button>';
+    } else {
+      el.innerHTML = '<div class="empty-msg">ログはありません</div>';
+    }
+    return;
+  }
   const loadMoreHtml = logsHasMore
     ? `<button type="button" id="log-load-more-btn" class="load-more-btn" onclick="loadMoreLogs()">もっと読み込む</button>`
     : '';
