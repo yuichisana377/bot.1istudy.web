@@ -398,6 +398,19 @@ function openAccountModal() {
       '</p>' +
       '<button id="sl-acct-oauth-btn" style="width:100%;padding:10px;border:none;border-radius:8px;background:#5865F2;color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">' + Icons.html('link', {size:16}) + ' Discordで連携する</button>' +
       '<div id="sl-acct-oauth-msg" style="font-size:12px;margin-top:6px;text-align:center;"></div>' +
+    '</div>' +
+
+    // ★ 追加：CardMakerの共有リンク一覧・取り消し。デッキ単位のメニュー
+    //   （Cardmaker.jsのmenuShare）からしか見られず「一度閉じるとどこから
+    //   取り消せるか分からない」という指摘を受け、全デッキ横断でここから
+    //   まとめて確認・取り消しできるようにした。中身は/list_my_deck_sharesで
+    //   非同期に取得するため、初期状態は「読み込み中…」のプレースホルダ。
+    '<div style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:20px;">' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">' + Icons.html('cardmaker', {size:14}) + ' CardMakerの共有リンク</label>' +
+      '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">' +
+        '自分が発行した、または自分のデッキが共有されているリンクの一覧です。ここから取り消せます。' +
+      '</p>' +
+      '<div id="sl-acct-shares-list" style="font-size:12.5px;color:#94a3b8;">読み込み中…</div>' +
     '</div>';
 
   overlay.appendChild(box);
@@ -406,6 +419,107 @@ function openAccountModal() {
   document.getElementById("sl-acct-close").onclick  = closeAccountModal;
   document.getElementById("sl-acct-nickname-save").onclick = submitNicknameChange;
   document.getElementById("sl-acct-oauth-btn").onclick     = startDiscordOAuth;
+  loadAccountShares();
+}
+
+// ── CardMakerの共有リンク一覧（アカウント設定モーダル内） ──────────────
+// ★ 表示内容（デッキ名・共有した人のニックネーム等）はすべて他人の入力を
+//   含みうるテキストなので、Cardmaker.jsのrenderDeckShareList()と同じ理由で
+//   innerHTML+テンプレート文字列ではなくDOM API（createElement/textContent）
+//   で組み立てる（このファイルの他の箇所はescapeHtmlSl()での手動エスケープを
+//   使っているが、一覧表示は取りこぼしを避けるためDOM APIの方を選んだ）。
+async function loadAccountShares() {
+  const wrap = document.getElementById('sl-acct-shares-list');
+  if (!wrap) return;
+  try {
+    const data = await api('/list_my_deck_shares?guild_id=' + GUILD_ID);
+    if (!data || !data.ok) throw new Error();
+    renderAccountShares(data.shares || []);
+  } catch (e) {
+    wrap.textContent = '読み込みに失敗しました。';
+  }
+}
+
+function renderAccountShares(shares) {
+  const wrap = document.getElementById('sl-acct-shares-list');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!shares.length) {
+    wrap.textContent = '共有中のリンクはありません。';
+    wrap.style.color = '#94a3b8';
+    return;
+  }
+  wrap.style.color = '';
+  shares.forEach(s => {
+    const row = document.createElement('div');
+    row.style.cssText = 'background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:8px;';
+
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-size:13px;font-weight:700;color:#1e293b;margin-bottom:4px;word-break:break-word;';
+    nameEl.textContent = s.deck_name || '（不明なデッキ）';
+    row.appendChild(nameEl);
+
+    const urlRow = document.createElement('div');
+    urlRow.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;';
+    const urlBox = document.createElement('div');
+    urlBox.style.cssText = 'flex:1;min-width:0;font-size:11.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    urlBox.textContent = s.url;
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'コピー';
+    copyBtn.style.cssText = 'flex-shrink:0;padding:5px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;font-size:11.5px;cursor:pointer;';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(s.url).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'コピーしました';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+      }).catch(() => {});
+    };
+    urlRow.appendChild(urlBox);
+    urlRow.appendChild(copyBtn);
+    row.appendChild(urlRow);
+
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:11px;color:#94a3b8;margin-bottom:6px;';
+    const expiresStr = new Date(s.expires_at * 1000).toLocaleDateString('ja-JP');
+    meta.textContent = s.is_own_deck
+      ? `${s.created_by_nickname || '（不明）'}さんが共有・${expiresStr}まで有効`
+      : `自分が作成・${expiresStr}まで有効`;
+    row.appendChild(meta);
+
+    const revokeBtn = document.createElement('button');
+    revokeBtn.type = 'button';
+    revokeBtn.textContent = 'このリンクを取り消す';
+    revokeBtn.style.cssText = 'width:100%;padding:9px;border:1.5px solid #fecaca;border-radius:8px;background:#FEF2F2;color:#EF4444;font-size:13px;font-weight:600;cursor:pointer;';
+    revokeBtn.onclick = () => revokeAccountShare(s.token, row);
+    row.appendChild(revokeBtn);
+
+    wrap.appendChild(row);
+  });
+}
+
+async function revokeAccountShare(token, rowEl) {
+  const ok = await showAppConfirm({
+    title: 'このリンクを取り消しますか？',
+    desc: 'このリンクを持っている人は、以後このデッキを見られなくなります。',
+    okLabel: '取り消す', danger: true,
+  });
+  if (!ok) return;
+  try {
+    const data = await api('/revoke_deck_share', {
+      method: 'POST',
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN, token: token }),
+    });
+    if (!data || !data.ok) throw new Error((data && data.error) || '');
+    if (rowEl && rowEl.parentNode) rowEl.parentNode.removeChild(rowEl);
+    const wrap = document.getElementById('sl-acct-shares-list');
+    if (wrap && !wrap.children.length) {
+      wrap.textContent = '共有中のリンクはありません。';
+      wrap.style.color = '#94a3b8';
+    }
+  } catch (e) {
+    showAppAlert({ title: '取り消しに失敗しました', desc: String((e && e.message) || '') });
+  }
 }
 
 function closeAccountModal() {
