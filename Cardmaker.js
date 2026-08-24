@@ -1907,6 +1907,9 @@ async function loadDeckShareList() {
 function renderDeckShareList(shares) {
   const wrap = document.getElementById('deck-share-list');
   wrap.innerHTML = '';
+  // ★ 発行済みのリンクが無いときは見出しごと隠す（「取り消しボタンが
+  //   見当たらない」という混乱は、リンクが1件も無い状態でも起きていた）。
+  document.getElementById('deck-share-list-label').style.display = shares.length ? '' : 'none';
   if (!shares.length) return;
   shares.forEach(s => {
     const row = document.createElement('div');
@@ -1932,11 +1935,14 @@ function renderDeckShareList(shares) {
     meta.textContent = `${s.created_by_nickname || '（不明）'}さんが作成・${expiresStr}まで有効`;
     row.appendChild(meta);
 
+    // ★ 修正：以前は他と見分けにくい薄いテキストボタンだったため、
+    //   「取り消しボタンがどこにあるか分からない」という指摘を受けて、
+    //   アイコン付き・全幅の危険色ボタン（btn-danger）にして目立たせた。
     const revokeBtn = document.createElement('button');
     revokeBtn.type = 'button';
-    revokeBtn.className = 'btn btn-ghost btn-sm';
-    revokeBtn.style.color = '#dc2626';
-    revokeBtn.textContent = 'このリンクを取り消す';
+    revokeBtn.className = 'btn btn-danger btn-sm';
+    revokeBtn.style.width = '100%';
+    revokeBtn.innerHTML = Icons.html('trash', {size:14}) + ' このリンクを取り消す';
     revokeBtn.addEventListener('click', () => revokeDeckShare(s.token));
     row.appendChild(revokeBtn);
 

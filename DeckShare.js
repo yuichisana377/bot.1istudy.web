@@ -16,6 +16,9 @@
 //    仕込んだ文字列である可能性があるため、Cardmaker.jsと同じ理由で
 //    textContent / DOM APIのsrcプロパティ経由でのみ描画する
 //    （innerHTML+テンプレート文字列での組み立ては禁止）。
+//  ★ 画面の流れ：読み込み → 案内画面（デッキ名・反転トグル・はじめる／
+//    一覧で見る）→ 暗記カード or 選択式クイズ／一覧。開いていきなり
+//    カードが始まらないよう、必ずこの案内画面を経由する。
 // ============================================================
 
 const API_BASE = "/api/";
@@ -28,12 +31,37 @@ function getToken() {
   return new URLSearchParams(location.search).get('token') || '';
 }
 
-function showStep(name) {
-  ['loading', 'error'].forEach(s => {
+// ── 画面の切り替え ──────────────────────────
+// 'loading' | 'error' | 'intro' | 'study' | 'list' の5つを排他的に切り替える。
+// トップバーの見出し・戻るボタン・右側ボタン（シャッフル／一覧の反転）も
+// ここでまとめて更新する（デッキ名を複数箇所に重複して出さないため、
+// 案内画面ではトップバーは汎用の「共有デッキ」のまま、学習・一覧画面に
+// 進んだときだけデッキ名をトップバーに出す）。
+function showDsStep(step) {
+  ['loading', 'error', 'intro'].forEach(s => {
     const el = qs(`ds-step-${s}`);
-    if (el) el.style.display = (s === name) ? '' : 'none';
+    if (el) el.style.display = (s === step) ? '' : 'none';
   });
-  qs('ds-body').style.display = (name === 'body') ? 'flex' : 'none';
+  qs('ds-body').style.display = (step === 'study') ? 'flex' : 'none';
+  qs('ds-step-list').style.display = (step === 'list') ? '' : 'none';
+
+  const backBtn = qs('ds-back-btn');
+  const shuffleBtn = qs('ds-shuffle-btn');
+  const listReverseBtn = qs('ds-list-reverse-btn');
+  const title = qs('ds-title');
+  if (step === 'study' || step === 'list') {
+    title.textContent = (deckShare && deckShare.name) || '共有デッキ';
+    backBtn.style.display = '';
+  } else {
+    title.textContent = '共有デッキ';
+    backBtn.style.display = 'none';
+  }
+  shuffleBtn.style.display = (step === 'study') ? '' : 'none';
+  listReverseBtn.style.display = (step === 'list') ? '' : 'none';
+}
+
+function dsGoIntro() {
+  showDsStep('intro');
 }
 
 // ── 画像（renderImgList相当）：save_cardsはimgs_q/imgs_a/imgs_eの中身を
@@ -141,13 +169,16 @@ function setMathText(el, raw) {
 //  読み込み
 // ============================================================
 let deckShare = null;   // /deck_share_info のレスポンス
+let dsMode = 'flash';    // 'flash' | 'quiz'（choice_modeかつ選択式で遊べる問題があるか）
 let dsCards = [];        // 暗記カードモードで使う順番（シャッフル可）
 let dsIdx = 0;
+let dsReverse = false;   // 暗記カードの問題/解答を逆にするか（案内画面のチェックボックスから）
+let dsListReverse = false; // 一覧で見るモードの反転（暗記カードとは独立にトグル可能）
 
 async function init() {
   const token = getToken();
   if (!token) {
-    showStep('error');
+    showDsStep('error');
     qs('ds-error-msg').textContent = 'リンクが正しくありません。共有してくれた人にもう一度リンクを確認してください。';
     return;
   }
@@ -155,21 +186,19 @@ async function init() {
     const res = await fetch(`${API_BASE}deck_share_info?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
     const data = await res.json();
     if (!data.ok) {
-      showStep('error');
+      showDsStep('error');
       qs('ds-error-msg').textContent = data.error || 'このリンクは無効です。';
       return;
     }
     deckShare = data;
-    renderDeckMeta();
+    document.title = `${deckShare.name || '共有デッキ'} — 共有デッキ`;
     const playable = getPlayableChoiceCards();
-    if (data.choice_mode && playable.length) {
-      startQuizMode(playable);
-    } else {
-      startFlashMode((data.cards || []).slice());
-    }
-    showStep('body');
+    dsMode = (data.choice_mode && playable.length) ? 'quiz' : 'flash';
+    qs('ds-reverse-row').style.display = (dsMode === 'quiz') ? 'none' : '';
+    renderIntroMeta();
+    showDsStep('intro');
   } catch (e) {
-    showStep('error');
+    showDsStep('error');
     qs('ds-error-msg').textContent = 'サーバーに接続できませんでした。通信環境をご確認のうえ、再読み込みしてください。';
   }
 }
@@ -186,9 +215,7 @@ function getPlayableChoiceCards() {
     .filter(c => c.correct_indices.length >= 1);
 }
 
-function renderDeckMeta() {
-  document.title = `${deckShare.name || '共有デッキ'} — 共有デッキ`;
-  qs('ds-title').textContent = deckShare.name || '共有デッキ';
+function renderIntroMeta() {
   const meta = qs('ds-deck-meta');
   meta.innerHTML = '';
 
@@ -203,6 +230,7 @@ function renderDeckMeta() {
   const badges = [];
   if (deckShare.subject) badges.push(deckShare.subject);
   badges.push(`${cardCount}問`);
+  if (dsMode === 'quiz') badges.push('選択式クイズ');
   if (deckShare.incomplete) badges.push('作成中のデッキ');
   if (deckShare.shared_by) badges.push(`${deckShare.shared_by}さんが共有`);
   badges.forEach(t => {
@@ -214,39 +242,44 @@ function renderDeckMeta() {
   meta.appendChild(sub);
 }
 
+// ── 案内画面からの開始 ──────────────────────────
+function dsStart() {
+  dsReverse = qs('ds-reverse-checkbox').checked;
+  if (dsMode === 'quiz') {
+    startQuizMode(getPlayableChoiceCards());
+  } else {
+    startFlashMode((deckShare.cards || []).slice());
+  }
+  showDsStep('study');
+}
+
+function shuffleDeckShare() {
+  if (dsMode === 'quiz') {
+    qs('ds-quiz-done').style.display = 'none';
+    qs('ds-quiz-play').style.display = '';
+    startQuizMode(getPlayableChoiceCards());
+  } else {
+    qs('ds-done').style.display = 'none';
+    qs('ds-flash-content').style.display = 'flex';
+    for (let i = dsCards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [dsCards[i], dsCards[j]] = [dsCards[j], dsCards[i]];
+    }
+    dsIdx = 0;
+    renderFlashCard();
+  }
+}
+
 // ============================================================
 //  暗記カード（フリップ学習）モード
 // ============================================================
 function startFlashMode(cards) {
   qs('ds-flash').style.display = 'flex';
-  qs('ds-shuffle-btn').style.display = '';
+  qs('ds-done').style.display = 'none';
+  qs('ds-flash-content').style.display = 'flex';
   dsCards = cards;
   dsIdx = 0;
   renderFlashCard();
-}
-
-function shuffleDeckShare() {
-  for (let i = dsCards.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [dsCards[i], dsCards[j]] = [dsCards[j], dsCards[i]];
-  }
-  dsIdx = 0;
-  qs('ds-done').style.display = 'none';
-  qs('ds-flash-content').style.display = 'flex';
-  qs('ds-quiz-done').style.display = 'none';
-  qs('ds-quiz-play').style.display = '';
-  if (deckShare.choice_mode && getPlayableChoiceCards().length) {
-    dsQuizCards = getPlayableChoiceCards();
-    for (let i = dsQuizCards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [dsQuizCards[i], dsQuizCards[j]] = [dsQuizCards[j], dsQuizCards[i]];
-    }
-    dsQuizIdx = 0;
-    dsQuizScore = 0;
-    renderQuizQuestion();
-  } else {
-    renderFlashCard();
-  }
 }
 
 function renderFlashCard() {
@@ -259,14 +292,19 @@ function renderFlashCard() {
     return;
   }
   const c = dsCards[dsIdx];
-  setMathText(qs('ds-q-text'), c.question);
-  renderImgList(qs('ds-q-imgs'), c.imgs_q);
+  const qText = dsReverse ? c.answer : c.question;
+  const qImgs = dsReverse ? c.imgs_a : c.imgs_q;
+  const aText = dsReverse ? c.question : c.answer;
+  const aImgs = dsReverse ? c.imgs_q : c.imgs_a;
+
+  setMathText(qs('ds-q-text'), qText);
+  renderImgList(qs('ds-q-imgs'), qImgs);
   qs('ds-answer-panel').classList.remove('show');
   qs('ds-reveal-bar').style.display = 'flex';
   qs('ds-nav').style.display = 'none';
 
-  setMathText(qs('ds-a-text'), c.answer);
-  renderImgList(qs('ds-a-imgs'), c.imgs_a);
+  setMathText(qs('ds-a-text'), aText);
+  renderImgList(qs('ds-a-imgs'), aImgs);
   const explWrap = qs('ds-expl-wrap');
   if (c.explanation) { setMathText(qs('ds-e-text'), c.explanation); explWrap.style.display = ''; }
   else { explWrap.style.display = 'none'; }
@@ -300,7 +338,8 @@ let dsQuizAnswered = false;
 
 function startQuizMode(playable) {
   qs('ds-quiz').style.display = 'flex';
-  qs('ds-shuffle-btn').style.display = '';
+  qs('ds-quiz-done').style.display = 'none';
+  qs('ds-quiz-play').style.display = '';
   dsQuizCards = playable;
   // 出題順をシャッフル（Fisher-Yates）
   for (let i = dsQuizCards.length - 1; i > 0; i--) {
@@ -368,6 +407,93 @@ function dsQuizNext() {
   } else {
     renderQuizQuestion();
   }
+}
+
+// ============================================================
+//  一覧で見る：問題と答えをまとめて表示（Cardmaker-listview.jsの簡易版）
+// ============================================================
+function dsOpenList() {
+  dsListReverse = qs('ds-reverse-checkbox').checked;
+  renderDsListView();
+  showDsStep('list');
+}
+
+function dsToggleListReverse() {
+  dsListReverse = !dsListReverse;
+  renderDsListView();
+}
+
+function renderDsListView() {
+  const cards = (deckShare && deckShare.cards) || [];
+  const wrap = qs('ds-list-items');
+  wrap.innerHTML = '';
+  if (!cards.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-msg';
+    empty.textContent = 'カードがありません';
+    wrap.appendChild(empty);
+    return;
+  }
+  cards.forEach((c, i) => {
+    const qText = dsListReverse ? c.answer : c.question;
+    const qImgs = dsListReverse ? c.imgs_a : c.imgs_q;
+    const aText = dsListReverse ? c.question : c.answer;
+    const aImgs = dsListReverse ? c.imgs_q : c.imgs_a;
+
+    const item = document.createElement('div');
+    item.className = 'list-view-item';
+
+    const head = document.createElement('div');
+    head.className = 'list-view-item-head';
+    const num = document.createElement('div');
+    num.className = 'list-view-item-num';
+    num.textContent = i + 1;
+    head.appendChild(num);
+    item.appendChild(head);
+
+    const qTag = document.createElement('div');
+    qTag.className = 'list-view-q-tag';
+    qTag.textContent = '問題';
+    item.appendChild(qTag);
+    const qEl = document.createElement('div');
+    qEl.className = 'list-view-q-text';
+    item.appendChild(qEl);
+    setMathText(qEl, qText);
+    if (qImgs && qImgs.length) {
+      const qImgWrap = document.createElement('div');
+      qImgWrap.className = 'list-view-imgs';
+      renderImgList(qImgWrap, qImgs);
+      item.appendChild(qImgWrap);
+    }
+
+    const aTag = document.createElement('div');
+    aTag.className = 'list-view-a-tag';
+    aTag.textContent = '解答';
+    item.appendChild(aTag);
+    const aEl = document.createElement('div');
+    aEl.className = 'list-view-a-text';
+    item.appendChild(aEl);
+    setMathText(aEl, aText);
+    if (aImgs && aImgs.length) {
+      const aImgWrap = document.createElement('div');
+      aImgWrap.className = 'list-view-imgs';
+      renderImgList(aImgWrap, aImgs);
+      item.appendChild(aImgWrap);
+    }
+
+    if (c.explanation) {
+      const eTag = document.createElement('div');
+      eTag.className = 'list-view-e-tag';
+      eTag.textContent = '解説';
+      item.appendChild(eTag);
+      const eEl = document.createElement('div');
+      eEl.className = 'list-view-e-text';
+      item.appendChild(eEl);
+      setMathText(eEl, c.explanation);
+    }
+
+    wrap.appendChild(item);
+  });
 }
 
 init();
