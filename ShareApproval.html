@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>共有の確認 — 1I勉強会</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/Style.css">
+<link rel="stylesheet" href="/Login.css">
+<link rel="stylesheet" href="/ShareApproval.css">
+</head>
+<body>
+<div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
+  <div style="max-width:340px;width:100%;text-align:center;">
+    <div class="jsfb-spinner" style="width:40px;height:40px;margin:0 auto 16px;border:4px solid #cbd5e1;border-top-color:#2563eb;border-radius:50%;animation:jsfb-spin 1s linear infinite;"></div>
+    <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">読み込み中です…</div>
+    <div style="font-size:13px;color:#64748b;line-height:1.6;margin-bottom:18px;">しばらく待っても変わらない場合は、下のボタンからそのまま操作するか、問題を報告できます</div>
+    <button type="button" id="jsfb-dismiss" onclick="document.getElementById('js-fail-fallback').remove()" style="display:none;width:100%;margin-bottom:10px;background:#fff;color:#2563eb;border:1px solid #2563eb;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;">そのまま操作する</button>
+    <details style="text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#475569;">問題を報告する</summary>
+      <form method="POST" action="/api/report_problem" style="margin-top:10px;">
+        <input type="hidden" name="guild_id" value="1509880344806162544">
+        <input type="hidden" name="page" value="共有の確認（ShareApproval.html）">
+        <input type="hidden" name="return_url" value="/ShareApproval.html">
+        <textarea name="message" rows="3" maxlength="500" placeholder="症状を書いてください（省略可）" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+        <button type="submit" style="margin-top:8px;width:100%;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;">送信する</button>
+      </form>
+    </details>
+  </div>
+</div>
+<style>
+@keyframes jsfb-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .jsfb-spinner { animation: none; } }
+</style>
+<script>
+(function () {
+  setTimeout(function () {
+    var btn = document.getElementById('jsfb-dismiss');
+    if (btn) btn.style.display = '';
+  }, 4000);
+  setTimeout(function () {
+    var el = document.getElementById('js-fail-fallback');
+    if (el) el.remove();
+  }, 10000);
+})();
+</script>
+
+
+<main class="login-wrap">
+
+  <div class="login-logo">
+    <div class="login-logo-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px" aria-hidden="true"><circle cx="6" cy="12" r="2.6" fill="#0d9488" stroke="none"/><circle cx="18" cy="6" r="2.6" fill="#0d9488" stroke="none"/><circle cx="18" cy="18" r="2.6" fill="#0d9488" stroke="none"/><path d="M8.2 10.8l7.6-4.1"/><path d="M8.2 13.2l7.6 4.1"/></svg></div>
+    <div class="login-logo-name">共有の確認</div>
+    <div class="login-logo-sub">Discordから届いたリンクの確認ページです</div>
+  </div>
+
+  <!-- 読み込み中 -->
+  <div class="login-card" id="step-loading">
+    <div class="login-loading-wrap">
+      <div class="login-spinner-lg"></div>
+      <div class="login-loading-msg">確認しています…</div>
+    </div>
+  </div>
+
+  <!-- エラー（リンク無効・期限切れなど） -->
+  <div class="login-card" id="step-error" style="display:none">
+    <h1 class="login-title">確認できませんでした</h1>
+    <div class="error-bar" id="error-msg"></div>
+  </div>
+
+  <!-- 本体 -->
+  <div class="login-card" id="step-body" style="display:none">
+    <h1 class="login-title">共有リンクの発行を許可しますか？</h1>
+
+    <p class="login-reg-desc" id="sa-already-gone" style="display:none">
+      対象のデッキは既に見つかりません（削除済みの可能性があります）。
+    </p>
+
+    <div class="sa-field">
+      <div class="sa-field-label">依頼者</div>
+      <div class="sa-field-value" id="sa-requester"></div>
+    </div>
+
+    <div class="sa-field">
+      <div class="sa-field-label">理由</div>
+      <div class="sa-field-value sa-reason" id="sa-reason"></div>
+    </div>
+
+    <div class="sa-field">
+      <div class="sa-field-label">対象のカードデッキ</div>
+      <div class="sa-field-value" id="sa-deck-name"></div>
+    </div>
+
+    <div class="sa-note">
+      承諾すると、ログインしていない人でも閲覧できる（内容の変更は一切できない）リンクを、依頼者が発行できるようになります。ここで承諾しても、この場ですぐにリンクが発行されるわけではありません。
+    </div>
+
+    <div class="error-bar" id="sa-action-err" style="display:none"></div>
+    <div class="sa-result" id="sa-result" style="display:none"></div>
+
+    <div class="sa-btn-row" id="sa-btn-row">
+      <button class="btn-primary" id="btn-approve">承諾する</button>
+      <button class="btn-danger" id="btn-reject">拒否する</button>
+    </div>
+  </div>
+
+</main>
+
+<script src="/Icons.js"></script>
+<script src="/SwipeGuard.js"></script>
+<script src="/ShareApproval.js"></script>
+</body>
+</html>

@@ -1795,6 +1795,9 @@ function openDeckMenu(id) {
   const deck = decks.find(d => d.id === id);
   document.getElementById('menu-deck-name').textContent = deck.name;
   document.getElementById('menu-unpublish-item').style.display = deck.filename ? '' : 'none';
+  // ★ 追加：共有リンクはサーバー上のファイル（filename）が無いと発行できない
+  //   （非公開＝ローカルのみのデッキには対象が無いため）。
+  document.getElementById('menu-share-item').style.display = deck.filename ? '' : 'none';
   // ★ 追加（2026/08/21）：クイズ過去問デッキは問題を編集できない
   //   （フォルダ移動・デッキ名の変更・非公開に戻す・削除は引き続き可能）。
   //   サーバー側（save_cards）でも強制しているが、そもそもメニューに
@@ -1862,6 +1865,204 @@ async function menuUnpublish() {
     showBanner('非公開に戻しました', '#f1f5f9', '#334155', Icons.cmHtml('unpublish', {size:15}));
   } catch(e) {
     await showCmAlert({ title: 'GitHubからの削除に失敗しました', desc: e.message });
+  }
+}
+
+// ── 共有リンク（ログインしていない人にもデッキ1件だけ閲覧専用で見せる） ──
+// ★ 追加（2026/08/24）：デッキメニューの「共有リンクを作る」から開く。
+//   見せるのはこのデッキの中身だけ・変更権は一切与えない・1日3件までの
+//   仕組みはすべてサーバー側（create_deck_share等）で強制している。
+let deckShareCtx = null; // { filename, deckId }
+
+async function menuShare() {
+  closeModal('modal-deck-menu');
+  const deck = decks.find(d => d.id === menuTargetId);
+  if (!deck || !deck.filename) return;
+  deckShareCtx = { filename: deck.filename, deckId: deck.id };
+  document.getElementById('deck-share-err').style.display = 'none';
+  document.getElementById('deck-share-quota').textContent = '';
+  document.getElementById('deck-share-list').innerHTML = '';
+  openModal('modal-deck-share');
+  await loadDeckShareList();
+}
+
+async function loadDeckShareList() {
+  if (!deckShareCtx) return;
+  try {
+    const session = getLoginSession();
+    const qs = new URLSearchParams({ guild_id: GUILD_ID, filename: deckShareCtx.filename });
+    const res = await fetch(`${API_BASE}list_deck_shares?${qs.toString()}`, {
+      cache: 'no-store',
+      headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '取得に失敗しました');
+    document.getElementById('deck-share-quota').textContent = `本日あと${data.remaining_today}件作成できます（1日3件まで）`;
+    renderDeckShareList(data.shares || []);
+  } catch (e) {
+    document.getElementById('deck-share-quota').textContent = '';
+  }
+}
+
+function renderDeckShareList(shares) {
+  const wrap = document.getElementById('deck-share-list');
+  wrap.innerHTML = '';
+  if (!shares.length) return;
+  shares.forEach(s => {
+    const row = document.createElement('div');
+    row.style.cssText = 'background:var(--bg);border-radius:var(--r-md);padding:10px 12px;margin-bottom:8px';
+
+    const urlRow = document.createElement('div');
+    urlRow.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+    const urlBox = document.createElement('div');
+    urlBox.style.cssText = 'flex:1;min-width:0;font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    urlBox.textContent = s.url;
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn btn-ghost btn-sm';
+    copyBtn.textContent = 'コピー';
+    copyBtn.addEventListener('click', () => copyShareLink(s.url, copyBtn));
+    urlRow.appendChild(urlBox);
+    urlRow.appendChild(copyBtn);
+    row.appendChild(urlRow);
+
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:11.5px;color:var(--text-tertiary);margin-bottom:6px';
+    const expiresStr = new Date(s.expires_at * 1000).toLocaleDateString('ja-JP');
+    meta.textContent = `${s.created_by_nickname || '（不明）'}さんが作成・${expiresStr}まで有効`;
+    row.appendChild(meta);
+
+    const revokeBtn = document.createElement('button');
+    revokeBtn.type = 'button';
+    revokeBtn.className = 'btn btn-ghost btn-sm';
+    revokeBtn.style.color = '#dc2626';
+    revokeBtn.textContent = 'このリンクを取り消す';
+    revokeBtn.addEventListener('click', () => revokeDeckShare(s.token));
+    row.appendChild(revokeBtn);
+
+    wrap.appendChild(row);
+  });
+}
+
+async function copyShareLink(url, btn) {
+  try {
+    await navigator.clipboard.writeText(url);
+    if (btn) { const orig = btn.textContent; btn.textContent = 'コピーしました'; setTimeout(() => btn.textContent = orig, 1500); }
+  } catch (e) {
+    await showCmAlert({ title: 'コピーできませんでした', desc: 'リンクを長押し（選択）してコピーしてください。' });
+  }
+}
+
+async function createDeckShareLink() {
+  if (!deckShareCtx) return;
+  const errEl = document.getElementById('deck-share-err');
+  errEl.style.display = 'none';
+  const btn = document.getElementById('deck-share-create-btn');
+  setBtnLoading(btn, true, '作成中…');
+  try {
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}create_deck_share`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session?.session_token, filename: deckShareCtx.filename }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    setBtnLoading(btn, false);
+    if (!data.ok) {
+      if (data.error === 'creator_approval_required') {
+        const deck = decks.find(d => d.filename === deckShareCtx.filename);
+        closeModal('modal-deck-share');
+        openRequestShareModal(deckShareCtx.filename, deck ? deck.name : deckShareCtx.filename, data.owner_nickname);
+        return;
+      }
+      if (data.error === 'share_limit_reached') {
+        errEl.textContent = '本日の共有作成上限（3件）に達しています。明日また作成できます。';
+        errEl.style.display = '';
+        return;
+      }
+      throw new Error(data.error || '作成に失敗しました');
+    }
+    await loadDeckShareList();
+    showBanner('共有リンクを作成しました', '#dcfce7', '#166534', Icons.cmHtml('globe', {size:15}));
+    copyShareLink(data.url);
+  } catch (e) {
+    setBtnLoading(btn, false);
+    errEl.textContent = e.message || '通信環境を確認してもう一度お試しください。';
+    errEl.style.display = '';
+  }
+}
+
+async function revokeDeckShare(token) {
+  const ok = await showCmConfirm({
+    title: 'このリンクを取り消しますか？',
+    desc: 'このリンクを持っている人は、以後このデッキを見られなくなります。',
+    okLabel: '取り消す', okStyle: 'danger',
+  });
+  if (!ok) return;
+  try {
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}revoke_deck_share`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session?.session_token, token }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '取り消しに失敗しました');
+    await loadDeckShareList();
+  } catch (e) {
+    await showCmAlert({ title: '取り消しに失敗しました', desc: e.message });
+  }
+}
+
+// ── 共有の確認依頼（作成者本人以外が共有リンクを作りたいとき） ──
+// menuShare→createDeckShareLink() がサーバーから creator_approval_required を
+// 受け取ったときに呼ばれる。ここでは何も発行せず、理由を添えて
+// /request_deck_share を叩き、作成者にDiscordで確認してもらうだけ。
+let requestShareCtx = null; // { filename, deckName }
+
+function openRequestShareModal(filename, deckName, ownerNickname) {
+  requestShareCtx = { filename, deckName };
+  document.getElementById('request-share-desc').textContent =
+    `「${deckName}」の作成者（${ownerNickname || '作成者'}さん）に共有の確認が必要です。理由を書いて送信すると、作成者にDiscordで確認が届きます。承諾されたら、もう一度「共有リンクを作る」を押すと発行できます。`;
+  document.getElementById('request-share-reason').value = '';
+  document.getElementById('request-share-err').style.display = 'none';
+  const btn = document.getElementById('request-share-submit-btn');
+  btn.disabled = false; btn.textContent = '送信する';
+  openModal('modal-request-share');
+}
+
+async function submitRequestShare() {
+  if (!requestShareCtx) return;
+  const reason = document.getElementById('request-share-reason').value.trim();
+  const errEl = document.getElementById('request-share-err');
+  errEl.style.display = 'none';
+  if (!reason) {
+    errEl.textContent = '理由を入力してください';
+    errEl.style.display = '';
+    return;
+  }
+  const btn = document.getElementById('request-share-submit-btn');
+  btn.disabled = true; btn.textContent = '送信中…';
+  try {
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}request_deck_share`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        guild_id: GUILD_ID, session_token: session?.session_token,
+        filename: requestShareCtx.filename, reason,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '送信に失敗しました');
+    closeModal('modal-request-share');
+    const via = data.notified_via === 'web_pending'
+      ? '作成者がDiscord未連携のため、次回サイトを開いたときに確認されます。'
+      : '作成者にDiscordで確認を送りました。承認されたら、もう一度「共有リンクを作る」を押すと発行できます。';
+    showBanner(via, '#dcfce7', '#166534', Icons.html('mailSent', {size:15}));
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '送信する';
+    errEl.textContent = e.message;
+    errEl.style.display = '';
   }
 }
 

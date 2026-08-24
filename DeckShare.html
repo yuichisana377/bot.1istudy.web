@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>共有デッキ — 1I勉強会</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/Style.css">
+<link rel="stylesheet" href="/Cardmaker.css">
+<link rel="stylesheet" href="/DeckShare.css">
+<!-- ★ 数式（分数・ルートなど）をきれいに表示するためのKaTeX（Cardmaker.htmlと同じバージョン） -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"></script>
+</head>
+<body>
+<div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
+  <div style="max-width:340px;width:100%;text-align:center;">
+    <div class="jsfb-spinner" style="width:40px;height:40px;margin:0 auto 16px;border:4px solid #cbd5e1;border-top-color:#2563eb;border-radius:50%;animation:jsfb-spin 1s linear infinite;"></div>
+    <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">読み込み中です…</div>
+    <div style="font-size:13px;color:#64748b;line-height:1.6;">しばらく待っても変わらない場合は、リンクを送ってくれた人に確認してください</div>
+  </div>
+</div>
+<style>
+@keyframes jsfb-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .jsfb-spinner { animation: none; } }
+</style>
+<script>
+(function () {
+  setTimeout(function () {
+    var el = document.getElementById('js-fail-fallback');
+    if (el) el.remove();
+  }, 10000);
+})();
+</script>
+
+<!-- ══════════ このページは共有リンク専用の閲覧ビューアです ══════════
+     ★ ログイン不要・このデッキ以外の情報（予定・他のデッキ等）は一切
+       表示・取得しません。編集機能も一切ありません（見るだけ）。 -->
+<div class="screen active" id="screen-ds">
+  <div class="topbar">
+    <div class="topbar-title" id="ds-title">共有デッキ</div>
+    <button class="btn btn-ghost btn-sm" id="ds-shuffle-btn" onclick="shuffleDeckShare()" style="display:none" title="シャッフル"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#7c3aed"><path d="M4 6.5h3.3l9 11H18" stroke-width="2.4" stroke-linecap="round"/><path d="M4 17.5h3.3l2.2-2.9" stroke-width="2.4" stroke-linecap="round"/><path d="M14.7 6.5H18" stroke-width="2.4" stroke-linecap="round"/><path d="M16.2 3.1l4.6 3.4-4.6 3.4Z" fill="currentColor" stroke="none"/><path d="M16.2 14.1l4.6 3.4-4.6 3.4Z" fill="currentColor" stroke="none"/></svg></button>
+  </div>
+
+  <!-- 読み込み中 -->
+  <div class="cm-scroll-body" id="ds-step-loading">
+    <div class="inner ds-center-wrap">
+      <div class="ds-spinner"></div>
+      <div class="ds-loading-msg">読み込んでいます…</div>
+    </div>
+  </div>
+
+  <!-- エラー（無効・期限切れ・取り消し済みなど） -->
+  <div class="cm-scroll-body" id="ds-step-error" style="display:none">
+    <div class="inner">
+      <div class="ds-error-box" id="ds-error-msg"></div>
+    </div>
+  </div>
+
+  <!-- 本体：ヘッダー（デッキ名・件数・共有情報）＋暗記カード or 選択式クイズ -->
+  <div id="ds-body" style="display:none;flex:1;min-height:0;flex-direction:column">
+    <div class="ds-deck-meta" id="ds-deck-meta"></div>
+
+    <!-- 暗記カード（フリップ学習） -->
+    <div id="ds-flash" style="display:none;flex:1;min-height:0;flex-direction:column">
+      <div class="study-done" id="ds-done" style="display:none">
+        <div class="study-done-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3v3.4"/><path d="M12 17.6V21"/><path d="M3 12h3.4"/><path d="M17.6 12H21"/><path d="M5.8 5.8l2.4 2.4"/><path d="M15.8 15.8l2.4 2.4"/><path d="M18.2 5.8l-2.4 2.4"/><path d="M8.2 15.8l-2.4 2.4"/></svg></div>
+        <div class="study-done-title">完了！</div>
+        <div class="study-done-sub" id="ds-done-sub"></div>
+        <button class="btn btn-outline" onclick="shuffleDeckShare()">もう一度</button>
+      </div>
+
+      <div id="ds-flash-content" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
+        <div class="study-top">
+          <div class="study-progress-row">
+            <div class="study-progress-bar"><div class="study-progress-fill" id="ds-prog-fill"></div></div>
+            <div class="study-progress-label" id="ds-prog-label"></div>
+          </div>
+          <div class="study-tag-row"><div class="study-q-tag">問題</div></div>
+          <div class="study-q-text" id="ds-q-text"></div>
+          <div class="study-q-imgs" id="ds-q-imgs"></div>
+        </div>
+
+        <div class="study-bottom">
+          <div class="study-answer-panel" id="ds-answer-panel">
+            <div class="answer-tag">解答</div>
+            <div class="answer-text" id="ds-a-text"></div>
+            <div class="answer-imgs" id="ds-a-imgs"></div>
+            <div id="ds-expl-wrap" style="display:none">
+              <hr class="expl-divider">
+              <div class="expl-tag">解説</div>
+              <div class="expl-text" id="ds-e-text"></div>
+            </div>
+          </div>
+          <div class="study-reveal-bar" id="ds-reveal-bar">
+            <button class="btn btn-ghost" id="ds-prev-pre" onclick="dsMove(-1)" disabled>← 前へ</button>
+            <button class="btn btn-blue" onclick="dsReveal()">答えを見る</button>
+          </div>
+          <div class="study-nav" id="ds-nav" style="display:none">
+            <button class="btn btn-ghost" id="ds-prev" onclick="dsMove(-1)" disabled>← 前へ</button>
+            <button class="btn btn-blue" id="ds-next" style="flex:1" onclick="dsMove(1)">次へ →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 選択式クイズ（choice_modeデッキ用） -->
+    <div id="ds-quiz" class="cm-scroll-body" style="display:none;flex:1;min-height:0">
+      <div class="inner">
+        <div id="ds-quiz-done" style="display:none;text-align:center">
+          <div class="study-done-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3v3.4"/><path d="M12 17.6V21"/><path d="M3 12h3.4"/><path d="M17.6 12H21"/><path d="M5.8 5.8l2.4 2.4"/><path d="M15.8 15.8l2.4 2.4"/><path d="M18.2 5.8l-2.4 2.4"/><path d="M8.2 15.8l-2.4 2.4"/></svg></div>
+          <div class="study-done-title" id="ds-quiz-score"></div>
+          <button class="btn btn-outline" style="width:100%;margin-top:1rem" onclick="shuffleDeckShare()">もう一度挑戦する</button>
+        </div>
+        <div id="ds-quiz-play">
+          <div class="study-progress-row">
+            <div class="study-progress-bar"><div class="study-progress-fill" id="ds-qp-prog-fill"></div></div>
+            <div class="study-progress-label" id="ds-qp-prog-label"></div>
+          </div>
+          <div class="study-q-text" id="ds-qp-q-text" style="margin-top:1rem"></div>
+          <div class="study-q-imgs" id="ds-qp-q-imgs"></div>
+          <div class="qp-choices" id="ds-qp-choices"></div>
+          <div class="qp-next-wrap" id="ds-qp-next-wrap" style="display:none">
+            <button class="btn btn-blue" style="width:100%" onclick="dsQuizNext()" id="ds-qp-next-btn">次へ →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/Icons.js"></script>
+<script src="/DeckShare.js"></script>
+</body>
+</html>

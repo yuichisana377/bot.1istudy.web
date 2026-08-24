@@ -636,6 +636,9 @@
     <div class="menu-item" onclick="menuMove()">
       <span class="menu-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 6.7h6l2 2h8v10.6H4Z" fill="#f5a623" stroke="none"/></svg></span>フォルダに移動する
     </div>
+    <div class="menu-item" id="menu-share-item" onclick="menuShare()" style="display:none">
+      <span class="menu-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="6" cy="12" r="2.6" fill="#0d9488" stroke="none"/><circle cx="18" cy="6" r="2.6" fill="#0d9488" stroke="none"/><circle cx="18" cy="18" r="2.6" fill="#0d9488" stroke="none"/><path d="M8.2 10.8l7.6-4.1"/><path d="M8.2 13.2l7.6 4.1"/></svg></span>共有リンクを作る
+    </div>
     <div class="menu-item" id="menu-unpublish-item" onclick="menuUnpublish()" style="display:none">
       <span class="menu-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="7.2" fill="#dc2626" stroke="none"/></svg></span>非公開に戻す
     </div>
@@ -657,6 +660,40 @@
     <div class="modal-btns">
       <button class="btn btn-ghost" onclick="closeModal('modal-request-delete')">キャンセル</button>
       <button class="btn btn-blue" id="request-delete-submit-btn" onclick="submitRequestDelete()">送信する</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 共有リンク（ログインしていない人にもデッキ1件だけ閲覧専用で見せるリンク） -->
+<div class="modal-overlay" id="modal-deck-share" onclick="onOverlayClick(event,'modal-deck-share')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">共有リンク</div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:.85rem">
+      ログインしていない人にも、このデッキだけを閲覧専用で見せられるリンクです。予定など他の情報は一切見えず、内容の変更もできません。有効期限は発行から30日間です。
+    </div>
+    <div id="deck-share-quota" style="font-size:12px;color:var(--text-tertiary);margin-bottom:.7rem"></div>
+    <div id="deck-share-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"></div>
+    <button class="btn btn-blue" id="deck-share-create-btn" style="width:100%;margin-bottom:.9rem" onclick="createDeckShareLink()">共有リンクを作成する</button>
+    <div id="deck-share-list"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" style="width:100%" onclick="closeModal('modal-deck-share')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 共有の確認依頼（作成者本人以外が共有リンクを作りたいとき） -->
+<div class="modal-overlay" id="modal-request-share" onclick="onOverlayClick(event,'modal-request-share')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">本人の確認が必要です</div>
+    <div id="request-share-desc" style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:.85rem"></div>
+    <label class="modal-input-label" style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">共有したい理由</label>
+    <textarea class="modal-input" id="request-share-reason" style="min-height:80px;margin-bottom:.5rem" maxlength="500" placeholder="例：他校の友達に見せたいため など"></textarea>
+    <div id="request-share-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal('modal-request-share')">キャンセル</button>
+      <button class="btn btn-blue" id="request-share-submit-btn" onclick="submitRequestShare()">送信する</button>
     </div>
   </div>
 </div>
@@ -725,5 +762,6 @@
 <script src="/Dropdown.js"></script>
 <script src="/Cardmaker.js"></script>
 <script src="/PendingDeleteCheck.js"></script>
+<script src="/PendingShareCheck.js"></script>
 </body>
 </html>

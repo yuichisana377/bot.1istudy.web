@@ -150,6 +150,14 @@
           </div>
           <ul class="service-update-list">
             <li class="service-update-item">
+              <span class="service-update-date">2026/08/24</span>
+              <span class="service-update-text">予定一覧が、通信の不調などで読み込みに失敗した際に「予定はありません」と誤って表示されてしまう不具合を修正しました。読み込みに失敗した場合はその旨を表示し、ボタンで再読み込みできます。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/08/24</span>
+              <span class="service-update-text">CardMakerのデッキメニューに「共有リンクを作る」を追加しました。ログインしていない人にも、指定した1つのデッキだけを閲覧専用（編集不可・他の予定やデッキは見えません）で見せられます。作成できるのはそのデッキの作成者本人のみで、本人以外が作りたい場合は作成者への確認・承認が必要です。1人が作成できる件数は1日3件まで、リンクの有効期限は発行から30日間です。</span>
+            </li>
+            <li class="service-update-item">
               <span class="service-update-date">2026/08/21</span>
               <span class="service-update-text">CardMakerの「クイズ過去問」デッキを、他のフォルダへ移動できるようにしました（以前は「クイズ過去問」フォルダの外に出せませんでした）。デッキ名の変更・非公開に戻す・削除は引き続きできますが、問題の中身は編集できません（誤って過去の記録が書き換わらないようにするためです）。</span>
             </li>
@@ -254,5 +262,6 @@
 <script src="/Dialog.js"></script>
 <script src="/ServiceInfo.js"></script>
 <script src="/PendingDeleteCheck.js"></script>
+<script src="/PendingShareCheck.js"></script>
 </body>
 </html>
