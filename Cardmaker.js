@@ -134,6 +134,24 @@ function applyAccountHeader() {
   }
   if (nicknameEl) nicknameEl.textContent = STUDENT.nickname;
   if (idEl)       idEl.textContent       = STUDENT.id;
+
+  // ★ 追加：右上のアカウント表示（アバター/ニックネーム/学籍番号）は
+  //   以前は見た目だけで押せなかった。StudyLog.jsのヘッダー
+  //   （attachAccountClickHandlers）・ドロワー下部のアカウント表示
+  //   （renderDrawerAccount）と同じ「タップでアカウント設定を開く」に
+  //   揃える。CardMaker自体はアカウント設定モーダルを持たないため、
+  //   ドロワーの「⚙️ アカウント設定」と同じ遷移先（StudyLog.js側が
+  //   ?openAccount=1を見て自動でモーダルを開く）に飛ばす。
+  //   ここから開けば、共有中のデッキ共有リンクの一覧・取り消しにもたどり着ける。
+  var headerAccountEl = document.querySelector('.header-account');
+  if (headerAccountEl && !headerAccountEl.dataset.clickBound) {
+    headerAccountEl.dataset.clickBound = '1';
+    headerAccountEl.style.cursor = 'pointer';
+    headerAccountEl.title = 'タップしてアカウント設定を開く';
+    headerAccountEl.addEventListener('click', function() {
+      location.href = '/StudyLog.html?openAccount=1';
+    });
+  }
 }
 applyAccountHeader();
 
