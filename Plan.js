@@ -285,7 +285,10 @@ async function api(path, opts = {}) {
     (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : {},
     opts.headers || {}
   );
-  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { ...opts, headers });
+  // ★ 追加：Cardmaker.js等と同じ理由（ブラウザ・中間プロキシのGETキャッシュ対策）。
+  //   サーバー側もNO_CACHE_PATHSでCache-Control: no-storeを返すようにしたが、
+  //   fetch側でも明示しておくことで二重に確実にする。
+  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { cache: 'no-store', ...opts, headers });
   return res.json();
 }
 
@@ -1196,6 +1199,7 @@ async function checkScheduleUpdate() {
   try {
     const session = getLoginSession();
     const res = await fetch(`${API_BASE}list_schedule?guild_id=${GUILD_ID}&scope=future`, {
+      cache: 'no-store',
       headers: (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : {},
     });
     const txt = await res.text();
