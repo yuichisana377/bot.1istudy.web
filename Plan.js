@@ -159,6 +159,7 @@ let detailTarget = null; // ★ 詳細モーダルで表示中の予定のlabel
 //   ことで直っていたのではなく、その際にもう一度読み込みが走って偶然成功して
 //   いただけと考えられる。取得失敗と「0件」を区別して表示するためのフラグ。
 let plansLoadFailed = false;
+let plansLoadErrorDetail = ''; // ★ 追加：原因調査用に、失敗理由（data.error等）を画面にも出す
 
 // ============================================================
 //  ★ 予定一覧・ログの段階読み込み（ページング）
@@ -312,6 +313,7 @@ async function loadPlans() {
   document.getElementById('plan-content').innerHTML = '';
   plans = [];
   plansLoadFailed  = false;
+  plansLoadErrorDetail = '';
   pastPlansOffset  = 0;
   pastPlansHasMore = false;
 
@@ -325,9 +327,25 @@ async function loadPlans() {
   if (!data.ok) data = await fetchFutureSchedule();
   if (data.ok) {
     plans = dedupePlans(data.plans);
+  } else if (data.error === 'not_logged_in') {
+    // ★ 追加：セッションが無効（期限切れ・破損等）な場合、これまでの
+    //   「読み込みに失敗しました」＋再読み込みボタンのままだと、何度
+    //   再試行してもセッション自体は直らないため、利用者が無限に
+    //   ボタンを押し続ける事故になる。これはページ全体のログイン
+    //   チェック（冒頭のIIFE）が「localStorageに何らかのsession_token
+    //   が存在するか」しか見ておらず、期限切れ等で無効なトークンでも
+    //   素通りしてしまうために起こる（サーバー側のresolve_sessionで
+    //   初めて無効と判定される）。ここで検知したら諦めて再ログインへ
+    //   誘導する（ログイン後にこのページへ戻れるようpost_login_redirect
+    //   を使う。冒頭のIIFEと同じ仕組み）。
+    sessionStorage.setItem('post_login_redirect', location.href);
+    localStorage.removeItem(SESSION_KEY);
+    location.replace(LOGIN_PATH);
+    return;
   } else {
     plans = [];
     plansLoadFailed = true;
+    plansLoadErrorDetail = data.error || data.__clientError || '';
   }
   document.getElementById('plan-loading').style.display = 'none';
   renderPlans();
@@ -344,7 +362,10 @@ async function fetchFutureSchedule() {
   try {
     return await api(`/list_schedule?guild_id=${GUILD_ID}&scope=future`);
   } catch (e) {
-    return { ok: false };
+    // ★ 追加：原因調査用に、通信自体の例外メッセージも拾っておく
+    //  （data.errorがサーバーからの明示的なエラーコード、__clientErrorが
+    //   fetch自体が失敗した場合のブラウザ側のエラーメッセージ）。
+    return { ok: false, __clientError: (e && e.message) || String(e) };
   }
 }
 
@@ -580,8 +601,14 @@ function renderPlans() {
     //   失敗したことが分かる表示＋再読み込みボタンを出す（本当に0件の
     //   ときとの見分けがつかない、というバグへの対策）。
     if (plansLoadFailed) {
+      // ★ 追加：原因調査のため、失敗理由（サーバーのエラーコード or
+      //   通信エラーのメッセージ）を小さく添えておく（無ければ何も出さない）。
+      const detailHtml = plansLoadErrorDetail
+        ? `<div class="error-msg" style="margin-top:-8px;padding-top:0;background:none;font-size:11px;color:var(--text-tertiary)">(詳細: ${esc(plansLoadErrorDetail)})</div>`
+        : '';
       el.innerHTML = loadMoreHtml +
         '<div class="error-msg">予定の読み込みに失敗しました。通信環境をご確認ください。</div>' +
+        detailHtml +
         '<button type="button" class="load-more-btn" onclick="loadPlans()">もう一度読み込む</button>';
       return;
     }
