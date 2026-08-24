@@ -252,7 +252,10 @@ async function finishSoloQuiz() {
   } catch (e) { /* スコア送信に失敗してもランキング表示は試みる */ }
 
   try {
-    const res = await fetch(`${API_BASE}quiz_archive_leaderboard?filename=${encodeURIComponent(deck.filename)}`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${API_BASE}quiz_archive_leaderboard?guild_id=${GUILD_ID}&filename=${encodeURIComponent(deck.filename)}`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Authorization': 'Bearer ' + session.session_token },
+    });
     const data = await res.json();
     if (data.ok) {
       renderQuizLeaderboard(data.leaderboard, session.student_id);

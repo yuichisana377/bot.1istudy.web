@@ -24,6 +24,17 @@ const SESSION_KEY = 'sl_session';
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+// ★ 追加（2026/08/24）：以前は閲覧（GET）は誰でもOKだったが、「予定一覧
+//   以外はサーバー参加済みの人だけ見られるように」というユーザーの明示的な
+//   指示で、Cardmaker.js/StudyLog.js/Quiz.jsと同様、開いた瞬間に未ログイン
+//   ならログイン画面へ誘導する全面ログイン必須のページに変更した。
+(function() {
+  var s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.replace(LOGIN_PATH);
+  }
+})();
 // ★ 追加：変更系の操作（投稿・実行済み切替・削除）はサーバー側もログイン必須に
 //   なった（2026/08/19）。以前あった「匿名のまま投稿する」選択肢は廃止し、
 //   未ログインなら必ずログイン画面へ誘導する。
@@ -138,9 +149,17 @@ window.addEventListener('load', () => {
 //  API ヘルパー
 // ============================================================
 async function api(path, opts = {}) {
-  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), {
-    headers: { "Content-Type": "application/json" }, ...opts
-  });
+  // ★ 追加（2026/08/24）：list_notices/get_notice等の閲覧系APIがログイン
+  //   必須になったため、他ページのapi()ヘルパーと同様、ログイン済みなら
+  //   常にAuthorizationヘッダを自動で付ける（session_tokenをURLクエリに
+  //   載せないためでもある）。
+  const session = getLoginSession();
+  const headers = Object.assign(
+    { "Content-Type": "application/json" },
+    (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : {},
+    opts.headers || {}
+  );
+  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { cache: 'no-store', ...opts, headers });
   return res.json();
 }
 
@@ -282,7 +301,7 @@ async function openViewModal(filename) {
   updateViewDoneBtn(); // ★ 追加：「実行済みにする」ボタンの表示を、このお知らせの状態に合わせる
 
   try {
-    const data = await api(`/get_notice?filename=${encodeURIComponent(filename)}`);
+    const data = await api(`/get_notice?guild_id=${GUILD_ID}&filename=${encodeURIComponent(filename)}`);
     document.getElementById('view-loading').style.display = 'none';
     if (data.ok) {
       currentViewContent = data.content;
@@ -708,7 +727,11 @@ let lastNoticesHash = null;
 
 async function checkNoticesUpdate() {
   try {
-    const res = await fetch(`${API_BASE}list_notices?guild_id=${GUILD_ID}`, { cache: 'no-store' });
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}list_notices?guild_id=${GUILD_ID}`, {
+      cache: 'no-store',
+      headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+    });
     const txt = await res.text();
     const hash = await digestMessage(txt);
 

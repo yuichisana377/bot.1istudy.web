@@ -7,22 +7,18 @@
 const API_BASE = "/api/";
 const GUILD_ID = "1509880344806162544";
 
-// ★ 以前は「閲覧にログイン不要（誰でも予定を見られる）」だったが、2026/08/20に
-//   サーバー側（/list_schedule）も閲覧にログインを必須にする方針に変更したため、
-//   このページ自体もCardmaker.js/StudyLog.jsと同様、開いた瞬間に未ログインなら
-//   ログイン画面へ誘導する。Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
+// ★ 2026/08/20に一度、閲覧（/list_schedule）にもログインを必須にしたが、
+//   Discordアプリ内ブラウザ等でセッションが正しく機能しない環境があり
+//   「予定一覧だけは誰でも見られるように」というユーザーの明示的な指示
+//   （2026/08/24）で、このページ自体の全面ログイン必須は撤廃した。
+//   代わりに、予定一覧以外（「ログ」タブ・追加/編集/削除）はサーバー
+//   参加済みのログインユーザー限定のまま維持する（下記参照）。
+//   Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
 const SESSION_KEY = 'sl_session';
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
-(function() {
-  var s = getLoginSession();
-  if (!s || !s.session_token) {
-    sessionStorage.setItem('post_login_redirect', location.href);
-    location.replace(LOGIN_PATH);
-  }
-})();
 // ★ 追加：変更系の操作（追加・編集・削除）を行う直前に呼ぶ。未ログインなら
 //   ログイン画面へ誘導し、falseを返す（呼び出し側はそのまま処理を中断する）。
 //   ログイン後にこのページへ戻ってこられるよう、遷移先をsessionStorageに記憶しておく
@@ -224,8 +220,22 @@ function dedupePlans(list) {
 window.addEventListener('load', () => {
   loadChannels();
   loadPlans();
+  applyLogTabVisibility(); // ★ 追加：未ログインには「ログ」タブ自体を見せない
   prefetchOtherPages(); // ★ 追加：メニューを開くのを待たず、初期表示後に自動で他ページを裏で先読み
 });
+
+// ★ 追加（2026/08/24）：予定一覧は誰でも見られるが、「ログ」タブ
+//   （list_logs＝予定の変更履歴）はサーバー参加済みのログインユーザー
+//   限定にした（ユーザーの明示的な指示）。ここではログインしていない
+//   ことだけを見て、タブのボタン自体を隠す（他ページのrequireLoginOrRedirect
+//   等と同じ「ログイン済みかどうか」の簡易チェック。実際の閲覧可否は
+//   サーバー側のrequire_member_sessionで最終判定される）。
+function applyLogTabVisibility() {
+  const s = getLoginSession();
+  const btns = document.querySelectorAll('.view-toggle .view-btn');
+  const logBtn = [...btns].find(b => b.getAttribute('onclick') === "switchPlanView('log')");
+  if (logBtn) logBtn.style.display = (s && s.session_token) ? '' : 'none';
+}
 
 // ============================================================
 //  サブビュー切り替え（予定一覧 / ログ）

@@ -270,7 +270,11 @@ let cmListDragActive = false;
 async function fetchAndMergeOrder() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
-  const res = await fetch(`${API_BASE}list_order`, { signal: controller.signal, cache: 'no-store' });
+  const session = getLoginSession();
+  const res = await fetch(`${API_BASE}list_order?guild_id=${GUILD_ID}`, {
+    signal: controller.signal, cache: 'no-store',
+    headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+  });
   clearTimeout(timer);
   const data = await res.json();
   if (!data.ok) return false;
@@ -311,7 +315,11 @@ async function fetchAndMergeFolders() {
   // ★ cache: 'no-store' を追加：Chromeなどが list_folders のレスポンスを
   //   ディスクキャッシュから返してしまい、他端末で作成したフォルダが
   //   即座に反映されない不具合を防ぐため、常にサーバーへ問い合わせる。
-  const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal, cache: 'no-store' });
+  const session = getLoginSession();
+  const res = await fetch(`${API_BASE}list_folders?guild_id=${GUILD_ID}`, {
+    signal: controller.signal, cache: 'no-store',
+    headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+  });
   clearTimeout(timer);
   const data = await res.json();
   if (!data.ok) return false;
@@ -1549,7 +1557,11 @@ async function fetchAndMergeDecks() {
   // ★ cache: 'no-store' を追加：これが無いと、Chromeなどのブラウザが
   //   list_cards のレスポンスをキャッシュしてしまい、新規作成・公開した
   //   カードが自分の端末の一覧にすぐ反映されないことがあるため。
-  const res  = await fetch(`${API_BASE}list_cards`, { signal: controller.signal, cache: 'no-store' });
+  const session = getLoginSession();
+  const res  = await fetch(`${API_BASE}list_cards?guild_id=${GUILD_ID}`, {
+    signal: controller.signal, cache: 'no-store',
+    headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+  });
   clearTimeout(timer);
   const txt = await res.text();
   const data = JSON.parse(txt);
@@ -1651,7 +1663,11 @@ async function fetchCardSetOnce(filename, timeoutMs = DECK_LOAD_BASE_TIMEOUT_MS)
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${API_BASE}get_card_set?filename=${encodeURIComponent(filename)}`, { signal: controller.signal, cache: 'no-store' });
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}get_card_set?guild_id=${GUILD_ID}&filename=${encodeURIComponent(filename)}`, {
+      signal: controller.signal, cache: 'no-store',
+      headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+    });
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
@@ -5211,7 +5227,11 @@ async function checkCardsUpdate() {
     const timer = setTimeout(() => controller.abort(), 5000);
     // ★ cache: 'no-store' を追加：これが無いと、ハッシュ比較のための取得自体が
     //   キャッシュされたレスポンスを見てしまい、更新検知が機能しないことがあるため。
-    const res = await fetch(`${API_BASE}list_cards`, { signal: controller.signal, cache: 'no-store' });
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}list_cards?guild_id=${GUILD_ID}`, {
+      signal: controller.signal, cache: 'no-store',
+      headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+    });
     clearTimeout(timer);
     const txt = await res.text();
     const hash = await digestMessage(txt);
@@ -5286,7 +5306,11 @@ async function checkFoldersUpdate() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     // ★ cache: 'no-store' を追加（list_cards側と同様の理由）
-    const res = await fetch(`${API_BASE}list_folders`, { signal: controller.signal, cache: 'no-store' });
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}list_folders?guild_id=${GUILD_ID}`, {
+      signal: controller.signal, cache: 'no-store',
+      headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+    });
     clearTimeout(timer);
     const txt = await res.text();
     const hash = await digestMessage(txt);
@@ -5314,7 +5338,11 @@ async function checkOrderUpdate() {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${API_BASE}list_order`, { signal: controller.signal, cache: 'no-store' });
+    const session = getLoginSession();
+    const res = await fetch(`${API_BASE}list_order?guild_id=${GUILD_ID}`, {
+      signal: controller.signal, cache: 'no-store',
+      headers: session?.session_token ? { 'Authorization': 'Bearer ' + session.session_token } : {},
+    });
     clearTimeout(timer);
     const txt = await res.text();
     const hash = await digestMessage(txt);

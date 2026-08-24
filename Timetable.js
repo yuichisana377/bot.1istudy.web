@@ -6,14 +6,24 @@
 const API_BASE = "/api/";
 const GUILD_ID = "1509880344806162544";
 
-// ★ このページ自体は閲覧にログイン不要（誰でも時間割を見られる）だが、
-//   追加・編集・削除はサーバー側もログイン必須になった（2026/08/19）。
+// ★ 以前はこのページ自体は閲覧にログイン不要（誰でも時間割を見られる）
+//   だったが、「予定一覧以外はサーバー参加済みの人だけ見られるように」
+//   というユーザーの明示的な指示（2026/08/24）で、Cardmaker.js/StudyLog.js/
+//   Notice.jsと同様、開いた瞬間に未ログインならログイン画面へ誘導する
+//   全面ログイン必須のページに変更した。
 //   Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
 const SESSION_KEY = 'sl_session';
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+(function() {
+  var s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.replace(LOGIN_PATH);
+  }
+})();
 // ★ 追加：変更系の操作（追加・編集・削除）を行う直前に呼ぶ。未ログインなら
 //   ログイン画面へ誘導し、falseを返す（呼び出し側はそのまま処理を中断する）。
 function requireLoginOrRedirect() {
@@ -653,8 +663,7 @@ async function loadTTOverrides() {
   } catch(_) { localOverrides = {}; }
 
   try {
-    const res  = await fetch(`${API_BASE}${TT_API.LIST}?guild_id=${GUILD_ID}`);
-    const data = await res.json();
+    const data = await api(`${TT_API.LIST}?guild_id=${GUILD_ID}`);
     if (data.ok && Array.isArray(data.overrides)) {
       const serverOverrides = {};
       data.overrides.forEach(o => { serverOverrides[o.key] = o; });
@@ -1825,11 +1834,11 @@ async function refreshWatchedData() {
 async function checkForUpdates() {
   try {
     const session = getLoginSession();
-    const scheduleAuthHeaders = (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : null;
+    const authHeaders = (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : null;
     const [scheduleHash, overridesHash, termsHash] = await Promise.all([
-      hashOfUrl(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`, scheduleAuthHeaders),
-      hashOfUrl(`${API_BASE}${TT_API.LIST}?guild_id=${GUILD_ID}`),
-      hashOfUrl(`${API_BASE}${TERM_API.LIST}?guild_id=${GUILD_ID}`),
+      hashOfUrl(`${API_BASE}list_schedule?guild_id=${GUILD_ID}`, authHeaders),
+      hashOfUrl(`${API_BASE}${TT_API.LIST}?guild_id=${GUILD_ID}`, authHeaders),
+      hashOfUrl(`${API_BASE}${TERM_API.LIST}?guild_id=${GUILD_ID}`, authHeaders),
     ]);
 
     const isFirstCheck = watchHashes.schedule === null;
