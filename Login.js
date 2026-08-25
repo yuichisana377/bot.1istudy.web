@@ -40,6 +40,17 @@ const REDIRECT_PATH = "/StudyLog.html";
 // ★ 複数サーバー対応：学籍番号登録ステップで選択中のguild_id（候補が1件なら自動選択）
 let selectedRegGuildId = null;
 
+// ★ /nameコマンドでサーバーごとに設定された表示名（現在current_guildが分かっていれば
+//   その名前、まだ分からなければ"学生勉強会web"のまま）をロゴに反映する。
+(function () {
+  try {
+    const g = JSON.parse(localStorage.getItem(GUILD_KEY));
+    const name = (g && g.guild_name) ? g.guild_name : "学生勉強会web";
+    const logoEl = document.querySelector(".login-logo-name");
+    if (logoEl) logoEl.textContent = name;
+  } catch (e) {}
+})();
+
 // アバターカラーパレット（ユーザー数 % 8 で自動割り当て）
 const AVATAR_COLORS = [
   { color: "#dbeafe", text: "#1e40af" },

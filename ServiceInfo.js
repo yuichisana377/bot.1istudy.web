@@ -218,6 +218,26 @@ const GUILD_ID = (function () {
     return g && g.guild_id ? String(g.guild_id) : null;
   } catch (e) { return null; }
 })();
+
+// ★ /nameコマンドでサーバーごとに設定された表示名（無ければ"学生勉強会web"）を、
+//   ドロワーロゴに反映する。.app-nameはSVGアイコン+末尾テキストの構造なので、
+//   末尾のテキストノードだけ書き換える。
+(function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    const name = (g && g.guild_name) ? g.guild_name : '学生勉強会web';
+    document.querySelectorAll('.app-name').forEach(el => {
+      for (let i = el.childNodes.length - 1; i >= 0; i--) {
+        if (el.childNodes[i].nodeType === Node.TEXT_NODE) {
+          el.childNodes[i].textContent = ' ' + name;
+          return;
+        }
+      }
+      el.appendChild(document.createTextNode(' ' + name));
+    });
+  } catch (e) {}
+})();
+
 const LOG_CATEGORY_ICON = {
   backup:    Icons.html('save', {size:15}),
   schedule:  Icons.html('plan', {size:15}),
@@ -384,13 +404,21 @@ async function loadSystemLog() {
   const oldMore = listEl.parentElement.querySelector('.log-load-more');
   if (oldMore) oldMore.remove();
   try {
-    // ★ ログイン中なら guild_id + session_token も送る（制限付きアカウントの場合
-    //   サーバー側で弾かれる。未ログインなら従来通り誰でも閲覧できる）。
+    // ★ 複数サーバー対応：以前はguild_idがログイン中のみ必要だったが、
+    //   運用ログ自体がguildごとに分かれたため常に必須になった。GUILD_IDが
+    //   まだ分からない端末（一度もログイン・サーバーコード入力をしていない）
+    //   は、この時点でエラー扱いにする（下のcatchでguild_unknownとして拾う）。
+    //   ログイン中なら+session_tokenも送る（制限付きアカウントの場合サーバー側で弾かれる。
+    //   未ログインなら従来通り誰でも閲覧できる）。
+    if (!GUILD_ID) {
+      const err = new Error('guild_unknown');
+      err.code = 'guild_unknown';
+      throw err;
+    }
     const session = getLoginSession();
-    let url = `${API_BASE}system_log?limit=${logDisplayCount}`;
+    let url = `${API_BASE}system_log?limit=${logDisplayCount}&guild_id=${GUILD_ID}`;
     const headers = {};
     if (session && session.session_token) {
-      url += `&guild_id=${GUILD_ID}`;
       headers['Authorization'] = `Bearer ${session.session_token}`;
     }
     const res = await fetch(url, { cache: 'no-store', headers });
@@ -429,9 +457,13 @@ async function loadSystemLog() {
     // ★ 追加：制限付きアカウント（対象Discordサーバー未参加）でログイン中の場合は
     //   サーバー側が意図的に拒否しているだけで、通信・サーバー側の障害ではない。
     //   「読み込めませんでした」という技術的失敗の表現は誤解を招くため区別する。
-    li.textContent = (e && e.code === 'guild_membership_required')
-      ? 'このアカウントでは運用ログを閲覧できません（対象のDiscordサーバーに参加していないため）。'
-      : 'ログを読み込めませんでした。';
+    if (e && e.code === 'guild_membership_required') {
+      li.textContent = 'このアカウントでは運用ログを閲覧できません（対象のDiscordサーバーに参加していないため）。';
+    } else if (e && e.code === 'guild_unknown') {
+      li.textContent = 'どのサーバーの運用ログか分からないため表示できません。一度ログインするか、サーバーコードを入力してください。';
+    } else {
+      li.textContent = 'ログを読み込めませんでした。';
+    }
     listEl.appendChild(li);
   } finally {
     if (btn) btn.classList.remove('is-loading');

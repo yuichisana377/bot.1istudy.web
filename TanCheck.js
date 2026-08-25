@@ -44,6 +44,25 @@ const TC_STORAGE_KEY = 'tancheck_scores_v2';
   }
 })();
 
+// ★ /nameコマンドでサーバーごとに設定された表示名（無ければ"学生勉強会web"）を、
+//   ドロワーロゴに反映する。.app-nameはSVGアイコン+末尾テキストの構造なので、
+//   末尾のテキストノードだけ書き換える。
+(function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    const name = (g && g.guild_name) ? g.guild_name : '学生勉強会web';
+    document.querySelectorAll('.app-name').forEach(el => {
+      for (let i = el.childNodes.length - 1; i >= 0; i--) {
+        if (el.childNodes[i].nodeType === Node.TEXT_NODE) {
+          el.childNodes[i].textContent = ' ' + name;
+          return;
+        }
+      }
+      el.appendChild(document.createTextNode(' ' + name));
+    });
+  } catch (e) {}
+})();
+
 // ── A/B/C 判定基準（1I勉強会から確認済み） ──────────────
 const GRADE_THRESHOLDS = [
   { grade: 'A', min: 85 },

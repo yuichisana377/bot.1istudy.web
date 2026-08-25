@@ -18,6 +18,25 @@ if (!GUILD_ID) {
   location.replace('/Login.html');
 }
 
+// ★ /nameコマンドでサーバーごとに設定された表示名（無ければ"学生勉強会web"）を、
+//   ドロワーロゴに反映する。.app-nameはSVGアイコン+末尾テキストの構造なので、
+//   末尾のテキストノードだけ書き換える。
+(function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    const name = (g && g.guild_name) ? g.guild_name : '学生勉強会web';
+    document.querySelectorAll('.app-name').forEach(el => {
+      for (let i = el.childNodes.length - 1; i >= 0; i--) {
+        if (el.childNodes[i].nodeType === Node.TEXT_NODE) {
+          el.childNodes[i].textContent = ' ' + name;
+          return;
+        }
+      }
+      el.appendChild(document.createTextNode(' ' + name));
+    });
+  } catch (e) {}
+})();
+
 // ★ 以前はこのページ自体は閲覧にログイン不要（誰でも時間割を見られる）
 //   だったが、「予定一覧以外はサーバー参加済みの人だけ見られるように」
 //   というユーザーの明示的な指示（2026/08/24）で、Cardmaker.js/StudyLog.js/
