@@ -295,7 +295,9 @@ function openGuildChoiceStep(token) {
     // ★ 未登録の候補（このサーバーではまだ学籍番号登録をしていない）には
     //   その旨を添える。選ぶと学籍番号登録ステップへ案内される
     //   （chooseGuildFromChoiceのneeds_registration分岐参照）。
-    btn.textContent = (c.guild_name || String(c.guild_id)) + (c.registered ? "" : "（未登録）");
+    const label = (c.guild_name || String(c.guild_id)) + (c.registered ? "" : "（未登録）");
+    btn.textContent = label;
+    btn.dataset.origLabel = label; // ★ エラー時にボタンの文字を元に戻すため保持しておく
     btn.addEventListener("click", () => chooseGuildFromChoice(token, c.guild_id, btn));
     listEl.appendChild(btn);
   });
@@ -329,7 +331,13 @@ async function chooseGuildFromChoice(token, guildId, btnEl) {
     errEl.textContent = "サーバーに接続できません。時間をおいて再試行してください。";
     errEl.style.display = "block";
   } finally {
-    document.querySelectorAll("#guild-choice-list .login-guild-choice-btn").forEach(b => b.disabled = false);
+    // ★ 修正：以前はボタンの文字を"処理中…"のまま戻していなかったため、
+    //   実際には失敗して再クリックできる状態でも、見た目だけ固まって
+    //   見えてしまっていた（実質的な「処理中で止まる」不具合の一因）。
+    document.querySelectorAll("#guild-choice-list .login-guild-choice-btn").forEach(b => {
+      b.disabled = false;
+      if (b.dataset.origLabel) b.textContent = b.dataset.origLabel;
+    });
   }
 }
 
