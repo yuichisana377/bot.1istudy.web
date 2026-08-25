@@ -46,7 +46,17 @@ function setButtonLoading(btn, loading, label) {
 }
 
 const API_BASE    = "/api/";
-const GUILD_ID    = "1509880344806162544";
+// ★ 複数サーバー対応：以前は固定値だったが、ログイン（またはサーバーコード）で
+//   この端末に覚えさせたサーバーをlocalStorageの"current_guild"から読む形にした
+//   （Login.js参照）。まだ一度もサーバーが分かっていない端末はLogin.htmlへ誘導する
+//   （下のセッションチェックと合わせて二重にガードする）。
+const GUILD_ID = (function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    return g && g.guild_id ? String(g.guild_id) : null;
+  } catch (e) { return null; }
+})();
+if (!GUILD_ID) location.replace('/Login.html');
 const SESSION_KEY = "sl_session";
 const DEFAULT_TASK_POINTS = 5;
 
@@ -151,6 +161,26 @@ function renderDrawerAccount() {
     openAccountModal();
   });
   menu.appendChild(settingsBtn);
+
+  // ★ 複数サーバー対応：別のDiscordサーバーへ切り替える（ログアウトしてから
+  //   再度ログインしてもらう＝どのサーバーへ行くかはログイン時にサーバー側が
+  //   自動判定する。Login.js参照）。実際に複数のBot導入済みサーバーに
+  //   参加している人にだけ出す（ユーザーの明示的な指定）。
+  var isMultiGuild = false;
+  try { isMultiGuild = !!(JSON.parse(localStorage.getItem('current_guild') || 'null') || {}).multi_guild; } catch (e) {}
+  if (isMultiGuild) {
+    var switchBtn = document.createElement('button');
+    switchBtn.type = 'button';
+    switchBtn.className = 'drawer-account-menu-item';
+    switchBtn.innerHTML = Icons.html('refresh', {size:16}) + ' サーバーを切り替える';
+    switchBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem('current_guild');
+      location.href = '/Login.html';
+    });
+    menu.appendChild(switchBtn);
+  }
 
   var logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
@@ -400,6 +430,20 @@ function openAccountModal() {
       '<div id="sl-acct-oauth-msg" style="font-size:12px;margin-top:6px;text-align:center;"></div>' +
     '</div>' +
 
+    // ★ 複数サーバー対応：サーバー招待コードの発行。ログインなしでも予定一覧
+    //   （index.html／Plan.js、唯一ログイン不要で閲覧できるページ）が
+    //   このサーバー向けに見られるようになる、8桁のワンタイムコードを
+    //   発行する（issue_guild_invite_code）。
+    '<div style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:20px;">' +
+      '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">' + Icons.html('key', {size:14}) + ' サーバー招待コード</label>' +
+      '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">' +
+        'Discordログインをしたくない相手に、このサーバーの予定一覧（ログイン不要で見られるページ）を' +
+        '使ってもらうためのコードを発行します（8桁・24時間有効・1回だけ使えます）。' +
+      '</p>' +
+      '<button id="sl-acct-invite-btn" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;font-size:14px;font-weight:600;cursor:pointer;">招待コードを発行する</button>' +
+      '<div id="sl-acct-invite-msg" style="font-size:13px;margin-top:8px;"></div>' +
+    '</div>' +
+
     // ★ 追加：CardMakerの共有リンク一覧・取り消し。デッキ単位のメニュー
     //   （Cardmaker.jsのmenuShare）からしか見られず「一度閉じるとどこから
     //   取り消せるか分からない」という指摘を受け、全デッキ横断でここから
@@ -419,7 +463,44 @@ function openAccountModal() {
   document.getElementById("sl-acct-close").onclick  = closeAccountModal;
   document.getElementById("sl-acct-nickname-save").onclick = submitNicknameChange;
   document.getElementById("sl-acct-oauth-btn").onclick     = startDiscordOAuth;
+  document.getElementById("sl-acct-invite-btn").onclick    = issueGuildInviteCode;
   loadAccountShares();
+}
+
+// ★ 複数サーバー対応：招待コードを発行し、モーダル内にそのまま表示する
+//   （コピーしやすいよう選択済みテキストとして出す）。
+async function issueGuildInviteCode() {
+  var btn = document.getElementById("sl-acct-invite-btn");
+  var msg = document.getElementById("sl-acct-invite-msg");
+  if (!btn || !msg) return;
+  setButtonLoading(btn, true, "発行中…");
+  msg.textContent = "";
+  msg.style.color = "";
+  try {
+    var data = await api("/issue_guild_invite_code", {
+      method: "POST",
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }),
+    });
+    if (data && data.ok) {
+      msg.innerHTML = "";
+      var codeEl = document.createElement("div");
+      codeEl.style.cssText = "font-size:20px;font-weight:800;letter-spacing:.08em;color:#0f172a;margin-top:4px;";
+      codeEl.textContent = data.code;
+      var hintEl = document.createElement("div");
+      hintEl.style.cssText = "font-size:11px;color:#94a3b8;margin-top:4px;";
+      hintEl.textContent = "24時間・1回だけ有効です。相手に伝えてください。";
+      msg.appendChild(codeEl);
+      msg.appendChild(hintEl);
+    } else {
+      msg.style.color = "#dc2626";
+      msg.textContent = (data && data.error) || "発行に失敗しました。";
+    }
+  } catch (e) {
+    msg.style.color = "#dc2626";
+    msg.textContent = "サーバーに接続できません。";
+  } finally {
+    setButtonLoading(btn, false);
+  }
 }
 
 // ── CardMakerの共有リンク一覧（アカウント設定モーダル内） ──────────────

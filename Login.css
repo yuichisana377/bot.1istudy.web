@@ -99,3 +99,31 @@
   text-align: center;
   line-height: 1.5;
 }
+
+/* ★ 複数サーバー対応：サーバー選択リスト（ログイン後の選択画面・新規登録時の候補） */
+.login-guild-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.login-guild-choice-btn {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.login-guild-choice-btn:hover  { background: var(--surface-hover, var(--border)); border-color: var(--accent, #2563eb); }
+.login-guild-choice-btn:active { background: var(--border); }
+.login-guild-choice-btn.is-selected {
+  border-color: var(--accent, #2563eb);
+  background: var(--bg-accent-soft, #eff6ff);
+}

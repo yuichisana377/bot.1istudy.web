@@ -77,6 +77,26 @@ function renderDrawerAccount() {
   settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   menu.appendChild(settingsLink);
 
+  // ★ 複数サーバー対応：別のDiscordサーバーへ切り替える（ログアウトしてから
+  //   再度ログインしてもらう＝どのサーバーへ行くかはログイン時にサーバー側が
+  //   自動判定する。Login.js参照）。実際に複数のBot導入済みサーバーに
+  //   参加している人にだけ出す（ユーザーの明示的な指定）。
+  let isMultiGuild = false;
+  try { isMultiGuild = !!JSON.parse(localStorage.getItem('current_guild') || 'null')?.multi_guild; } catch {}
+  if (isMultiGuild) {
+    const switchBtn = document.createElement('button');
+    switchBtn.type = 'button';
+    switchBtn.className = 'drawer-account-menu-item';
+    switchBtn.innerHTML = Icons.html('refresh', {size:16}) + ' サーバーを切り替える';
+    switchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem('current_guild');
+      location.href = LOGIN_PATH;
+    });
+    menu.appendChild(switchBtn);
+  }
+
   const logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
   logoutBtn.className = 'drawer-account-menu-item is-danger';
@@ -182,7 +202,16 @@ function switchServiceTab(tab) {
 //    （2026/08/20）。そのためログイン中はsession_tokenを一緒に送る。
 // ============================================================
 const API_BASE = "/api/";
-const GUILD_ID  = '1509880344806162544';
+// ★ 複数サーバー対応：以前は固定値だったが、"current_guild"（Login.js参照）
+//   から読む形にした。このページは未ログインでも閲覧できる設計を維持するため、
+//   他ページと違いGUILD_IDが無くてもLogin.htmlへは誘導しない（ログイン中に
+//   限ってguild_idを一緒に送る用途にのみ使う。下のloadSystemLog参照）。
+const GUILD_ID = (function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    return g && g.guild_id ? String(g.guild_id) : null;
+  } catch (e) { return null; }
+})();
 const LOG_CATEGORY_ICON = {
   backup:    Icons.html('save', {size:15}),
   schedule:  Icons.html('plan', {size:15}),

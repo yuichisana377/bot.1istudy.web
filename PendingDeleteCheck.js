@@ -18,19 +18,29 @@
 // ============================================================
 (function () {
   const PDC_API_BASE = "/api/";
-  const PDC_GUILD_ID = "1509880344806162544";
 
   function pdcGetSession() {
     try { return JSON.parse(localStorage.getItem('sl_session')); } catch (e) { return null; }
   }
 
+  // ★ 複数サーバー対応：以前は固定値だったが、"current_guild"（Login.js参照）
+  //   から読む形にした。ページ共通のGUILD_ID定数は再宣言できないため、
+  //   このIIFE専用にPDC_プレフィックスで独立して持つ。
+  function pdcGetGuildId() {
+    try {
+      const g = JSON.parse(localStorage.getItem('current_guild'));
+      return g && g.guild_id ? String(g.guild_id) : null;
+    } catch (e) { return null; }
+  }
+
   async function pdcCheck() {
     const session = pdcGetSession();
-    if (!session || !session.session_token) return;
+    const guildId = pdcGetGuildId();
+    if (!session || !session.session_token || !guildId) return;
     try {
       // ★ session_tokenはURLクエリに載せない（ブラウザ履歴・アクセスログ・Refererに
       //   残るリスクがあるため）。Authorizationヘッダで送る。
-      const url = `${PDC_API_BASE}pending_delete_requests?guild_id=${PDC_GUILD_ID}`;
+      const url = `${PDC_API_BASE}pending_delete_requests?guild_id=${guildId}`;
       const res = await fetch(url, { cache: 'no-store', headers: { 'Authorization': 'Bearer ' + session.session_token } });
       const data = await res.json();
       if (!data.ok || !data.requests || !data.requests.length) return;

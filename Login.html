@@ -84,8 +84,23 @@
 
     <p class="login-hint">
       初めての方は、Discord認証後に学籍番号の登録へ自動で案内します。<br>
-      ※ 1I勉強会のDiscordサーバーに参加していない場合、予定一覧の閲覧以外は利用できません。
+      ※ サーバーに参加していない場合、予定一覧の閲覧以外は利用できません。
     </p>
+
+    <button class="login-back-btn" onclick="showStep('step-guild-code')">
+      サーバーコードをお持ちの方はこちら
+    </button>
+  </div>
+
+  <!-- ══ STEP: 複数サーバーに登録済みの場合の選択 ══ -->
+  <div class="login-step login-card" id="step-guild-choice" style="display:none">
+    <h1 class="login-title">サーバーを選んでください</h1>
+    <p class="login-reg-desc">
+      あなたのDiscordアカウントは、複数のサーバーで登録されています。<br>
+      今回ログインするサーバーを選んでください。
+    </p>
+    <div class="error-bar" id="guild-choice-err" style="display:none"></div>
+    <div id="guild-choice-list" class="login-guild-choice-list"></div>
   </div>
 
   <!-- ══ STEP 2: Discordログイン → 初回のみ学籍番号の登録 ══ -->
@@ -101,6 +116,11 @@
     <input type="hidden" id="inp-dtoken">
 
     <div class="error-bar" id="discord-reg-err" style="display:none"></div>
+
+    <div class="field" id="discord-reg-guild-field" style="display:none">
+      <label>登録するサーバー</label>
+      <div id="discord-reg-guild-list" class="login-guild-choice-list"></div>
+    </div>
 
     <div class="field">
       <label for="inp-discord-student-id">学籍番号</label>
@@ -124,6 +144,26 @@
     </button>
 
     <button class="login-back-btn" onclick="backToId()">
+      ← 戻る
+    </button>
+  </div>
+
+  <!-- ══ STEP: サーバーコードでこの端末のサーバーを設定（ログインはしない） ══ -->
+  <div class="login-step login-card" id="step-guild-code" style="display:none">
+    <h1 class="login-title">サーバーコード</h1>
+    <p class="login-reg-desc">
+      サーバーに参加済みの人からもらったコードを入力すると、Discordログインをしなくても
+      この端末で予定一覧だけ見られるようになります（他のページの閲覧・編集にはログインが必要です）。
+    </p>
+    <div class="error-bar" id="guild-code-err" style="display:none"></div>
+    <div class="field">
+      <label for="inp-guild-code">サーバーコード（8桁）</label>
+      <input type="text" id="inp-guild-code" placeholder="例: AB3CD9EF" maxlength="8" autocapitalize="characters">
+    </div>
+    <button class="btn-primary login-btn" id="btn-guild-code-submit" onclick="submitGuildCode()">
+      設定する
+    </button>
+    <button class="login-back-btn" onclick="showStep('step-id')">
       ← 戻る
     </button>
   </div>

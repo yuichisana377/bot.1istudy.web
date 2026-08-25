@@ -19,17 +19,27 @@
 // ============================================================
 (function () {
   const PSC_API_BASE = "/api/";
-  const PSC_GUILD_ID = "1509880344806162544";
 
   function pscGetSession() {
     try { return JSON.parse(localStorage.getItem('sl_session')); } catch (e) { return null; }
   }
 
+  // ★ 複数サーバー対応：以前は固定値だったが、"current_guild"（Login.js参照）
+  //   から読む形にした。ページ共通のGUILD_ID定数は再宣言できないため、
+  //   このIIFE専用にPSC_プレフィックスで独立して持つ。
+  function pscGetGuildId() {
+    try {
+      const g = JSON.parse(localStorage.getItem('current_guild'));
+      return g && g.guild_id ? String(g.guild_id) : null;
+    } catch (e) { return null; }
+  }
+
   async function pscCheck() {
     const session = pscGetSession();
-    if (!session || !session.session_token) return;
+    const guildId = pscGetGuildId();
+    if (!session || !session.session_token || !guildId) return;
     try {
-      const url = `${PSC_API_BASE}pending_share_requests?guild_id=${PSC_GUILD_ID}`;
+      const url = `${PSC_API_BASE}pending_share_requests?guild_id=${guildId}`;
       const res = await fetch(url, { cache: 'no-store', headers: { 'Authorization': 'Bearer ' + session.session_token } });
       const data = await res.json();
       if (!data.ok || !data.requests || !data.requests.length) return;

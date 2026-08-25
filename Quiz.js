@@ -5,7 +5,16 @@
 // ============================================================
 
 const API_BASE = "/api/";
-const GUILD_ID = "1509880344806162544";
+// ★ 複数サーバー対応：以前は固定値だったが、ログイン（またはサーバーコード）で
+//   この端末に覚えさせたサーバーをlocalStorageの"current_guild"から読む形にした
+//   （Login.js参照）。まだ一度もサーバーが分かっていない端末はLogin.htmlへ誘導する。
+const GUILD_ID = (function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    return g && g.guild_id ? String(g.guild_id) : null;
+  } catch (e) { return null; }
+})();
+if (!GUILD_ID) location.replace('/Login.html');
 const LOGIN_PATH = '/Login.html';
 const SESSION_KEY = 'sl_session';
 

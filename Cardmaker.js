@@ -4,7 +4,16 @@
 // ============================================================
 
 const API_BASE = "/api/";
-const GUILD_ID = "1509880344806162544";
+// ★ 複数サーバー対応：以前は固定値だったが、ログイン（またはサーバーコード）で
+//   この端末に覚えさせたサーバーをlocalStorageの"current_guild"から読む形にした
+//   （Login.js参照）。まだ一度もサーバーが分かっていない端末はLogin.htmlへ誘導する。
+const GUILD_ID = (function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    return g && g.guild_id ? String(g.guild_id) : null;
+  } catch (e) { return null; }
+})();
+if (!GUILD_ID) location.replace('/Login.html');
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
 
 // ── ログインセッション（Login.js と共通） ──────
@@ -98,6 +107,26 @@ function renderDrawerAccount() {
   settingsLink.href = '/StudyLog.html?openAccount=1';
   settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
   menu.appendChild(settingsLink);
+
+  // ★ 複数サーバー対応：別のDiscordサーバーへ切り替える（ログアウトしてから
+  //   再度ログインしてもらう＝どのサーバーへ行くかはログイン時にサーバー側が
+  //   自動判定する。Login.js参照）。実際に複数のBot導入済みサーバーに
+  //   参加している人にだけ出す（ユーザーの明示的な指定）。
+  let isMultiGuild = false;
+  try { isMultiGuild = !!JSON.parse(localStorage.getItem('current_guild') || 'null')?.multi_guild; } catch {}
+  if (isMultiGuild) {
+    const switchBtn = document.createElement('button');
+    switchBtn.type = 'button';
+    switchBtn.className = 'drawer-account-menu-item';
+    switchBtn.innerHTML = Icons.html('refresh', {size:16}) + ' サーバーを切り替える';
+    switchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem('current_guild');
+      location.href = LOGIN_PATH;
+    });
+    menu.appendChild(switchBtn);
+  }
 
   const logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
@@ -290,10 +319,18 @@ async function pushSharedOrderToServer(folderId, keys) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
+    // ★ 複数サーバー対応でsave_orderがログイン必須になったのに合わせ、
+    //   他の変更系APIと同じくguild_id/session_tokenを送るようにした
+    //   （以前は認証チェック自体が無く送っていなかった）。
     const res = await fetch(`${API_BASE}save_order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: orderScopeKey(folderId), keys: sharedKeys }),
+      body: JSON.stringify({
+        guild_id: GUILD_ID,
+        session_token: getLoginSession()?.session_token,
+        scope: orderScopeKey(folderId),
+        keys: sharedKeys,
+      }),
       signal: controller.signal,
     });
     clearTimeout(timer);
