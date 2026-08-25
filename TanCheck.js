@@ -29,6 +29,21 @@ const SESSION_KEY = 'sl_session';
 const LOGIN_PATH = '/Login.html';
 const TC_STORAGE_KEY = 'tancheck_scores_v2';
 
+// ★ 単位チェッカーは1I勉強会（豊田高専情報工学科向けのデータ）専用機能。
+//   他サーバーのドロワーからは既にリンク自体を消してあるが、直接URLで
+//   開かれた場合の保険として、ここでも弾く（current_guildが不明な場合は
+//   判定できないので通す＝誤って1Iの利用者をブロックしないため）。
+(function () {
+  let guild = null;
+  try { guild = JSON.parse(localStorage.getItem('current_guild')); } catch (e) {}
+  if (guild && guild.guild_id && String(guild.guild_id) !== "1509880344806162544") {
+    showAppAlert({
+      title: 'この機能は利用できません',
+      desc: '単位チェッカーは1I勉強会専用の機能です。',
+    }).then(() => { location.href = '/index.html'; });
+  }
+})();
+
 // ── A/B/C 判定基準（1I勉強会から確認済み） ──────────────
 const GRADE_THRESHOLDS = [
   { grade: 'A', min: 85 },

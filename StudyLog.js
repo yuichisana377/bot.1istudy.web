@@ -204,6 +204,12 @@ document.addEventListener('click', function(e) {
 });
 renderDrawerAccount();
 
+// ★ 単位チェッカーは1I勉強会（豊田高専情報工学科向けのデータ）専用機能のため、
+//   他サーバーではドロワーに表示しない。
+if (GUILD_ID !== "1509880344806162544") {
+  document.querySelectorAll('a.drawer-item[href="/TanCheck.html"]').forEach(el => el.remove());
+}
+
 // ── 課題 JSON（動的に読み込む） ────────────────────────
 let TASKS_JSON = [];
 
