@@ -292,7 +292,10 @@ function openGuildChoiceStep(token) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "login-guild-choice-btn";
-    btn.textContent = c.guild_name || String(c.guild_id);
+    // ★ 未登録の候補（このサーバーではまだ学籍番号登録をしていない）には
+    //   その旨を添える。選ぶと学籍番号登録ステップへ案内される
+    //   （chooseGuildFromChoiceのneeds_registration分岐参照）。
+    btn.textContent = (c.guild_name || String(c.guild_id)) + (c.registered ? "" : "（未登録）");
     btn.addEventListener("click", () => chooseGuildFromChoice(token, c.guild_id, btn));
     listEl.appendChild(btn);
   });
@@ -301,11 +304,17 @@ function openGuildChoiceStep(token) {
 
 async function chooseGuildFromChoice(token, guildId, btnEl) {
   document.querySelectorAll("#guild-choice-list .login-guild-choice-btn").forEach(b => b.disabled = true);
-  if (btnEl) btnEl.textContent = "ログイン中…";
+  if (btnEl) btnEl.textContent = "処理中…";
   const errEl = document.getElementById("guild-choice-err");
   errEl.style.display = "none";
   try {
     const result = await finalizeLogin(token, guildId);
+    if (result.ok && result.needs_registration) {
+      // ★ 選んだサーバーではまだ未登録 → 学籍番号登録ステップへ引き継ぐ
+      //   （既存の1サーバー向け登録フローをそのまま再利用する）。
+      openDiscordRegisterStep(result.discord_reg_token);
+      return;
+    }
     if (result.ok) {
       const palette = paletteFor(result.student.id);
       saveSession(result.student, result.session_token, palette, { id: result.guild_id, name: result.guild_name, multiGuild: result.multi_guild });
