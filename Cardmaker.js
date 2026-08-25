@@ -211,7 +211,23 @@ function applyAccountHeader() {
 }
 applyAccountHeader();
 
-const STORE_KEY = 'cardmaker_decks_v1';
+// ★ 複数サーバー対応：以前はローカル下書き・並び順キャッシュ等がguildを
+//   問わない共通のlocalStorageキーだったため、同じ端末で別サーバーに
+//   切り替えても同じ下書きデッキが見えてしまっていた（非公開のはずの
+//   デッキが他サーバーにも出てくる不具合）。キーにGUILD_IDを含める形に
+//   変更し、旧キーにデータが残っていれば（＝これまで1サーバーだけで
+//   使っていた既存ユーザー）現在のguildへ一度だけ引き継ぐ。
+function migrateGuildScopedLocalKey(oldKey, newKey) {
+  try {
+    if (localStorage.getItem(newKey) === null && localStorage.getItem(oldKey) !== null) {
+      localStorage.setItem(newKey, localStorage.getItem(oldKey));
+      localStorage.removeItem(oldKey);
+    }
+  } catch (e) {}
+}
+
+const STORE_KEY = `cardmaker_decks_v1_${GUILD_ID}`;
+migrateGuildScopedLocalKey('cardmaker_decks_v1', STORE_KEY);
 function loadDecks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
 function saveDecks(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -219,7 +235,8 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 // ── フォルダ（最大3階層・みんなで共有） ──
 // フォルダの本体はサーバー（GitHub上の folders.json）に保存され、全員で共有される。
 // ローカルのキャッシュは「サーバーから取得できるまでの間、即座に表示するため」だけに使う。
-const FOLDER_CACHE_KEY = 'cardmaker_folders_cache_v1';
+const FOLDER_CACHE_KEY = `cardmaker_folders_cache_v1_${GUILD_ID}`;
+migrateGuildScopedLocalKey('cardmaker_folders_cache_v1', FOLDER_CACHE_KEY);
 function loadFoldersCache() { try { return JSON.parse(localStorage.getItem(FOLDER_CACHE_KEY)) || []; } catch { return []; } }
 function saveFoldersCache(f) { localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(f)); }
 const MAX_FOLDER_DEPTH = 3;
@@ -246,8 +263,10 @@ let pickedFolderIds = new Set();   // 丸ごと選んだフォルダの id
 //   キャッシュは届くまでの間だけ即座に表示するために使う」という考え方。
 //   ─ 一方、未公開（自分だけの下書き）デッキは他人からは見えないデータなので、
 //     その並び順はサーバーへは送らず、この端末だけのローカル保存にとどめる。
-const LIST_ORDER_KEY = 'cardmaker_list_order_v1';                 // この端末で最終的に表示する並び順（共有分＋自分の下書き分）
-const SHARED_ORDER_CACHE_KEY = 'cardmaker_shared_order_cache_v1'; // サーバーから取得した「みんなの並び順」のキャッシュ
+const LIST_ORDER_KEY = `cardmaker_list_order_v1_${GUILD_ID}`;                 // この端末で最終的に表示する並び順（共有分＋自分の下書き分）
+const SHARED_ORDER_CACHE_KEY = `cardmaker_shared_order_cache_v1_${GUILD_ID}`; // サーバーから取得した「みんなの並び順」のキャッシュ
+migrateGuildScopedLocalKey('cardmaker_list_order_v1', LIST_ORDER_KEY);
+migrateGuildScopedLocalKey('cardmaker_shared_order_cache_v1', SHARED_ORDER_CACHE_KEY);
 function loadListOrderMap() { try { return JSON.parse(localStorage.getItem(LIST_ORDER_KEY)) || {}; } catch { return {}; } }
 function saveListOrderMap(m) { localStorage.setItem(LIST_ORDER_KEY, JSON.stringify(m)); }
 function loadSharedOrderCache() { try { return JSON.parse(localStorage.getItem(SHARED_ORDER_CACHE_KEY)) || {}; } catch { return {}; } }
@@ -472,12 +491,21 @@ function isFolderInFolderScope(fid, folderId) {
 }
 
 // ★ デッキ版の canMoveFolderTo。フォルダのような階層数制限はデッキには
-//   存在しないため、今のところ特別な制限は無い（常にtrue）。
+//   存在しない。
 //   ★ 以前は「クイズ過去問フォルダの中にあるデッキは、その外へ移動できない」
 //   という制限があったが、2026/08/21にユーザーの要望で撤廃した（クイズ過去問
 //   デッキも他のフォルダへ移動できる。代わりに「問題の編集はできない」という
 //   別の制限を設けている。openDeckMenu/save_cards参照）。
+//   ★ 2026/08/25追加：逆方向の制限を新設。「クイズ過去問」フォルダ（またはその
+//   配下）には、みんなでクイズの結果から自動保存されたデッキ（quizArchive）
+//   以外を入れられないようにする（サーバー側 save_cards にも同じ制限を追加済み。
+//   ここでの制限はUI上で選ばせない／グレーアウトさせるためのもので、直接APIを
+//   叩かれた場合の最終防衛はサーバー側が担う）。
 function canMoveDeckTo(deckId, targetFolderId) {
+  if (isFolderInFolderScope(targetFolderId, QUIZ_ARCHIVE_FOLDER_ID)) {
+    const d = decks.find(x => x.id === deckId);
+    if (!d || !d.quizArchive) return false;
+  }
   return true;
 }
 
@@ -3744,7 +3772,8 @@ async function syncDeckToServer(deck) {
 //     「サーバーが正、ローカルのキャッシュは届くまでの間だけ即座に
 //     表示するために使う」。オフライン・通信失敗時もローカルキャッシュで
 //     即座に読み書きでき、通信は裏側で試みるだけなので操作は止めない。
-const STUDY_DATA_CACHE_KEY = 'cardmaker_study_data_cache_v1';
+const STUDY_DATA_CACHE_KEY = `cardmaker_study_data_cache_v1_${GUILD_ID}`;
+migrateGuildScopedLocalKey('cardmaker_study_data_cache_v1', STUDY_DATA_CACHE_KEY);
 function loadStudyDataCache() {
   try {
     const d = JSON.parse(localStorage.getItem(STUDY_DATA_CACHE_KEY));

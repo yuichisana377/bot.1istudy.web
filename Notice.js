@@ -45,7 +45,10 @@ let isEditingNotice = false;
 let editingOriginalFilename = null; // 編集開始時点のファイル名（リネーム検知用）
 let pendingDraft = null;            // 復元候補の下書き（バナー表示中に保持）
 let draftSaveTimer = null;
-const DRAFT_KEY_NEW = 'notice_draft_new';
+// ★ 複数サーバー対応：以前はguildを問わない共通キーだったため、
+//   別サーバーに切り替えても他サーバーの下書きが「続きから書く？」に
+//   出てきてしまっていた。キーにGUILD_IDを含めるよう修正。
+const DRAFT_KEY_NEW = 'notice_draft_new_' + GUILD_ID;
 
 // ★ OS標準のconfirm()/alert()の代替（showAppConfirm/showAppAlert）は
 //   全ページ共通の /Dialog.js に移した（Notice.html側で読み込み済み）。
@@ -427,7 +430,7 @@ function switchNoticeTab(tab) {
 //  下書き（ローカル一時保存）
 // ============================================================
 function draftKeyForEdit(originalFilename) {
-  return 'notice_draft_edit_' + originalFilename;
+  return 'notice_draft_edit_' + GUILD_ID + '_' + originalFilename;
 }
 
 function scheduleDraftSave() {
