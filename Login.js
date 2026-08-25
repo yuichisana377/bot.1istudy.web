@@ -94,12 +94,22 @@ window.addEventListener("load", () => {
   }
 
   // 自動ログイン（localStorage に session_token 付きの保存済みセッションがある場合のみ）
+  // ★ 複数サーバー対応で発生した不具合の修正：session_tokenはあるが
+  //   current_guild（サーバー情報）が無い「今日のデプロイより前からの
+  //   ログイン済みセッション」だと、他ページの「GUILD_IDが無ければ
+  //   Login.htmlへ」ガードに引っかかって戻ってきて、ここでまた
+  //   autoLoginしてそのページへ送り返す…という無限リダイレクトループに
+  //   陥っていた（current_guildを補う手段がここに無かったため）。
+  //   session_tokenだけではどのサーバー向けか分からない以上、ここで
+  //   ループさせず、諦めて新規ログイン（Discordの認可からやり直し）に
+  //   倒すのが安全。
   const saved = getSession();
-  if (saved && saved.session_token) {
+  const savedGuild = getCurrentGuild();
+  if (saved && saved.session_token && savedGuild && savedGuild.guild_id) {
     autoLogin(saved);
     return;
   }
-  localStorage.removeItem(SESSION_KEY); // session_tokenの無い旧形式セッションは破棄
+  localStorage.removeItem(SESSION_KEY); // session_tokenの無い旧形式セッション、current_guild不明のセッションは破棄
   showStep("step-id");
 });
 
@@ -108,6 +118,10 @@ window.addEventListener("load", () => {
 // ============================================================
 function getSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
+function getCurrentGuild() {
+  try { return JSON.parse(localStorage.getItem(GUILD_KEY)); } catch { return null; }
 }
 
 // user: {id, nickname}, sessionToken: ログイン成功時に発行された session_token

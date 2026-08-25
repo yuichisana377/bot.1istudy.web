@@ -14,7 +14,10 @@ const GUILD_ID = (function () {
     return g && g.guild_id ? String(g.guild_id) : null;
   } catch (e) { return null; }
 })();
-if (!GUILD_ID) location.replace('/Login.html');
+if (!GUILD_ID) {
+  try { sessionStorage.setItem('post_login_redirect', location.href); } catch (e) {}
+  location.replace('/Login.html');
+}
 
 // ★ 2026/08/20に一度、閲覧（/list_schedule）にもログインを必須にしたが、
 //   Discordアプリ内ブラウザ等でセッションが正しく機能しない環境があり
