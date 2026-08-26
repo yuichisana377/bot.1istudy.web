@@ -13,6 +13,22 @@ const LOGIN_PATH = '/Login.html';
 function getLoginSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+// ★ 複数サーバー対応：以前は固定値だったが、"current_guild"（Login.js参照）
+//   から読む形にした。このページは未ログインでも閲覧できる設計を維持するため、
+//   他ページと違いGUILD_IDが無くてもLogin.htmlへは誘導しない（ログイン中に
+//   限ってguild_idを一緒に送る用途にのみ使う。下のloadSystemLog参照）。
+// ★ 修正（2026/08/26）：以前はこの宣言がファイル後方（旧行214）にあり、
+//   それより前（旧行123、単位チェッカーの表示判定）でGUILD_IDを参照していたため、
+//   constの一時的死角（TDZ）で「Cannot access 'GUILD_ID' before initialization」
+//   が毎回発生し、ページの読み込みがそこで完全に止まっていた
+//   （運用ログだけでなくページ全体が「読み込み中…」から進まなくなる不具合）。
+//   参照より前に来るよう、宣言をファイル冒頭へ移動した。
+const GUILD_ID = (function () {
+  try {
+    const g = JSON.parse(localStorage.getItem('current_guild'));
+    return g && g.guild_id ? String(g.guild_id) : null;
+  } catch (e) { return null; }
+})();
 // ★ ドロワー下部の「だれとしてログインしているか」表示。StudyLog.jsの
 //   ヘッダーアバターと同じ見た目（色付き丸アバター＋ニックネーム）。
 //   タップでミニメニュー（アカウント設定／ログアウト）を開閉する。
@@ -207,16 +223,7 @@ function switchServiceTab(tab) {
 //    （2026/08/20）。そのためログイン中はsession_tokenを一緒に送る。
 // ============================================================
 const API_BASE = "/api/";
-// ★ 複数サーバー対応：以前は固定値だったが、"current_guild"（Login.js参照）
-//   から読む形にした。このページは未ログインでも閲覧できる設計を維持するため、
-//   他ページと違いGUILD_IDが無くてもLogin.htmlへは誘導しない（ログイン中に
-//   限ってguild_idを一緒に送る用途にのみ使う。下のloadSystemLog参照）。
-const GUILD_ID = (function () {
-  try {
-    const g = JSON.parse(localStorage.getItem('current_guild'));
-    return g && g.guild_id ? String(g.guild_id) : null;
-  } catch (e) { return null; }
-})();
+// ★ GUILD_ID はファイル冒頭（renderDrawerAccount呼び出しより前）へ移動済み。
 
 // ★ /nameコマンドでサーバーごとに設定された表示名（無ければ"学生勉強会web"）を、
 //   ドロワーロゴに反映する。.app-nameはSVGアイコン+末尾テキストの構造なので、
