@@ -4394,10 +4394,13 @@ function setupFourChoiceIfNeeded() {
     if (!correct) return;
     const deckId = card.__deckId || studyDeckId;
     const pool = poolFor(deckId).filter(a => a !== correct);
-    // ★ bot.py _build_deck_questions と同じ基準：不正解3つを選ぶには
-    //   答えの異なりが最低3つ必要。足りないカードは4択にできないので、
-    //   studyChoicesMap に登録しない＝renderStudyCardが通常入力にフォールバックする。
-    if (pool.length < 3) return;
+    // ★ 修正：bot.py _build_deck_questions は「不正解3つ選ぶには答えの異なりが
+    //   最低3つ必要」という数学的な最低ラインだが、ちょうど3つしか無い場合は
+    //   スコアによる選別が一切効かず（3件全部をそのまま誤答にするしかない）、
+    //   紛らわしさを無視した「明らかに関係ない誤答」が混ざりやすい。プール基準を
+    //   厳しくし、選ぶ余地（最低6件＝buildChoiceEntryのtopPoolSize上限と同じ）が
+    //   無ければ4択にせず通常入力にフォールバックする。
+    if (pool.length < 6) return;
     studyChoicesMap.set(cardKey(card), buildChoiceEntry(correct, pool));
   });
 
@@ -4408,6 +4411,19 @@ function setupFourChoiceIfNeeded() {
 //   1回のリクエストに詰め込みすぎるとCPU動作のAIでは応答が遅くなるため、
 //   「みんなでクイズ」側の教訓と同じく分割して送る（学習側は待たされないので
 //   バッチ数はクイズ側より少なめでも実害は無い）。
+// ★ 追加：解答文が「記述系」（単語1つではなく、説明文っぽい）かどうかの簡易判定。
+//   綴り類似度＋文字数の近さだけの即席4択は、単語同士なら「なんとなく近い」で
+//   それなりに機能するが、記述式の解答（文章）だと綴りが近くても意味は無関係、
+//   ということが起きやすく、「消去法で一目で分かる誤答」が混ざりやすい。
+//   AIによる強化の価値がより大きいこの手のカードを、問い合わせの先頭へ回す。
+function isDescriptiveAnswerText(s) {
+  if (!s) return false;
+  if (s.length >= 20) return true; // ある程度長い解答は記述系とみなす
+  if (/[。、．，,.!?！？]/.test(s)) return true; // 句読点を含む＝文章の可能性が高い
+  if (/\s/.test(s.trim())) return true; // 単語区切りのスペースを含む＝説明文っぽい
+  return false;
+}
+
 async function scheduleFourChoiceAiEnhancement() {
   const myToken = _fourChoiceAiRunToken;
   const session = getLoginSession();
@@ -4416,7 +4432,17 @@ async function scheduleFourChoiceAiEnhancement() {
   const entries = studyCards
     .map((card, idx) => ({ idx, key: cardKey(card) }))
     .filter(e => studyChoicesMap.has(e.key));
-  const BATCH_SIZE = 5;
+  // ★ 追加：記述系カードを問い合わせの先頭へ並べ替える（Array.sortは安定ソートなので、
+  //   記述系同士・単語系同士それぞれの中では元の出題順を維持する）。
+  entries.sort((a, b) => {
+    const ea = studyChoicesMap.get(a.key), eb = studyChoicesMap.get(b.key);
+    const pa = isDescriptiveAnswerText(ea.choices[ea.correctIndex]) ? 0 : 1;
+    const pb = isDescriptiveAnswerText(eb.choices[eb.correctIndex]) ? 0 : 1;
+    return pa - pb;
+  });
+  // ★ 修正：バッチを小さくし（5→3）、1回あたりのAI応答時間を短くすることで、
+  //   先頭付近のカード（記述系優先で並べ替え済み）ほど早くAI強化版に届くようにする。
+  const BATCH_SIZE = 3;
   for (let start = 0; start < entries.length; start += BATCH_SIZE) {
     if (myToken !== _fourChoiceAiRunToken) return; // ★ 学習をやり直す等で無効化されていたら中断
     const batch = entries.slice(start, start + BATCH_SIZE);
@@ -4451,6 +4477,13 @@ async function scheduleFourChoiceAiEnhancement() {
       const correct = cur.choices[cur.correctIndex];
       const choices = shuffleArrayInPlace([...q.distractors, correct]);
       studyChoicesMap.set(key, { choices, correctIndex: choices.indexOf(correct), shortlist: cur.shortlist });
+      // ★ 追加：今まさに表示中で、まだ回答していないカードがこのバッチに含まれていた
+      //   場合は、次の描画を待たずにその場で選択肢を差し替える（「早めに」AI強化版を
+      //   見せる）。既に回答済みのカードは触らない（正誤判定の結果が変わって見えると
+      //   混乱するため）。
+      if (q.i === studyIdx && !studyChoiceAnswered) {
+        renderStudyChoices(studyChoicesMap.get(key));
+      }
     });
   }
 }
