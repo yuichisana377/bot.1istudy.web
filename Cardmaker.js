@@ -218,6 +218,17 @@ applyAccountHeader();
 //   変更し、旧キーにデータが残っていれば（＝これまで1サーバーだけで
 //   使っていた既存ユーザー）現在のguildへ一度だけ引き継ぐ。
 function migrateGuildScopedLocalKey(oldKey, newKey) {
+  // ★ 修正（不具合修正、2026/08/26）：location.replace('/Login.html')は同期実行中の
+  //   スクリプトを即座には止めない（ブラウザが実際にページを離れるまでの間、
+  //   このファイルの残りの行はそのまま最後まで実行され続ける）。そのため
+  //   GUILD_IDがまだ分からない端末（current_guild未設定）では、この関数が
+  //   "cardmaker_decks_v1_null" のような壊れたキーへ向けて移行処理を実行して
+  //   しまい、しかも移行元の元データ（oldKey）を消してしまっていた。
+  //   ログイン後に本当のGUILD_IDで再度この関数が呼ばれる頃には移行元が
+  //   既に無く、下書きデッキ等のローカルデータが"_null"キーの下に迷子になり、
+  //   二度と読み込まれなくなる（＝実質的なデータ消失）不具合があった。
+  //   GUILD_IDが未確定の間は何もしない（元データにも触らない）ようにする。
+  if (!GUILD_ID) return;
   try {
     if (localStorage.getItem(newKey) === null && localStorage.getItem(oldKey) !== null) {
       localStorage.setItem(newKey, localStorage.getItem(oldKey));
@@ -341,8 +352,21 @@ let cmDragJustEndedAt = 0;
 //   スキップするためのガードに使う。
 let cmListDragActive = false;
 
+// ★ 修正（不具合修正、2026/08/26）：study_data側（fetchAndMergeStudyData／
+//   pushStudyDataToServer）で見つかったのと同じ競合が、この「みんなの並び順」
+//   にも存在した。pushSharedOrderToServerがサーバーへ届く前に、10秒おきの
+//   checkOrderUpdate→fetchAndMergeOrderが割り込むと、まだ更新されていない
+//   古い並び順でsharedOrderCacheを丸ごと上書きしてしまい、自分がドラッグで
+//   決めた並びが一瞬で元に戻って見える（＝「わからないマークが消えて見える」
+//   のと同じ原因・同じ直し方）。送信中のPromiseを覚えておき、
+//   fetchAndMergeOrder側でそれらの完了を待ってから取得する。
+let _pendingOrderPushes = [];
+
 // ★ サーバーから「みんなの並び順」を取得してキャッシュに反映する
 async function fetchAndMergeOrder() {
+  if (_pendingOrderPushes.length) {
+    await Promise.allSettled(_pendingOrderPushes);
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   const session = getLoginSession();
@@ -353,6 +377,9 @@ async function fetchAndMergeOrder() {
   clearTimeout(timer);
   const data = await res.json();
   if (!data.ok) return false;
+  // ★ 追加：通信中に新しい並び替えが始まっていたら、この応答は古いかもしれない
+  //   ので上書きせずに諦める（fetchAndMergeStudyDataと同じ考え方）。
+  if (_pendingOrderPushes.length) return false;
   sharedOrderCache = data.order || {};
   saveSharedOrderCache(sharedOrderCache);
   return true;
@@ -361,6 +388,15 @@ async function fetchAndMergeOrder() {
 // ★ この端末でドラッグして決めた並び順のうち「みんなで共有される部分」だけを
 //   サーバーへ反映する（自分だけの下書きデッキの並びは送らない）。
 async function pushSharedOrderToServer(folderId, keys) {
+  const promise = _pushSharedOrderToServerImpl(folderId, keys);
+  _pendingOrderPushes.push(promise);
+  try {
+    return await promise;
+  } finally {
+    _pendingOrderPushes = _pendingOrderPushes.filter(p => p !== promise);
+  }
+}
+async function _pushSharedOrderToServerImpl(folderId, keys) {
   const sharedKeys = keys.filter(isSharedOrderKey);
   try {
     const controller = new AbortController();
@@ -3832,6 +3868,10 @@ async function fetchAndMergeStudyData() {
   //   いない状態でここに来ると、その変更を含まない古い内容で丸ごと上書き
   //   してしまう（pushStudyDataToServer側のコメント参照）。送信中のものが
   //   あれば、それらが片づく（成功・失敗を問わず一段落する）まで待ってから取得する。
+  //   ★ 追加：ここでの待ち合わせは「取得を始める前」時点のものだけが対象。
+  //   取得（fetch）が実際に通信している最中に新しい変更が始まった場合、
+  //   その変更をサーバーが反映する前のレスポンスを受け取ってしまう可能性が
+  //   まだ残るため、下（応答を受け取った直後）でもう一度確認する。
   if (_pendingStudyDataPushes.length) {
     await Promise.allSettled(_pendingStudyDataPushes);
   }
@@ -3848,6 +3888,10 @@ async function fetchAndMergeStudyData() {
     clearTimeout(timer);
     const data = await res.json();
     if (!data.ok) return false;
+    // ★ 追加：通信中に新しい変更が始まっていたら、この応答は「その変更を
+    //   含まない古いスナップショット」かもしれないので、上書きせずに諦める
+    //   （＝ローカルの変更を守る。次回のポーリングで改めて取得し直せば十分）。
+    if (_pendingStudyDataPushes.length) return false;
     studyDataCache = {
       unsure:    data.data.unsure    || {},
       progress:  data.data.progress  || {},
@@ -4396,7 +4440,15 @@ function shuffleArrayInPlace(arr) {
 const FOUR_CHOICE_AI_SHORTLIST_SIZE = 40;
 // pool: correct以外の、このカードの元デッキの解答（重複除去済み）一覧
 function buildChoiceEntry(correct, pool) {
-  const scored = [...pool].sort((a, b) => _distractorScore(correct, b) - _distractorScore(correct, a));
+  // ★ 修正（効率化）：sortの比較関数の中で_distractorScoreを毎回計算し直すと
+  //   （比較のたびに2回、O(n log n)回呼ばれる）候補が多いデッキほど無駄が
+  //   大きくなる。先に各候補のスコアを1回だけ計算してから並べ替える
+  //   （decorate-sort-undecorate）。学習開始前に同期的に呼ばれる関数なので、
+  //   ここが遅いとそのまま学習開始の体感速度に影響する。
+  const scored = pool
+    .map(a => ({ a, score: _distractorScore(correct, a) }))
+    .sort((x, y) => y.score - x.score)
+    .map(s => s.a);
   const shortlist = scored.slice(0, FOUR_CHOICE_AI_SHORTLIST_SIZE); // ★ AIへ渡す候補用に保持しておく（表示用の3件より広めに残す）
   const topPoolSize = Math.max(3, Math.min(scored.length, 6));
   const distractors = shuffleArrayInPlace(scored.slice(0, topPoolSize)).slice(0, 3);
@@ -4477,17 +4529,27 @@ async function applyServerChoiceCaches() {
     if (studyChoicesMap.has(cardKey(card))) deckIds.add(card.__deckId || studyDeckId);
   });
 
-  for (const deckId of deckIds) {
+  // ★ 修正（効率化、2026/08/26）：デッキごとに直列でawaitしていたため、
+  //   フォルダ再生でデッキ数が多いと最悪「デッキ数×5秒」待つことになって
+  //   いた（1デッキなら数百ms程度、という設計コメントと矛盾する動き方に
+  //   なっていた）。全デッキぶんを並行して取得し、待ち時間を「一番遅い
+  //   1件ぶん」に収める。
+  const results = await Promise.all([...deckIds].map(async deckId => {
     const deck = decks.find(d => d.id === deckId);
-    if (!deck || !deck.filename) continue;
-    let data;
+    if (!deck || !deck.filename) return null;
     try {
       const res = await fetch(
         `${API_BASE}cardmaker_choice_cache?guild_id=${GUILD_ID}&filename=${encodeURIComponent(deck.filename)}`,
         { headers: { 'Authorization': 'Bearer ' + session.session_token }, signal: AbortSignal.timeout(5000) }
       );
-      data = await res.json();
-    } catch (e) { continue; } // ★ このデッキ分だけ諦める（他のデッキ・ローカル生成には影響しない）
+      const data = await res.json();
+      return { deckId, data };
+    } catch (e) { return null; } // ★ このデッキ分だけ諦める（他のデッキ・ローカル生成には影響しない）
+  }));
+
+  for (const result of results) {
+    if (!result) continue;
+    const { deckId, data } = result;
     if (!data || !data.ok || !data.cards) continue;
 
     studyCards.forEach(card => {
@@ -4571,6 +4633,10 @@ async function scheduleFourChoiceAiEnhancement(skipKeys) {
 
     let data;
     try { data = await res.json(); } catch (e) { return; }
+    // ★ 修正：res.json()もawaitを挟む（＝この間に学習がやり直された可能性がある）ため、
+    //   ここでもう一度確認する。これが無いと、やり直し後の新しいstudyChoicesMapに
+    //   古いセッションのAI応答を書き込んでしまうことがあった。
+    if (myToken !== _fourChoiceAiRunToken) return;
     if (!data || !data.ok) return; // ai_unavailable/ai_failed 等。以降のバッチも見込みが薄いので打ち切る
 
     (data.questions || []).forEach(q => {
@@ -4744,7 +4810,16 @@ function renderStudyCard() {
   answerInput.value = '';
   choiceWrap.style.display = choiceEntry ? '' : 'none';
   document.getElementById('reveal-answer-btn').style.display = choiceEntry ? 'none' : '';
-  if (choiceEntry) renderStudyChoices(choiceEntry);
+  if (choiceEntry) {
+    renderStudyChoices(choiceEntry);
+  } else {
+    // ★ 追加（防御的修正）：4択にできないカードへ切り替わったとき、前のカードの
+    //   選択肢ボタン（onclickが前のカードのインデックスに紐づいたまま）を
+    //   DOMに残さない。現状choiceWrapはdisplay:noneで隠れるため実害は無いが、
+    //   将来どこかがrenderStudyChoicesを経由せずこの欄を再表示する変更が
+    //   入った場合に、古いカードの選択肢が誤って押せてしまう事故を防ぐ。
+    document.getElementById('study-choices').innerHTML = '';
+  }
   const gradeResult = document.getElementById('study-grade-result');
   gradeResult.style.display = 'none';
   gradeResult.className = 'study-grade-result';

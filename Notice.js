@@ -48,7 +48,27 @@ let draftSaveTimer = null;
 // ★ 複数サーバー対応：以前はguildを問わない共通キーだったため、
 //   別サーバーに切り替えても他サーバーの下書きが「続きから書く？」に
 //   出てきてしまっていた。キーにGUILD_IDを含めるよう修正。
+// ★ 修正（不具合修正、2026/08/26）：Cardmaker.js等では移行処理
+//   （migrateGuildScopedLocalKey、旧キーの中身を新キーへコピーする）を
+//   入れていたが、Notice.jsでは入れ忘れていた。既にこのキー変更以前から
+//   下書きを保存していた利用者は、「続きから書く？」バナーが二度と
+//   出なくなっていた（データ自体はlocalStorageに残るが、新しい
+//   GUILD_ID付きキーでしか読まなくなったため参照できないだけ＝
+//   Cardmaker.jsの移行漏れ不具合と同じ原因）。
+//   ★ GUILD_IDがまだ確定していない端末（current_guild未設定、この後
+//   Login.htmlへ転送される）では移行しない（GUILD_IDが文字列"null"に
+//   なってしまい、誤ったキーへ移行＆元データ削除してしまうため）。
+function _migrateNoticeDraftKey(oldKey, newKey) {
+  if (!GUILD_ID) return;
+  try {
+    if (localStorage.getItem(newKey) === null && localStorage.getItem(oldKey) !== null) {
+      localStorage.setItem(newKey, localStorage.getItem(oldKey));
+      localStorage.removeItem(oldKey);
+    }
+  } catch (e) {}
+}
 const DRAFT_KEY_NEW = 'notice_draft_new_' + GUILD_ID;
+_migrateNoticeDraftKey('notice_draft_new', DRAFT_KEY_NEW);
 
 // ★ OS標準のconfirm()/alert()の代替（showAppConfirm/showAppAlert）は
 //   全ページ共通の /Dialog.js に移した（Notice.html側で読み込み済み）。
@@ -430,7 +450,11 @@ function switchNoticeTab(tab) {
 //  下書き（ローカル一時保存）
 // ============================================================
 function draftKeyForEdit(originalFilename) {
-  return 'notice_draft_edit_' + GUILD_ID + '_' + originalFilename;
+  const key = 'notice_draft_edit_' + GUILD_ID + '_' + originalFilename;
+  // ★ 修正：DRAFT_KEY_NEWと同じ移行漏れ（旧キー 'notice_draft_edit_' + originalFilename）。
+  //   呼ばれるたびに（該当ファイルの下書きが無ければ何もしないので軽い）移行を試みる。
+  _migrateNoticeDraftKey('notice_draft_edit_' + originalFilename, key);
+  return key;
 }
 
 function scheduleDraftSave() {
