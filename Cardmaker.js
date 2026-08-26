@@ -3828,6 +3828,13 @@ function studyItemKey(isFolder, id) {
 async function fetchAndMergeStudyData() {
   const session = getLoginSession();
   if (!session || !session.session_token) return false;
+  // ★ 修正（不具合修正）：直前に押した「わからない」等がまだサーバーへ届いて
+  //   いない状態でここに来ると、その変更を含まない古い内容で丸ごと上書き
+  //   してしまう（pushStudyDataToServer側のコメント参照）。送信中のものが
+  //   あれば、それらが片づく（成功・失敗を問わず一段落する）まで待ってから取得する。
+  if (_pendingStudyDataPushes.length) {
+    await Promise.allSettled(_pendingStudyDataPushes);
+  }
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
@@ -3854,10 +3861,29 @@ async function fetchAndMergeStudyData() {
   }
 }
 
+// ★ 修正（不具合修正）：わからないマーク等を送信中（まだサーバーに届いたか
+//   確定していない間）に、他端末の変更を拾うための定期同期（checkStudyDataUpdate、
+//   15秒間隔）が割り込むと、サーバー側がまだ更新される前の古い内容で
+//   studyDataCache を丸ごと上書きしてしまい、送ったはずの「わからない」が
+//   消えて見える不具合があった。送信中のPromiseを覚えておき、
+//   fetchAndMergeStudyData側でそれらの完了を待ってから取得することで、
+//   この競合を防ぐ。
+let _pendingStudyDataPushes = [];
+
 // 学習データをサーバーへ送る共通処理（失敗しても操作自体は止めない）
 async function pushStudyDataToServer(path, body) {
   const session = getLoginSession();
   if (!session || !session.session_token) return false;
+  const promise = _pushStudyDataToServerImpl(path, body);
+  _pendingStudyDataPushes.push(promise);
+  try {
+    return await promise;
+  } finally {
+    _pendingStudyDataPushes = _pendingStudyDataPushes.filter(p => p !== promise);
+  }
+}
+async function _pushStudyDataToServerImpl(path, body) {
+  const session = getLoginSession();
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
