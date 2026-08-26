@@ -4306,7 +4306,10 @@ async function startStudyMode(mode) {
     clearStudyProgress(studyIsFolder, progressId);
   }
 
-  setupFourChoiceIfNeeded(); // ★ 追加：4択モードなら選択肢を用意する（AI強化はこの中で裏で開始する）
+  // ★ 修正：サーバーの事前生成キャッシュ確認（高速なファイル読み込みのみ、数百ms程度）を
+  //   待ってから描画する。学習開始が遅れるのはこの一瞬だけで、間に合えば最初のカードから
+  //   AI強化済みの選択肢が出せる（キャッシュが無い/失敗してもここで待ちすぎない設計）。
+  await setupFourChoiceIfNeeded();
 
   renderStudyTitle();
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
@@ -4375,7 +4378,7 @@ function buildChoiceEntry(correct, pool) {
   return { choices, correctIndex: choices.indexOf(correct), shortlist };
 }
 
-function setupFourChoiceIfNeeded() {
+async function setupFourChoiceIfNeeded() {
   studyChoicesMap = new Map();
   _fourChoiceAiRunToken++; // ★ 前回までのAI問い合わせ結果が紛れ込まないよう無効化する
   if (!studyFourChoice || !studyCards.length) return;
@@ -4411,7 +4414,70 @@ function setupFourChoiceIfNeeded() {
     studyChoicesMap.set(cardKey(card), buildChoiceEntry(correct, pool));
   });
 
-  if (studyChoicesMap.size) scheduleFourChoiceAiEnhancement();
+  if (!studyChoicesMap.size) return;
+
+  // ★ 追加（2026/08/26）：デッキ「公開」保存時にサーバー側でバックグラウンド
+  //   事前生成された選択肢（four_choice_cache_<filename>.json）があれば、
+  //   ここで取りに行って差し替える。ファイル読み込みだけなので高速（数百ms
+  //   程度）で、間に合えば最初のカードから既にAI強化済みの選択肢を使える。
+  //   取得できたカードはローカルのAI強化（scheduleFourChoiceAiEnhancement）の
+  //   対象から外し、二重に問い合わせない。
+  const serverCoveredKeys = await applyServerChoiceCaches();
+  scheduleFourChoiceAiEnhancement(serverCoveredKeys);
+}
+
+// ★ 追加：サーバーが返した誤答候補が信頼できる形か検証する（キャッシュ生成後に
+//   カードの解答が変わっていた等で、正解と重複する／件数が合わない場合に備える）。
+function isValidServerDistractors(distractors, correct) {
+  if (!Array.isArray(distractors) || distractors.length !== 3) return false;
+  const seen = new Set([correct]);
+  for (const d of distractors) {
+    const t = String(d || '').trim();
+    if (!t || seen.has(t)) return false;
+    seen.add(t);
+  }
+  return true;
+}
+
+async function applyServerChoiceCaches() {
+  const covered = new Set();
+  const session = getLoginSession();
+  if (!session || !session.session_token) return covered;
+
+  // ★ 関係するデッキ（filenameを持つ＝公開済みのものだけ）を集める。
+  //   下書き（filenameが無い）デッキはそもそもサーバー側に事前生成の対象にならない。
+  const deckIds = new Set();
+  studyCards.forEach(card => {
+    if (studyChoicesMap.has(cardKey(card))) deckIds.add(card.__deckId || studyDeckId);
+  });
+
+  for (const deckId of deckIds) {
+    const deck = decks.find(d => d.id === deckId);
+    if (!deck || !deck.filename) continue;
+    let data;
+    try {
+      const res = await fetch(
+        `${API_BASE}cardmaker_choice_cache?guild_id=${GUILD_ID}&filename=${encodeURIComponent(deck.filename)}`,
+        { headers: { 'Authorization': 'Bearer ' + session.session_token }, signal: AbortSignal.timeout(5000) }
+      );
+      data = await res.json();
+    } catch (e) { continue; } // ★ このデッキ分だけ諦める（他のデッキ・ローカル生成には影響しない）
+    if (!data || !data.ok || !data.cards) continue;
+
+    studyCards.forEach(card => {
+      if ((card.__deckId || studyDeckId) !== deckId) return;
+      const key = cardKey(card);
+      const cur = studyChoicesMap.get(key);
+      if (!cur) return;
+      const correct = cur.choices[cur.correctIndex];
+      const entry = data.cards[key];
+      if (!entry || !isValidServerDistractors(entry.distractors, correct)) return;
+      const choices = shuffleArrayInPlace([...entry.distractors, correct]);
+      studyChoicesMap.set(key, { choices, correctIndex: choices.indexOf(correct), shortlist: cur.shortlist });
+      covered.add(key);
+    });
+  }
+  return covered;
 }
 
 // ★ 4択が組み上がったカードから順に、数問ずつローカルAIへ問い合わせて差し替える。
@@ -4431,14 +4497,16 @@ function isDescriptiveAnswerText(s) {
   return false;
 }
 
-async function scheduleFourChoiceAiEnhancement() {
+// skipKeys: applyServerChoiceCaches()が既にサーバーの事前生成結果で差し替え
+//   済みのカードキー一覧（Set）。二重にAIへ問い合わせないよう除外する。
+async function scheduleFourChoiceAiEnhancement(skipKeys) {
   const myToken = _fourChoiceAiRunToken;
   const session = getLoginSession();
   if (!session || !session.session_token) return;
 
   const entries = studyCards
     .map((card, idx) => ({ idx, key: cardKey(card) }))
-    .filter(e => studyChoicesMap.has(e.key));
+    .filter(e => studyChoicesMap.has(e.key) && !(skipKeys && skipKeys.has(e.key)));
   // ★ 追加：記述系カードを問い合わせの先頭へ並べ替える（Array.sortは安定ソートなので、
   //   記述系同士・単語系同士それぞれの中では元の出題順を維持する）。
   entries.sort((a, b) => {
