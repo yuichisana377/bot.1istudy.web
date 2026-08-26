@@ -4358,10 +4358,14 @@ function shuffleArrayInPlace(arr) {
   }
   return arr;
 }
+// ★ 追加（2026/08/26）：4択にできる条件（答えの異なりの数）を厳しくしたことで、
+//   対象デッキの候補プール自体が元々大きくなった。AIに渡す候補数もそれに合わせて
+//   広げる（FOUR_CHOICE_POOL_MIN_SIZEと合わせて調整すること）。
+const FOUR_CHOICE_AI_SHORTLIST_SIZE = 16;
 // pool: correct以外の、このカードの元デッキの解答（重複除去済み）一覧
 function buildChoiceEntry(correct, pool) {
   const scored = [...pool].sort((a, b) => _distractorScore(correct, b) - _distractorScore(correct, a));
-  const shortlist = scored.slice(0, 12); // ★ AIへ渡す候補用に保持しておく（表示用の3件より広めに残す）
+  const shortlist = scored.slice(0, FOUR_CHOICE_AI_SHORTLIST_SIZE); // ★ AIへ渡す候補用に保持しておく（表示用の3件より広めに残す）
   const topPoolSize = Math.max(3, Math.min(scored.length, 6));
   const distractors = shuffleArrayInPlace(scored.slice(0, topPoolSize)).slice(0, 3);
   const choices = shuffleArrayInPlace([...distractors, correct]);
@@ -4389,18 +4393,18 @@ function setupFourChoiceIfNeeded() {
     return pool;
   }
 
+  // ★ 修正（2026/08/26）：答えの異なりが「6件以上」でもまだ選別の余地が乏しく
+  //   紛らわしくない誤答が混ざりやすかったため、「10件を超える（11件以上）」へ
+  //   さらに厳格化した。これにより対象デッキの候補プールが元々広くなり、
+  //   AI（scheduleFourChoiceAiEnhancement）に渡す候補（shortlist）も自然と
+  //   充実する＝AIがより自信を持って紛らわしい誤答を選べるようになる。
+  const FOUR_CHOICE_POOL_MIN_SIZE = 10;
   studyCards.forEach(card => {
     const correct = ((studyReverse ? card.question : card.answer) || '').trim();
     if (!correct) return;
     const deckId = card.__deckId || studyDeckId;
     const pool = poolFor(deckId).filter(a => a !== correct);
-    // ★ 修正：bot.py _build_deck_questions は「不正解3つ選ぶには答えの異なりが
-    //   最低3つ必要」という数学的な最低ラインだが、ちょうど3つしか無い場合は
-    //   スコアによる選別が一切効かず（3件全部をそのまま誤答にするしかない）、
-    //   紛らわしさを無視した「明らかに関係ない誤答」が混ざりやすい。プール基準を
-    //   厳しくし、選ぶ余地（最低6件＝buildChoiceEntryのtopPoolSize上限と同じ）が
-    //   無ければ4択にせず通常入力にフォールバックする。
-    if (pool.length < 6) return;
+    if (pool.length <= FOUR_CHOICE_POOL_MIN_SIZE) return;
     studyChoicesMap.set(cardKey(card), buildChoiceEntry(correct, pool));
   });
 
