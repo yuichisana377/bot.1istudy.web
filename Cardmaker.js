@@ -723,6 +723,14 @@ let studyCards = [], studyIdx = 0;
 let studyReverse = false; // ★ 追加：問題と解答を逆にするモードかどうか
 let studyAutoGrade = false; // ★ 追加：解答入力欄で自動採点するモードかどうか（反転モード時は常にfalse）
 let studyMode = 'all'; // ★ 追加：'all' | 'unsure'（続きから再開時に同じ絞り込みを再現するため）
+// ★ 追加：自動採点＋「4択にする」モード（みんなでクイズと同じ形式で解答する）。
+//   studyChoicesMap は cardKey → {choices:[4件], correctIndex, shortlist} で、
+//   デッキの解答の種類が3種類未満などで4択にできないカードは登録されない
+//   （renderStudyCardがその場合だけ通常の解答入力欄にフォールバックする）。
+let studyFourChoice = false;
+let studyChoicesMap = new Map();
+let studyChoiceAnswered = false;
+let _fourChoiceAiRunToken = 0; // ★ 学習をやり直した際、古いAI問い合わせの結果が新しいセッションに混ざらないようにする
 
 // ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
 // id が無いカード（例：公開後にサーバーから取り込まれたカード）でも
@@ -3955,6 +3963,7 @@ function saveStudyProgress() {
     mode: studyMode,
     reverse: studyReverse,
     autoGrade: studyAutoGrade, // ★ 追加：自動採点モードだったかどうかを保存し、再開時に復元する
+    fourChoice: studyFourChoice, // ★ 追加：「4択にする」設定だったかどうかを保存し、再開時に復元する
     shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
     updatedAt: Date.now(),
   };
@@ -4056,7 +4065,9 @@ async function openFolderPlayMode(folderId) {
 
   document.getElementById('reverse-mode-checkbox').checked = false;
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：モーダルを開くたびに未チェックへリセット
+  document.getElementById('four-choice-checkbox').checked = false; // ★ 追加：「4択にする」も未チェックへリセット
   onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
+  onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」サブトグルを隠す
   setIconText(document.getElementById('play-mode-deck-name'), folder ? Icons.cmHtml('folder', {size:15}) : '', folder ? folder.name : 'フォルダ');
 
   const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
@@ -4154,7 +4165,9 @@ async function openPlayMode(deckId) {
 
   document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：自動採点トグルも未チェックへリセット
+  document.getElementById('four-choice-checkbox').checked = false; // ★ 追加：「4択にする」も未チェックへリセット
   onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
+  onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」サブトグルを隠す
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
   const unsure = getUnsureSet(deckId);
@@ -4193,13 +4206,25 @@ function onReverseModeToggleChange() {
   const reversed = document.getElementById('reverse-mode-checkbox').checked;
   const row = document.getElementById('auto-grade-toggle-row');
   row.style.display = reversed ? 'none' : '';
-  if (reversed) document.getElementById('auto-grade-checkbox').checked = false;
+  if (reversed) {
+    document.getElementById('auto-grade-checkbox').checked = false;
+    onAutoGradeToggleChange(); // ★ 追加：自動採点を強制OFFにしたら「4択にする」サブトグルも連動して隠す
+  }
+}
+
+// ★ 追加：自動採点ONの時だけ「4択にする」サブトグルを表示する（自動採点OFFなら意味が無いため）。
+function onAutoGradeToggleChange() {
+  const on = document.getElementById('auto-grade-checkbox').checked;
+  const row = document.getElementById('four-choice-toggle-row');
+  row.style.display = on ? '' : 'none';
+  if (!on) document.getElementById('four-choice-checkbox').checked = false;
 }
 
 async function startStudyMode(mode) {
   studyReverse = document.getElementById('reverse-mode-checkbox').checked;
   // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
   studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
+  studyFourChoice = studyAutoGrade && document.getElementById('four-choice-checkbox').checked;
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
 
   // ★ 追加：「すべてのカード」「わからないカードだけ」を選んだ場合、
@@ -4228,6 +4253,7 @@ async function startStudyMode(mode) {
     if (!saved) return; // 万が一データが消えていた場合は何もしない
     studyReverse = saved.reverse;
     studyAutoGrade = !saved.reverse && !!saved.autoGrade; // ★ 追加：保存されていた自動採点設定を復元
+    studyFourChoice = studyAutoGrade && !!saved.fourChoice; // ★ 追加：保存されていた「4択にする」設定を復元
     studyMode = saved.mode || 'all';
     studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
 
@@ -4280,6 +4306,8 @@ async function startStudyMode(mode) {
     clearStudyProgress(studyIsFolder, progressId);
   }
 
+  setupFourChoiceIfNeeded(); // ★ 追加：4択モードなら選択肢を用意する（AI強化はこの中で裏で開始する）
+
   renderStudyTitle();
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
   showScreen('study');
@@ -4287,6 +4315,198 @@ async function startStudyMode(mode) {
   document.getElementById('study-content').style.display = 'flex';
   renderStudyCard();
   loadUnderstandingBadge(); // ★ 追加：みんなの「わかる率」を右上に読み込む（非同期・表示はブロックしない）
+}
+
+// ============================================================
+//  自動採点＋「4択にする」モード
+//  ─────────────────────────────────────────
+//  みんなでクイズ（bot.py側 _pick_distractors）と同じ考え方で、まず即座に
+//  使える「綴りの類似度＋文字数の近さ」ベースの4択を組み立てて学習を始め、
+//  その裏でローカルAI（Ollama）に数問ずつ問い合わせて、応答が返ってきた
+//  カードから順に、より意味的に紛らわしい選択肢へ差し替えていく。
+//  AIが使えない（未設定・失敗）場合も、最初に組み立てた4択のまま問題なく遊べる。
+// ============================================================
+
+// ★ 2文字（bigram）の一致度で文字列の類似度を測る（Python側のdifflib.SequenceMatcher
+//   ほど厳密ではないが、「なんとなく綴りが近いものを優先する」という目的には十分）。
+function _bigramSimilarity(a, b) {
+  function bigrams(s) {
+    const arr = [];
+    for (let i = 0; i < s.length - 1; i++) arr.push(s.slice(i, i + 2));
+    return arr;
+  }
+  const ba = bigrams(a), bb = bigrams(b);
+  if (!ba.length || !bb.length) return a === b ? 1 : 0;
+  const rest = [...bb];
+  let common = 0;
+  ba.forEach(bg => {
+    const idx = rest.indexOf(bg);
+    if (idx !== -1) { common++; rest.splice(idx, 1); }
+  });
+  return (2 * common) / (ba.length + bb.length);
+}
+function _distractorScore(correct, a) {
+  const seqRatio = _bigramSimilarity(correct, a);
+  const longer = Math.max(correct.length, a.length, 1);
+  const lengthRatio = 1 - Math.abs(correct.length - a.length) / longer;
+  return seqRatio * 0.7 + lengthRatio * 0.3;
+}
+function shuffleArrayInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+// pool: correct以外の、このカードの元デッキの解答（重複除去済み）一覧
+function buildChoiceEntry(correct, pool) {
+  const scored = [...pool].sort((a, b) => _distractorScore(correct, b) - _distractorScore(correct, a));
+  const shortlist = scored.slice(0, 12); // ★ AIへ渡す候補用に保持しておく（表示用の3件より広めに残す）
+  const topPoolSize = Math.max(3, Math.min(scored.length, 6));
+  const distractors = shuffleArrayInPlace(scored.slice(0, topPoolSize)).slice(0, 3);
+  const choices = shuffleArrayInPlace([...distractors, correct]);
+  return { choices, correctIndex: choices.indexOf(correct), shortlist };
+}
+
+function setupFourChoiceIfNeeded() {
+  studyChoicesMap = new Map();
+  _fourChoiceAiRunToken++; // ★ 前回までのAI問い合わせ結果が紛れ込まないよう無効化する
+  if (!studyFourChoice || !studyCards.length) return;
+
+  // ★ デッキ単位で1問題プールにする（フォルダをまとめて再生している場合は、
+  //   カードごとにその元デッキ内の解答だけをプールにする）。
+  const poolByDeck = new Map();
+  function poolFor(deckId) {
+    if (poolByDeck.has(deckId)) return poolByDeck.get(deckId);
+    const deck = decks.find(d => d.id === deckId);
+    const seen = new Set();
+    const pool = [];
+    (deck ? deck.cards : []).forEach(cc => {
+      const a = (cc.answer || '').trim();
+      if (a && !seen.has(a)) { seen.add(a); pool.push(a); }
+    });
+    poolByDeck.set(deckId, pool);
+    return pool;
+  }
+
+  studyCards.forEach(card => {
+    const correct = ((studyReverse ? card.question : card.answer) || '').trim();
+    if (!correct) return;
+    const deckId = card.__deckId || studyDeckId;
+    const pool = poolFor(deckId).filter(a => a !== correct);
+    // ★ bot.py _build_deck_questions と同じ基準：不正解3つを選ぶには
+    //   答えの異なりが最低3つ必要。足りないカードは4択にできないので、
+    //   studyChoicesMap に登録しない＝renderStudyCardが通常入力にフォールバックする。
+    if (pool.length < 3) return;
+    studyChoicesMap.set(cardKey(card), buildChoiceEntry(correct, pool));
+  });
+
+  if (studyChoicesMap.size) scheduleFourChoiceAiEnhancement();
+}
+
+// ★ 4択が組み上がったカードから順に、数問ずつローカルAIへ問い合わせて差し替える。
+//   1回のリクエストに詰め込みすぎるとCPU動作のAIでは応答が遅くなるため、
+//   「みんなでクイズ」側の教訓と同じく分割して送る（学習側は待たされないので
+//   バッチ数はクイズ側より少なめでも実害は無い）。
+async function scheduleFourChoiceAiEnhancement() {
+  const myToken = _fourChoiceAiRunToken;
+  const session = getLoginSession();
+  if (!session || !session.session_token) return;
+
+  const entries = studyCards
+    .map((card, idx) => ({ idx, key: cardKey(card) }))
+    .filter(e => studyChoicesMap.has(e.key));
+  const BATCH_SIZE = 5;
+  for (let start = 0; start < entries.length; start += BATCH_SIZE) {
+    if (myToken !== _fourChoiceAiRunToken) return; // ★ 学習をやり直す等で無効化されていたら中断
+    const batch = entries.slice(start, start + BATCH_SIZE);
+    const items = batch.map(e => {
+      const card = studyCards[e.idx];
+      const cur = studyChoicesMap.get(e.key);
+      const correct = cur.choices[cur.correctIndex];
+      const question = ((studyReverse ? card.answer : card.question) || '').trim();
+      return { i: e.idx, question, correct, candidates: cur.shortlist };
+    });
+
+    let res;
+    try {
+      res = await fetch(`${API_BASE}cardmaker_ai_distractors`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, items }),
+        signal: AbortSignal.timeout(20000 * items.length + 30000),
+      });
+    } catch (e) { return; } // ★ 通信エラー等はここで静かに諦める（既存の4択のまま使える）
+    if (myToken !== _fourChoiceAiRunToken) return;
+
+    let data;
+    try { data = await res.json(); } catch (e) { return; }
+    if (!data || !data.ok) return; // ai_unavailable/ai_failed 等。以降のバッチも見込みが薄いので打ち切る
+
+    (data.questions || []).forEach(q => {
+      const card = studyCards[q.i];
+      if (!card) return;
+      const key = cardKey(card);
+      const cur = studyChoicesMap.get(key);
+      if (!cur || !Array.isArray(q.distractors)) return;
+      const correct = cur.choices[cur.correctIndex];
+      const choices = shuffleArrayInPlace([...q.distractors, correct]);
+      studyChoicesMap.set(key, { choices, correctIndex: choices.indexOf(correct), shortlist: cur.shortlist });
+    });
+  }
+}
+
+function renderStudyChoices(entry) {
+  studyChoiceAnswered = false;
+  const el = document.getElementById('study-choices');
+  el.innerHTML = entry.choices.map((c, i) => `
+    <button type="button" class="qp-choice-btn" onclick="answerStudyChoice(${i})">
+      <b>${CHOICE_LETTERS[i]}.</b> <span id="study-choice-text-${i}"></span>
+    </button>`).join('');
+  entry.choices.forEach((c, i) => setMathText(document.getElementById(`study-choice-text-${i}`), c));
+}
+
+// ★ 通常の自動採点（gradeCurrentAnswer）と4択（この関数）の両方から呼ぶ、
+//   「間違えたら自動でわからないマークを付ける」共通処理。
+function autoMarkUnsureForCard(card, isCorrect) {
+  if (isCorrect) return;
+  const key = cardKey(card);
+  const deckId = card.__deckId || studyDeckId;
+  const unsure = getUnsureSet(deckId);
+  if (!unsure.has(key)) {
+    unsure.add(key);
+    saveUnsureSet(deckId, unsure);
+  }
+}
+
+function answerStudyChoice(idx) {
+  if (studyChoiceAnswered) return;
+  studyChoiceAnswered = true;
+  const card = studyCards[studyIdx];
+  const entry = card && studyChoicesMap.get(cardKey(card));
+  if (!entry) return;
+  const isCorrect = idx === entry.correctIndex;
+
+  document.getElementById('study-answer-panel').classList.add('show');
+  document.getElementById('study-reveal-bar').style.display = 'none';
+  document.getElementById('study-nav').style.display = '';
+
+  const result = document.getElementById('study-grade-result');
+  const mark = document.getElementById('grade-mark');
+  const userAnswerEl = document.getElementById('grade-user-answer');
+  result.style.display = 'flex';
+  result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
+  mark.innerHTML = isCorrect ? '○ 正解' : (Icons.html('close', {size:14}) + ' 不正解');
+  userAnswerEl.textContent = 'あなたの解答：' + entry.choices[idx];
+
+  [...document.querySelectorAll('#study-choices .qp-choice-btn')].forEach((btn, i) => {
+    btn.disabled = true;
+    if (i === entry.correctIndex) btn.classList.add('qp-correct');
+    else if (i === idx) btn.classList.add('qp-wrong');
+    else btn.classList.add('qp-dim');
+  });
+
+  autoMarkUnsureForCard(card, isCorrect);
+  updateUnsureBtn();
 }
 
 // ══════════ 「一覧で見る」機能は Cardmaker-listview.js に分離した ══════════
@@ -4375,10 +4595,18 @@ function renderStudyCard() {
   //   反転モード中は studyAutoGrade が常に false になる（onReverseModeToggleChange /
   //   startStudyMode 側で強制）ため、ここで欄を表示していても自動採点（○×判定）は
   //   行われない。あくまで「入力欄を使って自分で書いてみる」ことだけができる。
+  // ★ 追加：自動採点＋4択モードで、かつこのカードが4択にできる（studyChoicesMapに
+  //   登録済み）場合は、解答入力欄の代わりに選択肢欄を表示する。登録されていない
+  //   （このカードの元デッキで答えの種類が足りない）場合は、通常の解答入力欄のままにする。
+  const choiceEntry = studyFourChoice ? studyChoicesMap.get(cardKey(c)) : null;
   const answerInputWrap = document.getElementById('study-answer-input-wrap');
   const answerInput = document.getElementById('study-answer-input');
-  answerInputWrap.style.display = '';
+  const choiceWrap = document.getElementById('study-choice-wrap');
+  answerInputWrap.style.display = choiceEntry ? 'none' : '';
   answerInput.value = '';
+  choiceWrap.style.display = choiceEntry ? '' : 'none';
+  document.getElementById('reveal-answer-btn').style.display = choiceEntry ? 'none' : '';
+  if (choiceEntry) renderStudyChoices(choiceEntry);
   const gradeResult = document.getElementById('study-grade-result');
   gradeResult.style.display = 'none';
   gradeResult.className = 'study-grade-result';
@@ -4435,15 +4663,7 @@ function gradeCurrentAnswer() {
   mark.innerHTML = isCorrect ? '○ 正解' : (Icons.html('close', {size:14}) + ' 不正解');
   userAnswerEl.textContent = 'あなたの解答：' + (input.trim() ? input : '（未入力）');
 
-  if (!isCorrect) {
-    const key = cardKey(card);
-    const deckId = card.__deckId || studyDeckId;
-    const unsure = getUnsureSet(deckId);
-    if (!unsure.has(key)) {
-      unsure.add(key);
-      saveUnsureSet(deckId, unsure);
-    }
-  }
+  autoMarkUnsureForCard(card, isCorrect);
 }
 
 function updateUnsureBtn() {
@@ -4511,7 +4731,12 @@ document.addEventListener('keydown', e => {
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   if (e.key==='ArrowRight') studyMove(1);
   if (e.key==='ArrowLeft' && studyIdx>0) studyMove(-1);
-  if (e.key===' ') { e.preventDefault(); revealAnswer(); }
+  // ★ 追加：4択モードで選択肢が表示されているカードは、スペースキーでの
+  //   「答えを見る」（revealAnswer、テキスト入力前提の採点）を行わない。
+  //   選択肢はボタンをクリックして答える（answerStudyChoice）ため。
+  const curCard = studyCards[studyIdx];
+  const inChoiceMode = studyFourChoice && curCard && studyChoicesMap.has(cardKey(curCard));
+  if (e.key===' ' && !inChoiceMode) { e.preventDefault(); revealAnswer(); }
 });
 
 // ── 画像 ─────────────────────────────

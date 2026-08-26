@@ -588,6 +588,10 @@ html, body {
 
 /* ★ 追加：自動採点モードの解答入力欄 */
 .study-answer-input-wrap { padding: 0 1rem .6rem; flex-shrink: 0; }
+/* ★ 追加：自動採点＋「4択にする」モードの選択肢欄（.qp-choicesを流用するが、
+   study-bottom内での余白は解答入力欄と揃える） */
+#study-choice-wrap { padding: 0 1rem .6rem; flex-shrink: 0; }
+#study-choice-wrap .qp-choices { margin-top: 0; }
 .study-answer-input {
   width: 100%; box-sizing: border-box; padding: 12px 14px;
   border: 2px solid var(--border); border-radius: var(--r-md);
