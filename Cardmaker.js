@@ -4361,7 +4361,10 @@ function shuffleArrayInPlace(arr) {
 // ★ 追加（2026/08/26）：4択にできる条件（答えの異なりの数）を厳しくしたことで、
 //   対象デッキの候補プール自体が元々大きくなった。AIに渡す候補数もそれに合わせて
 //   広げる（FOUR_CHOICE_POOL_MIN_SIZEと合わせて調整すること）。
-const FOUR_CHOICE_AI_SHORTLIST_SIZE = 16;
+//   ★ 修正（同日）：綴り類似度による事前絞り込み（bigram＋文字数）だけでは、
+//   記述式（文章）の解答で「本当は紛らわしいのに順位が低くて漏れる」候補が
+//   出やすいとの指摘を受け、16→40に拡大（AIが「デッキの中から広く探す」余地を増やす）。
+const FOUR_CHOICE_AI_SHORTLIST_SIZE = 40;
 // pool: correct以外の、このカードの元デッキの解答（重複除去済み）一覧
 function buildChoiceEntry(correct, pool) {
   const scored = [...pool].sort((a, b) => _distractorScore(correct, b) - _distractorScore(correct, a));
@@ -4444,12 +4447,16 @@ async function scheduleFourChoiceAiEnhancement() {
     const pb = isDescriptiveAnswerText(eb.choices[eb.correctIndex]) ? 0 : 1;
     return pa - pb;
   });
-  // ★ 修正：バッチを小さくし（5→3）、1回あたりのAI応答時間を短くすることで、
-  //   先頭付近のカード（記述系優先で並べ替え済み）ほど早くAI強化版に届くようにする。
-  const BATCH_SIZE = 3;
-  for (let start = 0; start < entries.length; start += BATCH_SIZE) {
+  // ★ 修正（2026/08/26）：最初の1件だけバッチサイズ1で送り、一番乗りの改善結果が
+  //   できるだけ早く届くようにする（1問だけの生成は3問まとめてより明らかに速い）。
+  //   2回目以降は3問ずつに戻す（総リクエスト数と速度のバランス）。
+  let start = 0, isFirstBatch = true;
+  while (start < entries.length) {
     if (myToken !== _fourChoiceAiRunToken) return; // ★ 学習をやり直す等で無効化されていたら中断
-    const batch = entries.slice(start, start + BATCH_SIZE);
+    const batchSize = isFirstBatch ? 1 : 3;
+    const batch = entries.slice(start, start + batchSize);
+    start += batchSize;
+    isFirstBatch = false;
     const items = batch.map(e => {
       const card = studyCards[e.idx];
       const cur = studyChoicesMap.get(e.key);
@@ -4463,7 +4470,7 @@ async function scheduleFourChoiceAiEnhancement() {
       res = await fetch(`${API_BASE}cardmaker_ai_distractors`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, items }),
-        signal: AbortSignal.timeout(20000 * items.length + 30000),
+        signal: AbortSignal.timeout(25000 * items.length + 30000),
       });
     } catch (e) { return; } // ★ 通信エラー等はここで静かに諦める（既存の4択のまま使える）
     if (myToken !== _fourChoiceAiRunToken) return;
