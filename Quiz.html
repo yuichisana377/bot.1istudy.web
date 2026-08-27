@@ -223,6 +223,20 @@
   </div>
 </section>
 
+<!-- ============ 途中経過（正解発表と次の問題の間・ホスト/参加者共通） ============ -->
+<!-- ★ 追加：スコア順の順位を、前回表示時からの入れ替わりをアニメーションさせながら見せる（Quiz.js renderRanking） -->
+<section class="screen" id="screen-ranking">
+  <header class="qz-header">
+    <span></span>
+    <div class="qz-brand-sm">途中経過</div>
+    <span></span>
+  </header>
+  <div class="qz-body qz-body-center">
+    <p class="qz-label" id="rk-my-rank"></p>
+    <div class="qz-full-leaderboard qz-scroll-list" id="rk-list"></div>
+  </div>
+</section>
+
 <!-- ============ 結果発表（共通：ホスト／プレイヤー） ============ -->
 <section class="screen" id="screen-result">
   <header class="qz-header">
@@ -245,7 +259,8 @@
     <button class="qz-icon-btn" onclick="confirmQuitPlayer()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
   </header>
   <div class="qz-body qz-body-center">
-    <div class="qz-waiting-anim">⏳</div>
+    <!-- ★ 修正：絵文字（⏳）はOSによって見た目が違いすぎる（自作アイコン方針に合わせて置き換え、ゆっくり明滅させる） -->
+    <div class="qz-waiting-anim"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M12 6V3.5"/><circle cx="12" cy="14" r="7.5"/><path d="M12 14V10"/><path d="M17.5 8.2 19 6.8"/></svg></div>
     <p class="qz-label" id="pl-status">ホストが開始するのを待っています…</p>
     <div class="qz-player-grid" id="pl-players"></div>
   </div>
@@ -256,6 +271,8 @@
   <header class="qz-header">
     <div class="qz-progress-label" id="pp-progress"></div>
     <div class="qz-my-score" id="pp-score">0点</div>
+    <!-- ★ 追加：出題中も途中退出できるように（今まではロビー画面にしか退出ボタンが無かった） -->
+    <button class="qz-icon-btn" onclick="confirmQuitPlayer()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button>
   </header>
   <div class="qz-body">
     <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="pp-timerbar"></div></div>
@@ -264,6 +281,8 @@
     <div class="qz-choice-grid" id="pp-choices"></div>
     <div class="qz-answer-feedback" id="pp-feedback" style="display:none"></div>
     <p class="qz-waiting-note" id="pp-waiting-note" style="display:none">ほかの人の解答を待っています…</p>
+    <!-- ★ 追加：途中参加でこの問題はまだ見学中の人向け（Quiz.js renderPlayScreen の spectating 分岐） -->
+    <p class="qz-waiting-note" id="pp-spectate-note" style="display:none">次の問題から参加できます。少々お待ちください…</p>
     <!-- ★ 追加：正解発表中、ホストと同じ「一番早く正解した人」「ミニ順位表」を参加者にも見せる -->
     <div class="qz-reveal-panel" id="pp-reveal" style="display:none">
       <div class="qz-first-badge" id="pp-first-badge"></div>

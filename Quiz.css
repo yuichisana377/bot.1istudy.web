@@ -241,7 +241,8 @@ input, select{ font-family:inherit; }
   width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
   font-weight:700; font-size:11px; color:#fff; flex:none;
 }
-.qz-waiting-anim{ font-size:44px; margin-bottom:6px; }
+.qz-waiting-anim{ margin-bottom:6px; animation:qzBreathe 1.6s ease-in-out infinite; }
+@keyframes qzBreathe{ 0%,100%{ opacity:.55; transform:scale(1); } 50%{ opacity:1; transform:scale(1.08); } }
 
 /* ── カウントダウン（スタート直後、最初の問題の前だけ） ───────────────────────── */
 .qz-countdown-num{
@@ -256,6 +257,19 @@ input, select{ font-family:inherit; }
   animation:qzCountPop .35s ease;
 }
 .qz-intro-sub{ color:var(--text-secondary); font-size:14px; margin-top:8px; }
+
+/* ── 出題画面・途中経過：スクロールしないと見えない要素が出ないよう画面ぴったりに
+   収め、ページ自体はスクロールさせない（タイマーバーが見切れる不具合の対策）。
+   参加者が多く一覧が入りきらない場合は、途中経過リストの中だけスクロールする。 ── */
+#screen-host-play, #screen-player-play, #screen-ranking{
+  height:100vh; height:100dvh; overflow:hidden;
+}
+#screen-host-play .qz-body, #screen-player-play .qz-body, #screen-ranking .qz-body{
+  flex:1; min-height:0; padding-bottom:1.25rem; overflow:hidden;
+}
+#screen-ranking .qz-body{ display:flex; flex-direction:column; }
+.qz-scroll-list{ flex:1; min-height:0; width:100%; overflow-y:auto; }
+#rk-my-rank{ font-weight:700; font-size:15px; color:var(--accent); flex-shrink:0; }
 
 /* ── 出題画面 共通 ───────────────────────── */
 .qz-progress-label{ font-weight:700; font-size:13px; color:var(--text-secondary); }
@@ -363,6 +377,9 @@ input, select{ font-family:inherit; }
 .qz-lb-mark.correct{ color:#16a34a; }
 .qz-lb-mark.wrong{ color:#dc2626; }
 .qz-lb-mark.unanswered{ color:var(--text-dim); }
+/* ★ 追加：途中経過・最終結果のリストで自分の行をひと目で分かるようにする */
+.qz-lb-row-me{ border-color:var(--accent); background:var(--accent-soft); }
+.qz-lb-row-me .qz-lb-name{ color:var(--accent); }
 
 /* ── 結果画面 ───────────────────────── */
 .qz-podium{ display:flex; align-items:flex-end; gap:10px; width:100%; max-width:360px; margin:10px 0 22px; }

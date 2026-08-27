@@ -647,6 +647,8 @@ function renderRoom(room) {
     renderIntro(room);
   } else if (room.state === 'question' || room.state === 'reveal') {
     if (isHost) renderHostPlay(room); else renderPlayerPlay(room);
+  } else if (room.state === 'ranking') {
+    renderRanking(room);
   } else if (room.state === 'ended') {
     renderResult(room);
   }
@@ -712,7 +714,7 @@ const CHOICE_CLASSES = ['qz-choice-a', 'qz-choice-b', 'qz-choice-c', 'qz-choice-
 //   自動的に正解発表(reveal)へ、発表からしばらくすると自動的に次の問題へ
 //   進むので、ここでは「今の room の状態をそのまま描画する」だけでよい）
 function renderPlayScreen(room, opts) {
-  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, timerbarId, answeredCountId, revealPanelId, firstBadgeId, leaderboardId } = opts;
+  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, timerbarId, answeredCountId, revealPanelId, firstBadgeId, leaderboardId, spectateNoteId } = opts;
   const qChanged = room.current_q !== renderedQIndex;
   const stateChanged = room.state !== renderedState;
   if (qChanged) hasAnsweredThisQ = false;
@@ -721,6 +723,26 @@ function renderPlayScreen(room, opts) {
   document.getElementById(progressId).textContent = `Q ${room.current_q + 1} / ${room.total_questions}`;
   const myScore = room.players.find(p => p.id === STUDENT.id)?.score ?? 0;
   document.getElementById(scoreId).textContent = `${myScore}点`;
+
+  // ★ 追加：途中参加でこの問題にはまだ混ざれない「見学中」の場合は、問題・選択肢の
+  //   代わりに専用の案内だけを出す（ホストは常にactive_from_q=0なのでspectatingにはならない）。
+  const spectateNote = spectateNoteId ? document.getElementById(spectateNoteId) : null;
+  if (room.spectating) {
+    if (spectateNote) spectateNote.style.display = '';
+    document.getElementById(questionId).textContent = '';
+    document.getElementById(choicesId).innerHTML = '';
+    document.getElementById(choicesId).dataset.built = '';
+    document.getElementById(feedbackId).style.display = 'none';
+    document.getElementById(waitingNoteId).style.display = 'none';
+    document.getElementById(revealPanelId).style.display = 'none';
+    document.getElementById(answeredCountId).textContent = '';
+    const timerEl = document.getElementById(timerbarId);
+    delete timerEl.dataset.startedAt; delete timerEl.dataset.limit;
+    timerEl.style.transform = 'scaleX(0)';
+    return;
+  }
+  if (spectateNote) spectateNote.style.display = 'none';
+
   document.getElementById(questionId).textContent = room.question.question;
   document.getElementById(answeredCountId).textContent = `${room.answered_count} / ${room.total_players} 人が回答`;
 
@@ -819,6 +841,59 @@ function quizMarkHtml(p) {
     : `<span class="qz-lb-mark wrong" title="不正解"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></span>`;
 }
 
+// ★ 追加：正解発表の後・次の問題に進む前に見せる「途中経過」（ホスト/参加者共通の1画面）。
+//   room.players はサーバー側で既にスコア降順（同点は回答時間合計が短い方が上）に
+//   ソート済みなので、そのまま並べるだけでよい。前回この画面を描画したときの各行の
+//   位置と比べて、Kahoot風に順位の入れ替わりをアニメーションさせる（FLIP手法：
+//   新しい並びでDOMを作り直した直後、まず古い位置に見えるようtransformで戻し、
+//   1フレーム置いてtransformを外すことでCSSトランジションが動く）。
+function renderRanking(room) {
+  showScreenQ('ranking');
+  const listEl = document.getElementById('rk-list');
+
+  const myIndex = room.players.findIndex(p => p.id === STUDENT.id);
+  document.getElementById('rk-my-rank').textContent = myIndex !== -1
+    ? `あなたは 現在 ${myIndex + 1}位 / ${room.players.length}人中`
+    : '';
+
+  const firstTops = {}; // First：描画し直す前の各行の位置
+  [...listEl.children].forEach(row => {
+    firstTops[row.dataset.playerId] = row.getBoundingClientRect().top;
+  });
+
+  // Last：新しい順位でDOMを作り直す（自分の行は一目で分かるようにハイライトする）
+  listEl.innerHTML = room.players.map((p, i) => `
+    <div class="qz-lb-row${p.id === STUDENT.id ? ' qz-lb-row-me' : ''}" data-player-id="${p.id}">
+      <span class="qz-lb-rank">${i + 1}</span>
+      <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
+      <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
+      <span class="qz-lb-score">${p.score}点</span>
+    </div>`).join('');
+
+  // ★ 追加：参加者が多くリストが内部スクロールする場合でも、自分の順位が
+  //   隠れたままにならないよう、自分の行を（必要な時だけ）表示範囲に入れる。
+  const myRow = listEl.querySelector('.qz-lb-row-me');
+  if (myRow) myRow.scrollIntoView({ block: 'nearest' });
+
+  if (!Object.keys(firstTops).length) return; // 初回（1問目終了後）は前回位置が無いのでアニメーションなしで出す
+
+  // Invert：前回位置が分かる行だけ、動いた分だけ逆方向にずらして「まだ前回の位置にいる」ように見せる
+  const rows = [...listEl.children];
+  rows.forEach(row => {
+    const oldTop = firstTops[row.dataset.playerId];
+    if (oldTop === undefined) return; // 新規参加者などはアニメーションなしでそのまま出す
+    const delta = oldTop - row.getBoundingClientRect().top;
+    if (!delta) return;
+    row.style.transition = 'none';
+    row.style.transform = `translateY(${delta}px)`;
+  });
+  void listEl.offsetHeight; // 強制リフローでtransformを確定させてから外す（Play）
+  rows.forEach(row => {
+    row.style.transition = 'transform .5s cubic-bezier(.2,.8,.2,1)';
+    row.style.transform = '';
+  });
+}
+
 function renderHostPlay(room) {
   showScreenQ('host-play');
   renderPlayScreen(room, {
@@ -836,6 +911,7 @@ function renderPlayerPlay(room) {
     choicesId: 'pp-choices', feedbackId: 'pp-feedback', waitingNoteId: 'pp-waiting-note',
     timerbarId: 'pp-timerbar', answeredCountId: 'pp-answered',
     revealPanelId: 'pp-reveal', firstBadgeId: 'pp-first-badge', leaderboardId: 'pp-leaderboard',
+    spectateNoteId: 'pp-spectate-note',
   });
 }
 
@@ -954,9 +1030,15 @@ async function confirmQuitPlayer() {
 function renderResult(room) {
   stopPolling();
   showScreenQ('result');
-  const sorted = [...room.players].sort((a, b) => b.score - a.score);
+  // ★ 修正：room.players はサーバー側で既にスコア降順（同点は回答時間合計が
+  //   短い方が上）に並べ済みなので、ここで再ソートしない（以前はスコアだけで
+  //   再ソートしていたため、サーバー側のタイブレークが反映されず崩れていた）。
+  const sorted = room.players;
   const podiumOrder = [sorted[1], sorted[0], sorted[2]]; // 2位・1位・3位の順で表示（真ん中が1位）
-  const medalMap = [`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c0c0c0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path d="M12 12v6"/></svg>`, `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path d="M12 12v6"/></svg>`, `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path d="M12 12v6"/></svg>`];
+  // ★ 修正：以前は金・銀・銅の3つが同じ形のアイコンを色だけ変えて表示していたため、
+  //   色の差が分かりにくく「全部1位に見える」という指摘があった。線画から塗りつぶしに変え、
+  //   色そのものもよりはっきり離す（銀は明度を落とし、銅は彩度を上げる）ことで見分けやすくした。
+  const medalMap = [`<svg width="18" height="18" viewBox="0 0 24 24" fill="#94a3b8" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path fill="none" stroke="#fff" d="M12 12v6"/></svg>`, `<svg width="18" height="18" viewBox="0 0 24 24" fill="#f5b400" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path fill="none" stroke="#fff" d="M12 12v6"/></svg>`, `<svg width="18" height="18" viewBox="0 0 24 24" fill="#c2703d" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path fill="none" stroke="#fff" d="M12 12v6"/></svg>`];
   const podiumClass = ['qz-podium-2', 'qz-podium-1', 'qz-podium-3'];
   document.getElementById('result-podium').innerHTML = podiumOrder.map((p, i) => {
     if (!p) return `<div class="qz-podium-col ${podiumClass[i]}"></div>`;
@@ -967,8 +1049,9 @@ function renderResult(room) {
         <div class="qz-podium-bar"><span class="qz-podium-medal">${medalMap[i]}</span></div>
       </div>`;
   }).join('');
+  // ★ 追加：自分の行を一目で分かるようにハイライトする
   document.getElementById('result-list').innerHTML = sorted.map((p, i) => `
-    <div class="qz-lb-row">
+    <div class="qz-lb-row${p.id === STUDENT.id ? ' qz-lb-row-me' : ''}">
       <span class="qz-lb-rank">${i + 1}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
