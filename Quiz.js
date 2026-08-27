@@ -763,6 +763,9 @@ function renderPlayScreen(room, opts) {
       <button class="qz-choice-btn ${CHOICE_CLASSES[i]}" onclick="submitAnswer(${i}, '${choicesId}', '${waitingNoteId}')">${escapeHtml(c)}</button>`).join('');
     choicesEl.dataset.built = room.current_q;
   }
+  // ★ 追加：正解発表前（出題中・回答済みで発表待ち）は選択肢を画面下側に寄せる。
+  //   結果発表(reveal)後は今まで通りの配置に戻す（結果発表の見た目は変えない）。
+  choicesEl.classList.toggle('qz-choices-bottom', !revealed);
 
   [...choicesEl.children].forEach((btn, i) => {
     const picked = yourAnswer === i;

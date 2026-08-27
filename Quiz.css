@@ -294,6 +294,15 @@ body.qz-fixed-screen{ overflow:hidden; }
 .qz-choice-grid{
   display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;
 }
+/* ★ 追加：出題中（正解発表前）は選択肢を画面の下側に寄せる。.qz-body自体は
+   flex-direction:columnなので、margin-top:autoでこの要素より上の余白を
+   全部吸収させて下に押しやる（＝問題文の長さに関わらず選択肢の位置が揃う）。
+   auto marginは「余白がある時だけ」効くため、問題文が長い/画面が低いなど
+   そもそも余白が無い場合は自動的に今まで通りの詰めた配置に戻る＝押しやられた
+   結果、画面下端で見切れる（端末によっては隠れる）心配は無い。
+   正解発表(reveal)後はこのクラスを外し、今まで通りの配置に戻す（結果発表の
+   見た目は変えない、という要望のため）。 */
+.qz-choice-grid.qz-choices-bottom{ margin-top:auto; }
 .qz-choice-btn{
   position:relative; border:none; border-radius:var(--r-lg); padding:20px 14px 20px 46px;
   min-height:78px; text-align:left; font-weight:700; font-size:15px; color:#fff;
