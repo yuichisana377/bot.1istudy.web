@@ -643,6 +643,12 @@
     <div class="menu-item" id="menu-edit-item" onclick="menuEdit()">
       <span class="menu-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg></span>カードを編集する
     </div>
+    <!-- ★ 追加（2026/08/27）：自分が作成した（＝一番多く問題を追加した）デッキだけ、
+         中身をCSVとしてダウンロードできる。公開済みデッキはクリック時にサーバー側でも
+         本人確認するので、ここでは常に表示だけしておく（削除・非公開に戻すと同じ方式）。 -->
+    <div class="menu-item" onclick="menuExportCsv()">
+      <span class="menu-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 4v11"/><path d="M7.5 11l4.5 4.5 4.5-4.5"/><path d="M4.5 17.5v2a1.8 1.8 0 0 0 1.8 1.8h11.4a1.8 1.8 0 0 0 1.8-1.8v-2"/></svg></span>CSVとしてダウンロード
+    </div>
     <div class="menu-item" onclick="menuRename()">
       <span class="menu-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M6 4h9l3 3v13H6Z"/><path d="M15 4v3h3"/><path d="M9 13h6"/><path d="M9 17h6"/><path d="M9 9h3"/></svg></span>デッキ名を変更する
     </div>

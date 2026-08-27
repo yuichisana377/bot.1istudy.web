@@ -2009,6 +2009,105 @@ async function menuEdit()   { closeModal('modal-deck-menu'); await openEditDeck(
 function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId); }
 function menuMove()   { closeModal('modal-deck-menu'); openMovePicker('deck', menuTargetId); }
 
+// ── CSVダウンロード ────────────────────
+// ★ 追加（2026/08/27）：デッキの中身をCSV一括読み込みと同じ形式で書き出す。
+//   ・サーバー未登録（filenameが無い＝この端末だけの下書き）デッキは、
+//     他の誰にも編集され得ないので常に自分が唯一の作成者。クライアント側で
+//     組み立てて即ダウンロードする。
+//   ・公開済み（filenameあり）デッキは、サーバー側の /export_cards_csv が
+//     「このデッキで一番多く問題を作成した人」（既存カードの中身を編集
+//     しただけでは変わらない。bot.py _deck_top_contributor 参照）と本人が
+//     一致するかを確認してから返す。一致しなければダウンロードできない。
+async function menuExportCsv() {
+  closeModal('modal-deck-menu');
+  const deck = decks.find(d => d.id === menuTargetId);
+  if (!deck) return;
+
+  if (!deck.filename) {
+    triggerCsvDownload(deck.name, buildDeckCsvText(deck));
+    return;
+  }
+
+  const session = getLoginSession();
+  if (!session || !session.session_token) {
+    await showCmAlert({ title: 'ログインが必要です', desc: 'CSVダウンロードにはログインが必要です。' });
+    return;
+  }
+
+  const loadResult = await ensureDeckCardsLoaded(deck.id);
+  if (!loadResult.ok) {
+    await showCmAlert({ title: '読み込みに失敗しました', desc: 'カードの読み込みに失敗しました。もう一度お試しください。' });
+    return;
+  }
+
+  try {
+    const qs = new URLSearchParams({ guild_id: GUILD_ID, filename: deck.filename });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(`${API_BASE}export_cards_csv?${qs.toString()}`, {
+      signal: controller.signal,
+      headers: { 'Authorization': 'Bearer ' + session.session_token },
+    });
+    clearTimeout(timer);
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await res.json();
+      if (data.error === 'not_creator') {
+        await showCmAlert({
+          title: 'ダウンロードできません',
+          desc: `このデッキで一番多く問題を作成した${data.owner_nickname || '作成者'}さんだけがCSVダウンロードできます（カードの内容を編集しただけでは対象になりません）。`,
+        });
+      } else {
+        await showCmAlert({ title: 'ダウンロードに失敗しました', desc: data.error || '不明なエラーです。' });
+      }
+      return;
+    }
+    const blob = await res.blob();
+    triggerCsvDownload(deck.name, blob);
+  } catch (e) {
+    await showCmAlert({ title: '通信エラー', desc: 'CSVのダウンロードに失敗しました。' });
+  }
+}
+
+// bot.py _csv_field と同じエスケープ規則（カンマ・ダブルクォート・改行を
+// 含む場合だけダブルクォートで囲む）。ローカル下書きデッキのCSV組み立てにのみ使う
+// （公開済みデッキはサーバー側 _deck_to_csv_text が生成したものをそのまま使う）。
+function csvField(v) {
+  const s = v == null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+// bot.py _deck_to_csv_text のクライアント側版（ローカル下書きデッキ専用）。
+function buildDeckCsvText(deck) {
+  const lines = [];
+  if (deck.choiceMode) {
+    lines.push(['問題', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '選択肢5', '正解'].join(','));
+    for (const c of deck.cards) {
+      const choices = c.choices || [];
+      const row = [c.question || ''];
+      for (let i = 0; i < 5; i++) row.push(choices[i] != null ? choices[i] : '');
+      const correct = [...(c.correct_indices || [])].sort((a, b) => a - b);
+      row.push(correct.map(i => i + 1).join(','));
+      lines.push(row.map(csvField).join(','));
+    }
+  } else {
+    lines.push(['問題', '解答', '解説'].join(','));
+    for (const c of deck.cards) {
+      lines.push([c.question || '', c.answer || '', c.explanation || ''].map(csvField).join(','));
+    }
+  }
+  return '﻿' + lines.join('\r\n') + '\r\n'; // 先頭にBOM（Excelでの文字化け対策）
+}
+// テキスト or Blob を、サニタイズしたデッキ名のファイル名でダウンロードさせる。
+function triggerCsvDownload(deckName, content) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const safeName = (deckName || 'cards').replace(/[\\/:*?"<>|]/g, '_');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${safeName}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function menuUnpublish() {
   closeModal('modal-deck-menu');
   const deck = decks.find(d => d.id === menuTargetId);
