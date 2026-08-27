@@ -212,7 +212,7 @@ input, select{ font-family:inherit; }
 }
 .qz-add-q-btn:active{ background:var(--bg); }
 
-/* ── 詳細設定の折りたたみ（既定は閉じている） ───────────────────────── */
+/* ── 詳細設定への入口ボタン（本体は専用画面screen-host-advanced） ───────────────────────── */
 .qz-advanced-toggle-btn{
   width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
   padding:11px; border-radius:var(--r-md); border:1.5px solid var(--border);
@@ -220,9 +220,6 @@ input, select{ font-family:inherit; }
   margin-bottom:.25rem;
 }
 .qz-advanced-toggle-btn:active{ background:var(--bg); }
-/* ★ Dropdown.js（Style.css）の.app-dd-arrowと同じCSS三角形の矢印を流用し、
-   開閉で向きを反転させる（.app-dd-btn.openと同じ回転角）。 */
-.qz-advanced-toggle-btn.open .app-dd-arrow{ transform:rotate(-135deg); margin-bottom:-2px; margin-top:2px; }
 
 /* ── デッキ選択（CardMakerのホーム画面へ行って選ぶ方式） ───────────────────────── */
 .qz-deck-picker-btn{

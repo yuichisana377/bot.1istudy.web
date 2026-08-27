@@ -163,30 +163,57 @@
       <p class="qz-hint">許可すると、クイズが始まった後でも「参加する」の一覧からそのクイズを選んで途中から参加できます（一覧には終了するまで「プレイ中」として出続けます）。</p>
     </div>
 
-    <!-- ★ 追加：詳細設定（既定は閉じている。ボーナス問題など、普段は使わない
-         設定をここにまとめる） -->
-    <button type="button" class="qz-advanced-toggle-btn" id="hs-advanced-toggle-btn" onclick="toggleAdvancedSettings()">
-      詳細設定<span class="app-dd-arrow" id="hs-advanced-arrow"></span>
+    <!-- ★ 追加：詳細設定は専用画面に分離（screen-host-advanced）。今後も
+         設定項目を増やしやすいよう、この画面には一覧・入口ボタンだけを置く。 -->
+    <button type="button" class="qz-advanced-toggle-btn" onclick="openAdvancedSettingsScreen()">
+      詳細設定<span class="app-dd-arrow" style="transform:rotate(-45deg);margin-bottom:0"></span>
     </button>
-    <div id="hs-advanced-panel" style="display:none">
-      <div class="qz-field">
-        <span class="qz-field-label">ボーナス問題</span>
-        <div class="qz-toggle-group" id="hs-bonus-toggle">
-          <button type="button" class="qz-toggle-opt active" data-bonus="none" onclick="setBonusMode('none')">なし</button>
-          <button type="button" class="qz-toggle-opt" data-bonus="random" onclick="setBonusMode('random')">ランダム</button>
-          <button type="button" class="qz-toggle-opt" data-bonus="last" onclick="setBonusMode('last')">最後の◯問</button>
-        </div>
-        <div id="hs-bonus-count-wrap" style="display:none;margin-top:.6rem">
-          <input type="number" id="hs-bonus-count" class="qz-input" min="1" max="30" value="1" placeholder="問数">
-        </div>
-        <p class="qz-hint">指定した問題は、正解した時の得点が2倍になります（一番早く正解した人への+2点ボーナスも含めて2倍）。「ランダム」は作成時に抽選して決まり、途中で入れ替わりません。</p>
-      </div>
-    </div>
 
-    <p class="qz-hint">1問20秒。全員が回答し終わるか時間切れになったら自動で正解を発表し、しばらくしたら次の問題に進みます。あなたも参加者として一緒に回答できます。</p>
+    <p class="qz-hint" id="hs-timing-hint">1問20秒。全員が回答し終わるか時間切れになったら自動で正解を発表し、しばらくしたら次の問題に進みます。あなたも参加者として一緒に回答できます。</p>
 
     <div class="qz-error" id="hs-error"></div>
     <button class="qz-cta" id="hs-create-btn" onclick="submitCreateRoom()">クイズを作成する</button>
+  </div>
+</section>
+
+<!-- ============ ホスト：詳細設定 ============
+     ★ 追加：今後も設定項目を増やしやすいよう、詳細設定は専用画面に分離した
+     （以前はhost-setup画面内の折りたたみパネルだった）。ここで選んだ内容は
+     JSのグローバル変数・inputの値としてhost-setup画面と共有され続ける
+     （SPA内の画面切り替えなのでDOMは破棄されない）。 -->
+<section class="screen" id="screen-host-advanced">
+  <header class="qz-header">
+    <button class="qz-back" onclick="showScreenQ('host-setup')">←</button>
+    <div class="qz-brand-sm">詳細設定</div>
+    <span></span>
+  </header>
+  <div class="qz-body">
+    <div class="qz-field">
+      <span class="qz-field-label">ボーナス問題</span>
+      <div class="qz-toggle-group" id="hs-bonus-toggle">
+        <button type="button" class="qz-toggle-opt active" data-bonus="none" onclick="setBonusMode('none')">なし</button>
+        <button type="button" class="qz-toggle-opt" data-bonus="random" onclick="setBonusMode('random')">ランダム</button>
+        <button type="button" class="qz-toggle-opt" data-bonus="last" onclick="setBonusMode('last')">最後の◯問</button>
+      </div>
+      <div id="hs-bonus-count-wrap" style="display:none;margin-top:.6rem">
+        <input type="number" id="hs-bonus-count" class="qz-input" min="1" max="30" value="1" placeholder="問数">
+      </div>
+      <p class="qz-hint">指定した問題は、正解した時の得点が2倍になります（一番早く正解した人への+2点ボーナスも含めて2倍）。「ランダム」は作成時に抽選して決まり、途中で入れ替わりません。</p>
+    </div>
+
+    <label class="qz-field">
+      <span class="qz-field-label">問題の出題時間（秒）</span>
+      <input type="number" id="hs-time-limit" class="qz-input" min="5" max="120" value="20" oninput="updateTimingHint()">
+      <p class="qz-hint">1問あたり、回答を締め切るまでの秒数です（5〜120秒、既定20秒）。</p>
+    </label>
+
+    <label class="qz-field">
+      <span class="qz-field-label">正解発表の表示時間（秒）</span>
+      <input type="number" id="hs-reveal-duration" class="qz-input" min="2" max="30" value="5" oninput="updateTimingHint()">
+      <p class="qz-hint">正解発表の画面を出してから、次の問題に自動で進むまでの秒数です（2〜30秒、既定5秒）。</p>
+    </label>
+
+    <button class="qz-cta" onclick="showScreenQ('host-setup')">設定を終える</button>
   </div>
 </section>
 

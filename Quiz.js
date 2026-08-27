@@ -314,15 +314,12 @@ function setLateJoinOption(v) {
   });
 }
 
-// ★ 追加：詳細設定（ボーナス問題）。'none'（無し）/'random'（ランダムにN問）/
-//   'last'（最後のN問）。作成のたびにデフォルト＝なしへ戻す。
+// ★ 追加：詳細設定（専用画面screen-host-advanced、今後も項目を増やしやすいよう分離）。
+//   ボーナス問題：'none'（無し）/'random'（ランダムにN問）/'last'（最後のN問）。
+//   出題時間・正解発表の表示時間もここに置く。いずれも作成のたびに既定値へ戻す。
 let hsBonusMode = 'none';
-function toggleAdvancedSettings() {
-  const panel = document.getElementById('hs-advanced-panel');
-  const btn = document.getElementById('hs-advanced-toggle-btn');
-  const nowOpen = panel.style.display === 'none';
-  panel.style.display = nowOpen ? '' : 'none';
-  btn.classList.toggle('open', nowOpen);
+function openAdvancedSettingsScreen() {
+  showScreenQ('host-advanced');
 }
 function setBonusMode(mode) {
   hsBonusMode = mode;
@@ -331,16 +328,24 @@ function setBonusMode(mode) {
   });
   document.getElementById('hs-bonus-count-wrap').style.display = mode === 'none' ? 'none' : '';
 }
+// ★ 追加：host-setup画面の説明文に、詳細設定で変更した出題時間・発表時間を反映する。
+function updateTimingHint() {
+  const timeLimit = document.getElementById('hs-time-limit').value || 20;
+  const revealDuration = document.getElementById('hs-reveal-duration').value || 5;
+  document.getElementById('hs-timing-hint').textContent =
+    `1問${timeLimit}秒。全員が回答し終わるか時間切れになったら自動で正解を発表し、${revealDuration}秒後に次の問題に進みます。あなたも参加者として一緒に回答できます。`;
+}
 
 async function goHostSetupScreen() {
   showScreenQ('host-setup');
   document.getElementById('hs-error').textContent = '';
   setLateJoinOption(false);
-  // ★ 追加：詳細設定も毎回リセットする（閉じた状態・ボーナス問題なし）
-  document.getElementById('hs-advanced-panel').style.display = 'none';
-  document.getElementById('hs-advanced-toggle-btn').classList.remove('open');
+  // ★ 追加：詳細設定も毎回リセットする（ボーナス問題なし・出題時間/発表時間は既定値）
   document.getElementById('hs-bonus-count').value = '1';
   setBonusMode('none');
+  document.getElementById('hs-time-limit').value = '20';
+  document.getElementById('hs-reveal-duration').value = '5';
+  updateTimingHint();
 
   if (launchDeckInfo && launchDeckInfo.filename) {
     // デッキのメニューから直接来た場合：デッキ選択を固定表示にする
@@ -578,9 +583,22 @@ async function submitCreateRoom() {
   errEl.textContent = '';
   const title = document.getElementById('hs-title').value.trim();
   const isDeckSrc = document.querySelector('#hs-source-toggle .qz-toggle-opt[data-src="deck"]').classList.contains('active');
-  // ★ 制限時間は1問20秒固定（サーバー側でも固定されている）。
 
   const body = withAuth({ title, allow_late_join: hsAllowLateJoin });
+
+  // ★ 追加：詳細設定の出題時間・正解発表の表示時間（省略時はサーバー側の既定値のまま）。
+  const timeLimit = parseInt(document.getElementById('hs-time-limit').value, 10);
+  if (!Number.isInteger(timeLimit) || timeLimit < 5 || timeLimit > 120) {
+    errEl.textContent = '出題時間は5〜120秒で入力してください';
+    return;
+  }
+  body.time_limit_sec = timeLimit;
+  const revealDuration = parseInt(document.getElementById('hs-reveal-duration').value, 10);
+  if (!Number.isInteger(revealDuration) || revealDuration < 2 || revealDuration > 30) {
+    errEl.textContent = '正解発表の表示時間は2〜30秒で入力してください';
+    return;
+  }
+  body.reveal_duration_sec = revealDuration;
 
   // ★ 追加：詳細設定のボーナス問題。「なし」の場合はそもそもキーを送らない
   //   （サーバー側もbonus_modeが無ければボーナス無しとして扱う）。
