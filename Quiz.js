@@ -786,8 +786,8 @@ function renderPlayScreen(room, opts) {
   const revealPanel = document.getElementById(revealPanelId);
   if (room.state === 'reveal') {
     revealPanel.style.display = '';
-    document.getElementById(firstBadgeId).textContent = room.first_correct_nickname
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6Z"/></svg> 一番早く正解：${room.first_correct_nickname} さん（+2点ボーナス）`
+    document.getElementById(firstBadgeId).innerHTML = room.first_correct_nickname
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6Z"/></svg> 一番早く正解：${escapeHtml(room.first_correct_nickname)} さん（+2点ボーナス）`
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6Z"/></svg> 正解者はいませんでした';
     document.getElementById(leaderboardId).innerHTML = miniLeaderboardHtml(room.players);
   } else {
