@@ -777,6 +777,17 @@ let studyChoicesMap = new Map();
 let studyChoiceAnswered = false;
 let _fourChoiceAiRunToken = 0; // ★ 学習をやり直した際、古いAI問い合わせの結果が新しいセッションに混ざらないようにする
 
+// ★ 追加：クイズ過去問・多肢選択デッキ（choiceMode）を、通常の学習画面（screen-study）
+//   でプレイ中かどうか。studyFourChoiceのAI生成4択とは違い、カード自体が最初から
+//   choices/correct_indices を持っているためstudyChoicesMapは使わない
+//   （currentStudyChoiceEntry参照）。
+let studyIsQuizDeck = false;
+// cardKey → isCorrect（そのカードの最新の正誤）。素点ではなく採点済みカードの
+// 集合として持つことで、「← 前へ」で戻って答え直しても二重加点しない
+// （最新の判定で上書きされるだけになる）。
+let studyQuizAnswers = new Map();
+let studyQuizSelected = new Set(); // 複数正解モードで、まだ確定前に選んでいる選択肢
+
 // ── 安定したカードキー生成（並び替え・サーバー同期に強い） ──
 // id が無いカード（例：公開後にサーバーから取り込まれたカード）でも
 // 配列のインデックスに依存せず、内容から一意なキーを作る。
@@ -4162,6 +4173,9 @@ function saveStudyProgress() {
     autoGrade: studyAutoGrade, // ★ 追加：自動採点モードだったかどうかを保存し、再開時に復元する
     fourChoice: studyFourChoice, // ★ 追加：「4択にする」設定だったかどうかを保存し、再開時に復元する
     shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
+    // ★ 追加：クイズ過去問・多肢選択デッキをプレイ中なら、ここまでの各問題の正誤も
+    //   保存しておく（続きから再開したときにスコアを正しく引き継ぐため）。
+    quizAnswers: studyIsQuizDeck ? [...studyQuizAnswers.entries()] : undefined,
     updatedAt: Date.now(),
   };
   const key = studyItemKey(studyIsFolder, id);
@@ -4306,15 +4320,19 @@ async function openFolderPlayMode(folderId) {
 //   といったすれ違いが起きやすかった。プレイのたびに読み込み直すことで、
 //   誰かが編集した直後でも次にプレイした人にはほぼ即座に反映される。
 // ============================================================
-//  ★ 一人用選択式クイズは Cardmaker-quizplay.js に分離した
+//  ★ クイズ過去問デッキのスコア送信・ランキング取得は Cardmaker-quizplay.js に分離した
 //  ─────────────────────────────────────────────
-//  実体は別ファイルに移し、loadChunksInBackground() が背景で読み込む。
-//  ここに残す startSoloQuiz は、openPlayMode()（下記、core側）や
-//  結果画面の「もう一度挑戦する」ボタン（Cardmaker.html）から呼ばれる
-//  入口。チャンク読み込み完了後は同名の本物の実装に上書きされる。
-async function startSoloQuiz(deckId, mode) {
+//  ★ 2026/08/27：以前は一人用選択式クイズが専用の画面（screen-quiz-play）を
+//    持っていたが、「プレイ中の画面もほかのカードでのプレイ画面（screen-study）と
+//    ほぼ同じにしてほしい（編集ボタンだけ消して、それ以外は同じ画面）」という
+//    要望を受け、通常のフラッシュカード学習画面（screen-study）へ統合した
+//    （openPlayMode/startStudyMode/renderStudyCard、下記参照）。
+//    Cardmaker-quizplay.jsには、クイズ過去問デッキ完走後のスコア送信・
+//    ランキング取得（サーバー通信）だけが残っている。頻度が低い処理なので
+//    引き続き遅延読み込みチャンクのままにしてある。
+async function submitQuizArchiveScoreForStudy(deckId, score, total) {
   await loadChunkWithFeedback('quizplay', '/Cardmaker-quizplay.js');
-  return startSoloQuiz(deckId, mode); // ★ この時点では本物の実装に差し替わっている
+  return submitQuizArchiveScoreForStudy(deckId, score, total); // ★ この時点では本物の実装に差し替わっている
 }
 
 // ★ 「クイズ過去問」フォルダの中のデッキ、または多肢選択デッキ（choiceMode有り）かどうか。
@@ -4423,23 +4441,40 @@ function onFourChoiceToggleChange() {
   if (!autoGrade.checked) { autoGrade.checked = true; onAutoGradeToggleChange(); }
 }
 
+// ★ クイズ過去問・多肢選択デッキのカードのうち、選択式として遊べるものだけに絞り、
+//   correct_indices（旧形式のcorrect_index単数も配列へ正規化）を補って返す。
+function normalizeQuizPlayableCards(cards) {
+  return cards
+    .filter(c => Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN)
+    .map(c => ({
+      ...c,
+      correct_indices: Array.isArray(c.correct_indices) ? c.correct_indices
+        : (typeof c.correct_index === 'number' ? [c.correct_index] : []),
+    }))
+    .filter(c => c.correct_indices.length >= 1);
+}
+
 async function startStudyMode(mode) {
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
   // ★ 追加：クイズ過去問・多肢選択デッキ（フォルダプレイは対象外）は、反転/自動採点系の
-  //   チェックボックスを読まず、一人用選択式クイズ（Cardmaker-quizplay.js）へ振り分ける。
+  //   チェックボックスを読まず、下のstudyIsQuizDeck分岐で通常の学習画面をクイズモードで使う。
   const quizDeck = !studyIsFolder ? decks.find(d => d.id === studyDeckId) : null;
-  const isQuizDeck = isQuizPlayDeck(quizDeck);
+  studyIsQuizDeck = isQuizPlayDeck(quizDeck);
 
-  if (!isQuizDeck) {
+  if (!studyIsQuizDeck) {
     studyReverse = document.getElementById('reverse-mode-checkbox').checked;
     // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
     studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
     studyFourChoice = studyAutoGrade && document.getElementById('four-choice-checkbox').checked;
+  } else {
+    studyReverse = false;
+    studyAutoGrade = false;
+    studyFourChoice = false;
   }
 
   // ★ 追加：「すべてのカード」「わからないカードだけ」を選んだ場合、
   //   既に「続きから」の再開データが残っていると、この後の処理で
-  //   問答無用でそのデータが破棄されてしまう（clearStudyProgress／一人用クイズ側も同様）。
+  //   問答無用でそのデータが破棄されてしまう（clearStudyProgress）。
   //   気づかないうちに再開位置が消えてしまわないよう、事前に確認する。
   if (mode !== 'resume') {
     const existing = loadStudyProgress(studyIsFolder, progressId);
@@ -4455,19 +4490,20 @@ async function startStudyMode(mode) {
 
   closeModal('modal-play-mode');
 
-  if (isQuizDeck) return startSoloQuiz(studyDeckId, mode);
-
   if (mode === 'resume') {
     // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定・シャッフル済みか）を復元する。
     //   カード本体は常に最新の decks / folderPlayDecks から引き直すので、
     //   編集や画像追加が続きから再開に影響しない。
     const saved = loadStudyProgress(studyIsFolder, progressId);
     if (!saved) return; // 万が一データが消えていた場合は何もしない
-    studyReverse = saved.reverse;
-    studyAutoGrade = !saved.reverse && !!saved.autoGrade; // ★ 追加：保存されていた自動採点設定を復元
-    studyFourChoice = studyAutoGrade && !!saved.fourChoice; // ★ 追加：保存されていた「4択にする」設定を復元
+    studyReverse = studyIsQuizDeck ? false : saved.reverse;
+    studyAutoGrade = studyIsQuizDeck ? false : (!saved.reverse && !!saved.autoGrade); // ★ 追加：保存されていた自動採点設定を復元
+    studyFourChoice = studyIsQuizDeck ? false : (studyAutoGrade && !!saved.fourChoice); // ★ 追加：保存されていた「4択にする」設定を復元
     studyMode = saved.mode || 'all';
     studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
+    // ★ 追加：クイズ過去問デッキは、保存されていた「これまでの各問題の正誤」も復元する
+    //   （スコアは studyQuizAnswers から都度数え直す。saveStudyProgress側参照）。
+    studyQuizAnswers = new Map(studyIsQuizDeck && Array.isArray(saved.quizAnswers) ? saved.quizAnswers : []);
 
     let pool;
     if (studyIsFolder) {
@@ -4480,6 +4516,7 @@ async function startStudyMode(mode) {
       pool = deck ? [...deck.cards] : [];
       studyBaseTitle = deck ? deck.name : '';
     }
+    if (studyIsQuizDeck) pool = normalizeQuizPlayableCards(pool);
     const byKey = new Map(pool.map(c => [cardKey(c), c]));
     // ★ order は保存時点の並び順（シャッフル済みならその並び）をそのまま記録しているので、
     //   ここで単純にキーから引き直すだけで、シャッフルした状態のまま正しく再開できる。
@@ -4489,6 +4526,7 @@ async function startStudyMode(mode) {
   } else {
     studyMode = mode;
     studyShuffled = false; // ★ 「すべて」「わからないだけ」を選び直した場合はシャッフル状態をリセット
+    studyQuizAnswers = new Map(); // ★ 追加：新しく始めた場合はクイズの正誤記録もリセット
     if (studyIsFolder) {
       // フォルダ内の全デッキのカードを、どのデッキ由来かのタグ付きでまとめる
       const merged = [];
@@ -4504,13 +4542,20 @@ async function startStudyMode(mode) {
       studyBaseTitle = folder ? folder.name : 'フォルダ';
     } else {
       const deck = decks.find(d => d.id === studyDeckId);
+      const sourceCards = studyIsQuizDeck ? normalizeQuizPlayableCards(deck.cards) : deck.cards;
       if (mode === 'unsure') {
         const unsure = getUnsureSet(studyDeckId);
-        studyCards = deck.cards.filter(c => unsure.has(cardKey(c)));
+        studyCards = sourceCards.filter(c => unsure.has(cardKey(c)));
       } else {
-        studyCards = [...deck.cards];
+        studyCards = [...sourceCards];
       }
       studyBaseTitle = deck.name;
+    }
+    if (studyIsQuizDeck && !studyCards.length) {
+      await showCmAlert(mode === 'unsure'
+        ? { title: 'わからないカードはありません', desc: '「わからない」マークが付いた選択式の問題がまだありません。' }
+        : { title: '選択式の問題がありません', desc: 'このデッキには選択式の問題がまだありません。' });
+      return;
     }
     studyIdx = 0;
     // ★ 「すべて」「わからないだけ」を新しく選び直した場合は、
@@ -4521,10 +4566,16 @@ async function startStudyMode(mode) {
   // ★ 修正：サーバーの事前生成キャッシュ確認（高速なファイル読み込みのみ、数百ms程度）を
   //   待ってから描画する。学習開始が遅れるのはこの一瞬だけで、間に合えば最初のカードから
   //   AI強化済みの選択肢が出せる（キャッシュが無い/失敗してもここで待ちすぎない設計）。
-  await setupFourChoiceIfNeeded();
+  //   ★ クイズ過去問デッキは選択肢が既にカードに入っているためAI4択のセットアップ自体が不要。
+  if (!studyIsQuizDeck) await setupFourChoiceIfNeeded();
 
   renderStudyTitle();
   document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
+  // ★ 追加：「クイズ過去問」デッキ（quizArchive）はデッキメニューの「編集」自体を
+  //   隠している読み取り専用のデッキ（openDeckMenu参照）なので、この画面の「編集」
+  //   ボタンも同様に隠す。ユーザーが自作した多肢選択デッキ（choiceMode。quizArchive
+  //   ではない）はカード編集が引き続きできるため対象外（studyIsQuizDeckより狭い判定）。
+  document.getElementById('study-edit-btn').style.display = (quizDeck && quizDeck.quizArchive) ? 'none' : '';
   showScreen('study');
   document.getElementById('study-done').style.display    = 'none';
   document.getElementById('study-content').style.display = 'flex';
@@ -4795,46 +4846,94 @@ async function scheduleFourChoiceAiEnhancement(skipKeys) {
       //   見せる）。既に回答済みのカードは触らない（正誤判定の結果が変わって見えると
       //   混乱するため）。
       if (q.i === studyIdx && !studyChoiceAnswered) {
-        renderStudyChoices(studyChoicesMap.get(key));
+        // ★ 修正：studyChoicesMapのエントリは{choices, correctIndex}（単数）だが、
+        //   renderStudyChoicesは{choices, correctIndices}（配列）を受け取る形に
+        //   統一されている（currentStudyChoiceEntry参照）ため、ここでも変換する。
+        renderStudyChoices(currentStudyChoiceEntry(card));
       }
     });
   }
 }
 
+// ★ このカードの選択肢欄に何を出すか、1つの形（{choices, correctIndices}、
+//   correctIndicesは配列＝複数正解にも対応）にまとめて返す。2つの別々の
+//   選択肢の出所を吸収している：
+//   ①studyIsQuizDeck（クイズ過去問・多肢選択デッキ）：カード自体が最初から
+//     持っているchoices/correct_indices（旧形式のcorrect_index単数も配列化）。
+//   ②studyFourChoice（通常デッキの「自動採点＋4択にする」）：AIで組み立てた
+//     studyChoicesMapのエントリ（単一正解のみ、correctIndexを1件の配列にする）。
+//   どちらでもなければnull（＝通常の解答入力欄にフォールバック）。
+function currentStudyChoiceEntry(card) {
+  if (!card) return null;
+  if (studyIsQuizDeck) {
+    if (!Array.isArray(card.choices) || card.choices.length < CHOICE_MIN) return null;
+    const correctIndices = Array.isArray(card.correct_indices) ? card.correct_indices
+      : (typeof card.correct_index === 'number' ? [card.correct_index] : []);
+    if (!correctIndices.length) return null;
+    return { choices: card.choices, correctIndices };
+  }
+  if (!studyFourChoice) return null;
+  const e = studyChoicesMap.get(cardKey(card));
+  return e ? { choices: e.choices, correctIndices: [e.correctIndex] } : null;
+}
+
 function renderStudyChoices(entry) {
   studyChoiceAnswered = false;
+  studyQuizSelected = new Set();
+  const isMulti = entry.correctIndices.length > 1;
   const el = document.getElementById('study-choices');
   el.innerHTML = entry.choices.map((c, i) => `
-    <button type="button" class="qp-choice-btn" onclick="answerStudyChoice(${i})">
+    <button type="button" class="qp-choice-btn" onclick="${isMulti ? `toggleStudyChoiceMulti(${i})` : `answerStudyChoice(${i})`}">
       <b>${CHOICE_LETTERS[i]}.</b> <span id="study-choice-text-${i}"></span>
     </button>`).join('');
   entry.choices.forEach((c, i) => setMathText(document.getElementById(`study-choice-text-${i}`), c));
+  // ★ 複数正解モードだけ、選び終えてから確定するための送信ボタンを出す（みんなでクイズと同じ考え方）
+  document.getElementById('study-choice-submit-wrap').style.display = isMulti ? '' : 'none';
 }
 
-// ★ 通常の自動採点（gradeCurrentAnswer）と4択（この関数）の両方から呼ぶ、
-//   「間違えたら自動でわからないマークを付ける」共通処理。
-function autoMarkUnsureForCard(card, isCorrect) {
-  if (isCorrect) return;
-  const key = cardKey(card);
-  const deckId = card.__deckId || studyDeckId;
-  const unsure = getUnsureSet(deckId);
-  if (!unsure.has(key)) {
-    unsure.add(key);
-    saveUnsureSet(deckId, unsure);
+// ★ 追加：複数正解モードで、選択肢のON/OFFを切り替える（まだ回答は確定しない）
+function toggleStudyChoiceMulti(idx) {
+  if (studyChoiceAnswered) return;
+  const btn = document.querySelectorAll('#study-choices .qp-choice-btn')[idx];
+  if (studyQuizSelected.has(idx)) {
+    studyQuizSelected.delete(idx);
+    btn.classList.remove('qp-selected');
+  } else {
+    studyQuizSelected.add(idx);
+    btn.classList.add('qp-selected');
   }
+}
+
+// ★ 追加：複数正解モードの回答を確定する
+function submitStudyChoiceMulti() {
+  if (studyChoiceAnswered || studyQuizSelected.size === 0) return;
+  const card = studyCards[studyIdx];
+  const entry = card && currentStudyChoiceEntry(card);
+  if (!entry) return;
+  const correctSet = new Set(entry.correctIndices);
+  // ★ 選んだ選択肢の集合が正解の集合と完全に一致していれば正解とする
+  const isCorrect = correctSet.size === studyQuizSelected.size && [...correctSet].every(i => studyQuizSelected.has(i));
+  finishStudyChoiceAnswer(card, entry, isCorrect, studyQuizSelected);
 }
 
 function answerStudyChoice(idx) {
   if (studyChoiceAnswered) return;
-  studyChoiceAnswered = true;
   const card = studyCards[studyIdx];
-  const entry = card && studyChoicesMap.get(cardKey(card));
+  const entry = card && currentStudyChoiceEntry(card);
   if (!entry) return;
-  const isCorrect = idx === entry.correctIndex;
+  const isCorrect = entry.correctIndices.includes(idx);
+  finishStudyChoiceAnswer(card, entry, isCorrect, new Set([idx]));
+}
+
+// ★ answerStudyChoice（単一正解）／submitStudyChoiceMulti（複数正解）共通の
+//   採点後の見た目・記録処理。selectedSetは実際に選んだ選択肢のインデックス集合。
+function finishStudyChoiceAnswer(card, entry, isCorrect, selectedSet) {
+  studyChoiceAnswered = true;
 
   document.getElementById('study-answer-panel').classList.add('show');
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
+  document.getElementById('study-choice-submit-wrap').style.display = 'none';
 
   const result = document.getElementById('study-grade-result');
   const mark = document.getElementById('grade-mark');
@@ -4848,15 +4947,37 @@ function answerStudyChoice(idx) {
   //   古いテキストがこのコンテナごと再表示されて残ってしまうのを防ぐため）。
   userAnswerEl.textContent = '';
 
+  const correctSet = new Set(entry.correctIndices);
   [...document.querySelectorAll('#study-choices .qp-choice-btn')].forEach((btn, i) => {
     btn.disabled = true;
-    if (i === entry.correctIndex) btn.classList.add('qp-correct');
-    else if (i === idx) btn.classList.add('qp-wrong');
+    btn.classList.remove('qp-selected');
+    if (correctSet.has(i)) btn.classList.add('qp-correct');
+    else if (selectedSet.has(i)) btn.classList.add('qp-wrong');
     else btn.classList.add('qp-dim');
   });
 
+  // ★ 追加：クイズ過去問・多肢選択デッキは、このカードの正誤を記録する
+  //   （studyQuizAnswers。「← 前へ」で戻って答え直しても、最新の判定で
+  //   上書きされるだけなので二重加点はしない。スコア表示はupdateStudyQuizScoreLabel参照）。
+  if (studyIsQuizDeck) {
+    studyQuizAnswers.set(cardKey(card), isCorrect);
+    saveStudyProgress(); // ★ スコアが変わった時点でも保存し直す（idx変更を待たず取りこぼさない）
+  }
   autoMarkUnsureForCard(card, isCorrect);
   updateUnsureBtn();
+}
+
+// ★ 通常の自動採点（gradeCurrentAnswer）と4択（finishStudyChoiceAnswer）の両方から呼ぶ、
+//   「間違えたら自動でわからないマークを付ける」共通処理。
+function autoMarkUnsureForCard(card, isCorrect) {
+  if (isCorrect) return;
+  const key = cardKey(card);
+  const deckId = card.__deckId || studyDeckId;
+  const unsure = getUnsureSet(deckId);
+  if (!unsure.has(key)) {
+    unsure.add(key);
+    saveUnsureSet(deckId, unsure);
+  }
 }
 
 // ══════════ 「一覧で見る」機能は Cardmaker-listview.js に分離した ══════════
@@ -4911,6 +5032,20 @@ function renderStudyCard() {
     clearStudyProgress(studyIsFolder, progressId); // ★ 完了したら続きデータは不要になるので消す
     saveCompletionRecord(studyIsFolder, progressId, studyCards.length); // ★ 追加：完了したことを記録する
     renderInProgressUI(); // ★ 追加：ホームの「プレイ中」「プレイ済み」欄を最新状態に更新
+    // ★ 追加：クイズ過去問・多肢選択デッキは、完了画面にスコア・ランキングを表示する
+    //   （study-done-subを「全N問完了！」の代わりにスコア表示として流用する）。
+    const rankEl = document.getElementById('study-done-rank');
+    document.getElementById('study-done-leaderboard').innerHTML = '';
+    if (studyIsQuizDeck) {
+      const scoreCount = [...studyQuizAnswers.values()].filter(Boolean).length;
+      document.getElementById('study-done-sub').textContent = `${scoreCount} / ${studyCards.length} 問正解！`;
+      rankEl.style.display = '';
+      submitQuizArchiveScoreForStudy(studyDeckId, scoreCount, studyCards.length); // ★ 結果を待たずに完了画面自体は表示する
+    } else {
+      document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
+      rankEl.style.display = 'none';
+      rankEl.textContent = '';
+    }
     return;
   }
   const c = studyCards[studyIdx];
@@ -4945,10 +5080,10 @@ function renderStudyCard() {
   //   反転モード中は studyAutoGrade が常に false になる（onReverseModeToggleChange /
   //   startStudyMode 側で強制）ため、ここで欄を表示していても自動採点（○×判定）は
   //   行われない。あくまで「入力欄を使って自分で書いてみる」ことだけができる。
-  // ★ 追加：自動採点＋4択モードで、かつこのカードが4択にできる（studyChoicesMapに
-  //   登録済み）場合は、解答入力欄の代わりに選択肢欄を表示する。登録されていない
-  //   （このカードの元デッキで答えの種類が足りない）場合は、通常の解答入力欄のままにする。
-  const choiceEntry = studyFourChoice ? studyChoicesMap.get(cardKey(c)) : null;
+  // ★ 追加：クイズ過去問・多肢選択デッキ、または自動採点＋4択モードで、かつこのカードが
+  //   選択式にできる場合は、解答入力欄の代わりに選択肢欄を表示する（currentStudyChoiceEntry参照）。
+  //   できない場合は通常の解答入力欄のままにする。
+  const choiceEntry = currentStudyChoiceEntry(c);
   const answerInputWrap = document.getElementById('study-answer-input-wrap');
   const answerInput = document.getElementById('study-answer-input');
   const choiceWrap = document.getElementById('study-choice-wrap');
@@ -5071,6 +5206,9 @@ function shuffleStudy() {
     [studyCards[i],studyCards[j]]=[studyCards[j],studyCards[i]];
   }
   studyIdx = 0;
+  // ★ 追加：クイズ過去問・多肢選択デッキは、シャッフル＝最初からやり直しとして
+  //   これまでの正誤記録もリセットする（studyIdxを0に戻すのと同じ「やり直し」の意味）。
+  if (studyIsQuizDeck) studyQuizAnswers = new Map();
   studyShuffled = true; // ★ 追加：シャッフル済み状態にする。以降の saveStudyProgress で保存され、
                         //   「続きから」で再開したときもこのシャッフル順のまま復元される。
   renderStudyTitle(); // ★ タイトルにシャッフル中を表示（studyShuffledは直前にtrueへ更新済み）
@@ -5090,11 +5228,11 @@ document.addEventListener('keydown', e => {
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   if (e.key==='ArrowRight') studyMove(1);
   if (e.key==='ArrowLeft' && studyIdx>0) studyMove(-1);
-  // ★ 追加：4択モードで選択肢が表示されているカードは、スペースキーでの
-  //   「答えを見る」（revealAnswer、テキスト入力前提の採点）を行わない。
-  //   選択肢はボタンをクリックして答える（answerStudyChoice）ため。
+  // ★ 追加：4択モード（クイズ過去問・多肢選択デッキ含む）で選択肢が表示されている
+  //   カードは、スペースキーでの「答えを見る」（revealAnswer、テキスト入力前提の採点）
+  //   を行わない。選択肢はボタンをクリックして答える（answerStudyChoice）ため。
   const curCard = studyCards[studyIdx];
-  const inChoiceMode = studyFourChoice && curCard && studyChoicesMap.has(cardKey(curCard));
+  const inChoiceMode = !!(curCard && currentStudyChoiceEntry(curCard));
   if (e.key===' ' && !inChoiceMode) { e.preventDefault(); revealAnswer(); }
 });
 

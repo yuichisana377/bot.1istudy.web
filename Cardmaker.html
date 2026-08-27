@@ -341,7 +341,7 @@
     <button class="topbar-back" onclick="showScreen('list')">←</button>
     <div class="topbar-title" id="study-title">学習</div>
     <div class="study-understand-badge" id="study-understand-badge" style="display:none"></div>
-    <button class="btn btn-ghost btn-sm" onclick="editCurrentStudyCard()" title="このカードを編集"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg></button>
+    <button class="btn btn-ghost btn-sm" id="study-edit-btn" onclick="editCurrentStudyCard()" title="このカードを編集"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg></button>
     <button class="btn btn-ghost btn-sm" onclick="shuffleStudy()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#7c3aed"><path d="M4 6.5h3.3l9 11H18" stroke-width="2.4" stroke-linecap="round"/><path d="M4 17.5h3.3l2.2-2.9" stroke-width="2.4" stroke-linecap="round"/><path d="M14.7 6.5H18" stroke-width="2.4" stroke-linecap="round"/><path d="M16.2 3.1l4.6 3.4-4.6 3.4Z" fill="currentColor" stroke="none"/><path d="M16.2 14.1l4.6 3.4-4.6 3.4Z" fill="currentColor" stroke="none"/></svg></button>
   </div>
 
@@ -349,6 +349,9 @@
     <div class="study-done-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3v3.4"/><path d="M12 17.6V21"/><path d="M3 12h3.4"/><path d="M17.6 12H21"/><path d="M5.8 5.8l2.4 2.4"/><path d="M15.8 15.8l2.4 2.4"/><path d="M18.2 5.8l-2.4 2.4"/><path d="M8.2 15.8l-2.4 2.4"/></svg></div>
     <div class="study-done-title">完了！</div>
     <div class="study-done-sub" id="study-done-sub"></div>
+    <!-- ★ 追加：クイズ過去問・多肢選択デッキだけ、完走後の順位・ランキングを表示する -->
+    <div class="study-done-sub" id="study-done-rank" style="display:none"></div>
+    <div class="qp-leaderboard" id="study-done-leaderboard"></div>
     <button class="btn btn-outline" onclick="shuffleStudy()">もう一度</button>
     <button class="btn btn-blue"    onclick="showScreen('list')">一覧に戻る</button>
   </div>
@@ -391,12 +394,15 @@
                placeholder="解答を入力してください…"
                onkeydown="if(event.key==='Enter'){event.preventDefault();revealAnswer();}">
       </div>
-      <!-- ★ 追加：自動採点＋4択モードの時だけ表示する選択肢欄（qp-choices/qp-choice-btnは
-           一人用選択式クイズ（screen-quiz-play）と同じCSSを流用し、見た目を揃えている）。
-           選んだ瞬間に採点まで行う（下のreveal-answer-btnはJS側で非表示にし、
-           study-reveal-bar自体は「← 前へ」ボタンのぶんだけ表示したままにする）。 -->
+      <!-- ★ 追加：自動採点＋4択モード、およびクイズ過去問・多肢選択デッキ（studyIsQuizDeck）の
+           時に表示する選択肢欄。選んだ瞬間に採点まで行う（下のreveal-answer-btnはJS側で
+           非表示にし、study-reveal-bar自体は「← 前へ」ボタンのぶんだけ表示したままにする）。 -->
       <div id="study-choice-wrap" style="display:none">
         <div class="qp-choices" id="study-choices"></div>
+        <!-- ★ 追加：複数正解モードだけ、選び終えてから確定するための送信ボタンを出す -->
+        <div class="qp-submit-wrap" id="study-choice-submit-wrap" style="display:none">
+          <button class="btn btn-blue" style="width:100%" onclick="submitStudyChoiceMulti()">この内容で回答する</button>
+        </div>
       </div>
       <!-- 答えを見る前：前へ + 答えを見る（自動採点ONの時は「採点する」に文言変更、4択ONの時は「答えを見る」ボタンだけ非表示） -->
       <div class="study-reveal-bar" id="study-reveal-bar">
@@ -409,55 +415,6 @@
         <button class="unsure-btn" id="unsure-btn" onclick="toggleUnsure()">？ わからない</button>
         <button class="btn btn-blue"  id="study-next" onclick="studyMove(1)">次へ →</button>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════ 一人用4択クイズ（クイズ過去問フォルダ専用） ══════════ -->
-<div class="screen" id="screen-quiz-play">
-  <div class="topbar">
-    <button class="topbar-back" onclick="showScreen('list')">←</button>
-    <div class="topbar-title" id="qp-title">クイズ</div>
-    <div class="editor-counter" id="qp-score-label">0点</div>
-  </div>
-  <div class="cm-scroll-body">
-    <div class="inner">
-
-      <!-- 出題中 -->
-      <div id="qp-play-content">
-        <div class="study-progress-row">
-          <div class="study-progress-bar">
-            <div class="study-progress-fill" id="qp-prog-fill"></div>
-          </div>
-          <div class="study-progress-label" id="qp-prog-label"></div>
-        </div>
-        <div class="study-q-text" id="qp-q-text" style="margin-top:1rem"></div>
-        <div class="study-q-imgs" id="qp-q-imgs"></div>
-        <div class="qp-choices" id="qp-choices"></div>
-        <!-- ★ 追加：複数正解モードだけ、選び終えてから確定するための送信ボタンを出す -->
-        <div class="qp-submit-wrap" id="qp-submit-wrap" style="display:none">
-          <button class="btn btn-blue" style="width:100%" onclick="submitQuizPlayMulti()" id="qp-submit-btn">この内容で回答する</button>
-        </div>
-        <!-- ★ 追加：通常のフラッシュカード学習と同じ「わからない」トグル（answerQuizPlay/submitQuizPlayMultiで
-             間違えると自動でマークされる。手動でも付け外しできる） -->
-        <div class="qp-next-wrap" id="qp-next-wrap" style="display:none">
-          <div style="display:flex;gap:.5rem;align-items:center;">
-            <button class="unsure-btn" id="qp-unsure-btn" onclick="toggleQuizPlayUnsure()">？ わからない</button>
-            <button class="btn btn-blue" style="flex:1" onclick="quizPlayNext()" id="qp-next-btn">次へ →</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 結果・ランキング -->
-      <div id="qp-result-content" style="display:none;text-align:center">
-        <div class="study-done-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3v3.4"/><path d="M12 17.6V21"/><path d="M3 12h3.4"/><path d="M17.6 12H21"/><path d="M5.8 5.8l2.4 2.4"/><path d="M15.8 15.8l2.4 2.4"/><path d="M18.2 5.8l-2.4 2.4"/><path d="M8.2 15.8l-2.4 2.4"/></svg></div>
-        <div class="study-done-title" id="qp-result-score"></div>
-        <div class="study-done-sub" id="qp-result-rank"></div>
-        <div class="qp-leaderboard" id="qp-leaderboard"></div>
-        <button class="btn btn-outline" style="width:100%;margin-top:1rem" onclick="startSoloQuiz(soloQuizDeckId)">もう一度挑戦する</button>
-        <button class="btn btn-blue" style="width:100%;margin-top:.5rem" onclick="showScreen('list')">一覧に戻る</button>
-      </div>
-
     </div>
   </div>
 </div>

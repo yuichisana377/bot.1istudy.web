@@ -412,7 +412,9 @@ html, body {
 }
 .choice-remove-btn:hover { background: #fee2e2; color: #991b1b; }
 
-/* ── 一人用選択式クイズ（screen-quiz-play） ── */
+/* ── 選択式クイズの選択肢ボタン（qp-choice-btn）
+   ★ 2026/08/27：以前は専用画面（screen-quiz-play）用だったが、通常の学習画面
+   （screen-study、study-choice-wrap内）へ統合された後もクラス名はそのまま使っている ── */
 .qp-choices { display: flex; flex-direction: column; gap: .6rem; margin-top: 1.25rem; }
 .qp-choice-btn {
   width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r-md);
