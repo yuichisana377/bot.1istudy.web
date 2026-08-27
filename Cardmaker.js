@@ -387,13 +387,22 @@ async function fetchAndMergeOrder() {
 
 // ★ この端末でドラッグして決めた並び順のうち「みんなで共有される部分」だけを
 //   サーバーへ反映する（自分だけの下書きデッキの並びは送らない）。
+// ★ 追加（不具合修正、2026/08/26）：pushStudyDataToServerと同じ理由
+//   （fetch()の完了順が発行順どおりとは限らない）で直列化する。
+let _orderPushChain = Promise.resolve();
+
 async function pushSharedOrderToServer(folderId, keys) {
+  const waitForTurn = _orderPushChain.catch(() => {});
+  let myTurnDone;
+  _orderPushChain = new Promise(resolve => { myTurnDone = resolve; });
+  await waitForTurn;
   const promise = _pushSharedOrderToServerImpl(folderId, keys);
   _pendingOrderPushes.push(promise);
   try {
     return await promise;
   } finally {
     _pendingOrderPushes = _pendingOrderPushes.filter(p => p !== promise);
+    myTurnDone();
   }
 }
 async function _pushSharedOrderToServerImpl(folderId, keys) {
@@ -3915,15 +3924,33 @@ async function fetchAndMergeStudyData() {
 let _pendingStudyDataPushes = [];
 
 // 学習データをサーバーへ送る共通処理（失敗しても操作自体は止めない）
+// ★ 追加（不具合修正、2026/08/26）：わからないマークを付けてすぐ外す、
+//   といった短時間の連続操作で、後から送ったはずのリクエストより先に
+//   古いリクエストの処理が完了してしまうことがあった（fetch()はブラウザ・
+//   ネットワークの都合で発行順どおりに完了するとは限らず、サーバー側も
+//   Flaskのスレッドで並行に処理するため、先に届いたリクエストの処理が
+//   遅れて後発のリクエストに追い越されうる）。追い越されると、新しい方の
+//   状態（例：外した後）を、古い方の状態（例：付けた状態）が後から上書き
+//   してしまい、「わかる率」が実態より下がっていくように見える不具合の
+//   原因になっていた。同じ生徒のファイルへの保存はすべてこの関数を通る
+//   ため、ここで直列化する（前回の送信が完了するまで次を送らない）ことで、
+//   サーバー側への到達順を必ず発行順どおりに保つ。
+let _studyDataPushChain = Promise.resolve();
+
 async function pushStudyDataToServer(path, body) {
   const session = getLoginSession();
   if (!session || !session.session_token) return false;
+  const waitForTurn = _studyDataPushChain.catch(() => {}); // 前回が失敗していても自分の番は来るようにする
+  let myTurnDone;
+  _studyDataPushChain = new Promise(resolve => { myTurnDone = resolve; });
+  await waitForTurn;
   const promise = _pushStudyDataToServerImpl(path, body);
   _pendingStudyDataPushes.push(promise);
   try {
     return await promise;
   } finally {
     _pendingStudyDataPushes = _pendingStudyDataPushes.filter(p => p !== promise);
+    myTurnDone();
   }
 }
 async function _pushStudyDataToServerImpl(path, body) {
