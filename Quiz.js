@@ -866,7 +866,13 @@ function renderPlayScreen(room, opts) {
     if (room.your_correct) {
       const bonus = room.first_correct_nickname === STUDENT.nickname;
       feedbackEl.className = 'qz-answer-feedback ok';
-      feedbackEl.innerHTML = bonus ? (Icons.html('celebrate', {size:15}) + ' 正解！一番乗りボーナスで +12点！') : (Icons.html('checkCircle', {size:15}) + ' 正解！ +10点');
+      // ★ 修正：以前は「+10点」「+12点」を固定文言で表示していたため、ホストの
+      //   詳細設定「ボーナス問題」（得点2倍）が効いた問題では、実際の加点
+      //   （20点・24点）と表示が食い違っていた（「ちゃんと2倍になってるんだけど、
+      //   表示が+12になってしまっている」との指摘）。サーバー側が実際に加点した
+      //   点数（room.your_points）をそのまま表示する。
+      const pointsText = room.your_points != null ? room.your_points : (bonus ? 12 : 10); // 念のためのフォールバック
+      feedbackEl.innerHTML = bonus ? (Icons.html('celebrate', {size:15}) + ` 正解！一番乗りボーナスで +${pointsText}点！`) : (Icons.html('checkCircle', {size:15}) + ` 正解！ +${pointsText}点`);
     } else {
       feedbackEl.className = 'qz-answer-feedback ng';
       feedbackEl.innerHTML = Icons.html('wrong', {size:15}) + ' 不正解…';
