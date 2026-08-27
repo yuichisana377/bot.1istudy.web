@@ -4320,20 +4320,16 @@ async function openFolderPlayMode(folderId) {
 //   といったすれ違いが起きやすかった。プレイのたびに読み込み直すことで、
 //   誰かが編集した直後でも次にプレイした人にはほぼ即座に反映される。
 // ============================================================
-//  ★ クイズ過去問デッキのスコア送信・ランキング取得は Cardmaker-quizplay.js に分離した
-//  ─────────────────────────────────────────────
 //  ★ 2026/08/27：以前は一人用選択式クイズが専用の画面（screen-quiz-play）を
 //    持っていたが、「プレイ中の画面もほかのカードでのプレイ画面（screen-study）と
 //    ほぼ同じにしてほしい（編集ボタンだけ消して、それ以外は同じ画面）」という
 //    要望を受け、通常のフラッシュカード学習画面（screen-study）へ統合した
 //    （openPlayMode/startStudyMode/renderStudyCard、下記参照）。
-//    Cardmaker-quizplay.jsには、クイズ過去問デッキ完走後のスコア送信・
-//    ランキング取得（サーバー通信）だけが残っている。頻度が低い処理なので
-//    引き続き遅延読み込みチャンクのままにしてある。
-async function submitQuizArchiveScoreForStudy(deckId, score, total) {
-  await loadChunkWithFeedback('quizplay', '/Cardmaker-quizplay.js');
-  return submitQuizArchiveScoreForStudy(deckId, score, total); // ★ この時点では本物の実装に差し替わっている
-}
+//    ★ 続けて「過去問のランキング消してほしい」との要望で、統合直後に追加した
+//    スコア送信・ランキング取得（旧Cardmaker-quizplay.js）も撤去した。デッキ
+//    完走後は素点（study-done-sub）だけを見せ、他の人との順位比較はしない。
+//    このチャンク自体が不要になったため、Cardmaker-quizplay.jsファイル自体と
+//    loadChunksInBackground()での読み込み登録も削除済み。
 
 // ★ 「クイズ過去問」フォルダの中のデッキ、または多肢選択デッキ（choiceMode有り）かどうか。
 //   これらはプレイモード選択自体はふつうのデッキと同じ（続きから/すべて/わからないだけ/
@@ -5032,19 +5028,15 @@ function renderStudyCard() {
     clearStudyProgress(studyIsFolder, progressId); // ★ 完了したら続きデータは不要になるので消す
     saveCompletionRecord(studyIsFolder, progressId, studyCards.length); // ★ 追加：完了したことを記録する
     renderInProgressUI(); // ★ 追加：ホームの「プレイ中」「プレイ済み」欄を最新状態に更新
-    // ★ 追加：クイズ過去問・多肢選択デッキは、完了画面にスコア・ランキングを表示する
+    // ★ 追加：クイズ過去問・多肢選択デッキは、完了画面に素点を表示する
     //   （study-done-subを「全N問完了！」の代わりにスコア表示として流用する）。
-    const rankEl = document.getElementById('study-done-rank');
-    document.getElementById('study-done-leaderboard').innerHTML = '';
+    //   ★ 2026/08/27：他の人との順位比較（ランキング）は「消してほしい」との
+    //   要望で撤去済み。自分の正解数だけを見せる。
     if (studyIsQuizDeck) {
       const scoreCount = [...studyQuizAnswers.values()].filter(Boolean).length;
       document.getElementById('study-done-sub').textContent = `${scoreCount} / ${studyCards.length} 問正解！`;
-      rankEl.style.display = '';
-      submitQuizArchiveScoreForStudy(studyDeckId, scoreCount, studyCards.length); // ★ 結果を待たずに完了画面自体は表示する
     } else {
       document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
-      rankEl.style.display = 'none';
-      rankEl.textContent = '';
     }
     return;
   }
@@ -5517,7 +5509,6 @@ async function loadChunkWithFeedback(name, src) {
 async function loadChunksInBackground() {
   const chunks = [
     ['search', '/Cardmaker-search.js'],
-    ['quizplay', '/Cardmaker-quizplay.js'],
     ['listview', '/Cardmaker-listview.js'],
     ['csvimport', '/Cardmaker-csvimport.js'],
     ['cardreorder', '/Cardmaker-cardreorder.js'],

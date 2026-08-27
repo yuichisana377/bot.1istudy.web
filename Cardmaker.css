@@ -431,16 +431,6 @@ html, body {
 .qp-choice-btn.qp-selected { background: #EFF4FF; border-color: #2563EB; color: #1d4ed8; }
 .qp-next-wrap, .qp-submit-wrap { margin-top: 1.25rem; }
 
-.qp-leaderboard { display: flex; flex-direction: column; gap: .5rem; margin: 1.5rem 0; text-align: left; }
-.qp-lb-row {
-  display: flex; align-items: center; gap: .6rem; padding: .6rem .9rem;
-  border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface);
-}
-.qp-lb-row.me { border-color: #2563EB; background: #EFF4FF; }
-.qp-lb-rank  { font-weight: 700; width: 22px; text-align: center; color: var(--text-secondary); font-size: 13px; flex-shrink: 0; }
-.qp-lb-name  { flex: 1; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qp-lb-score { font-weight: 700; font-size: 14px; color: #2563EB; flex-shrink: 0; }
-
 .add-deck-btn {
   width: 52px; height: 52px; border-radius: 50%;
   background: #2563EB; color: #fff; border: none;
