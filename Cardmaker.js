@@ -2483,15 +2483,17 @@ async function openEditDeck(deckId) {
   if (!ok) return; // ユーザーが「やめる」を選んだ場合は編集画面を開かない
 
   document.getElementById('edit-deck-title').textContent = deck.name;
-  // ★ 修正：以前は「サーバー登録済み（公開予定／作成中を含む）」なら
-  //   「保存」（ローカルのみ保存して戻る）ボタンを隠し、常に完全な
-  //   「公開して保存」（ログイン確認・完成/未完成の選択・Discord通知）を
-  //   通らないと編集を中断できなかった。
-  //   単に作業を保存していったん戻りたいだけのときにも毎回この確認を
-  //   挟まれるのは不便なため、「保存」ボタンは常に表示するようにする。
-  //   （saveCard() 側で、filenameがあるデッキの「保存」は通知なしで
-  //     静かにサーバーへも反映するよう修正済み）
-  document.getElementById('btn-save-local').style.display = '';
+  // ★ 修正（2026/08/27、再度revert）：一時期は「サーバー登録済み（公開予定／
+  //   作成中を含む）」でも「保存」ボタンを常に表示し、通知なしで静かに
+  //   サーバーへ反映していた（利便性優先）。しかしこれだと、他の人や自分が
+  //   公開・登録済み（未完成の「作成中」状態を含む）のデッキを編集した際、
+  //   「完成/未完成の選択」を経ないまま「保存」だけで変更が公開側にも
+  //   静かに反映されてしまい、意図しない状態で公開され続ける形になるという
+  //   指摘を受けた。サーバーに登録済み（filenameがある＝他の人にも見えている）
+  //   デッキは、必ず「公開して保存」（完成/未完成の選択を経る）だけを通す
+  //   ようにする。まだ一度もサーバーに登録していない（この端末だけの下書き）
+  //   デッキだけ、従来通り気軽な「保存」を残す。
+  document.getElementById('btn-save-local').style.display = deck.filename ? 'none' : '';
   document.getElementById('btn-done').textContent = deck.filename ? '公開して保存' : '保存して公開';
   // ★ 追加：多肢選択デッキかどうかで「解答/解説」欄と「選択肢」欄を出し分ける
   applyCardFormChoiceMode(deck.choiceMode);
@@ -2648,12 +2650,11 @@ async function saveCard(mode) {
     publishDeck(deck.id, choice === 'complete');
   } else if (mode === 'local') {
     saveDecks(decks);
-    // ★ 修正：サーバー登録済み（公開予定／作成中を含む）のデッキは、
-    //   「保存」ボタンでも公開確認は挟まずに、通知なし（silent）で
-    //   静かにサーバーへ反映してから一覧に戻る。
-    //   ここで反映しておかないと、いったん一覧に戻って次に編集画面を
-    //   開き直したときの強制リロードで、まだサーバーに届いていない
-    //   直前の変更が消えてしまう（以前あった不具合と同じ原因）。
+    // ★ 2026/08/27時点：openEditDeck()が「保存」ボタン自体をfilenameがある
+    //   デッキでは隠すようにしたため、通常はこの`if (deck.filename)`には
+    //   到達しない（そのようなデッキは必ず「公開して保存」＝mode==='publish'
+    //   を通る）。ボタンが無くてもこの関数が直接呼ばれるケースに備えた保険
+    //   として、念のためこの分岐は残してある。
     if (deck.filename) {
       // ★ 追加：サーバー反映を待つ間、押した感が分かるようスピナー表示にする
       const saveBtn = document.getElementById('btn-save-local');

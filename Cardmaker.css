@@ -684,9 +684,15 @@ html, body {
 .created-item-btns { display: flex; gap: .35rem; flex-shrink: 0; }
 
 /* ── モーダル ── */
+/* ★ 修正：以前はz-index:300で、ドロワー（Style.cssの.drawer-overlay:300 /
+   .drawer:310）と同等かそれより低かったため、ドロワーを開いた状態で（背景の
+   同期処理など）このモーダル（showCmConfirm/showCmAlert含む）が開くと、
+   ドロワーの裏に隠れて見えなくなることがあった。常に最前面になるよう、
+   .img-lightbox-overlay（500、モーダルの中から開く画像拡大表示なので
+   それより下のまま）を超えない範囲で引き上げる。 */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.4);
-  z-index: 300; display: none; align-items: flex-end; justify-content: center;
+  z-index: 450; display: none; align-items: flex-end; justify-content: center;
 }
 .modal-overlay.open { display: flex; animation: fadeInCM .15s ease; }
 @keyframes fadeInCM { from { opacity: 0; } }

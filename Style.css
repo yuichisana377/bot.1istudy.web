@@ -383,7 +383,14 @@ body {
 /* ============================
    モーダル（共通）
 ============================ */
-.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 200; align-items: flex-end; justify-content: center; }
+/* ★ 修正：以前はz-index:200で、ドロワー（.drawer-overlay:300 / .drawer:310）や
+   ページ遷移ローディング（.page-nav-loading:400）より低かったため、ドロワーを
+   開いた状態で（バックグラウンド処理などから）confirm/alert代わりのダイアログ
+   （showAppConfirm/showAppAlert/showAppPrompt）が表示されると、ドロワーの裏に
+   隠れて見えなくなることがあった。ダイアログは常に最前面になるよう、既存の
+   要素（画像ライトボックス等、.modal-bgより内側にネストされるものは影響を
+   受けない）より高い値にする。 */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 450; align-items: flex-end; justify-content: center; }
 @media (min-width: 520px) { .modal-bg { align-items: center; } }
 .modal-bg.open { display: flex; }
 .modal {
