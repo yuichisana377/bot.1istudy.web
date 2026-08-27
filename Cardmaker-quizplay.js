@@ -7,8 +7,11 @@
 //    Cardmaker.jsが先に読み込まれている前提。decks/showScreen/esc/
 //    setMathText/CHOICE_LETTERS/CHOICE_MIN/waitForPendingSync/
 //    ensureDeckCardsLoaded/showCmConfirm/showCmAlert/getLoginSession/
-//    API_BASE/GUILD_ID/cardKey/getUnsureSet/saveUnsureSet/markCardSeen
-//    などCardmaker.js側のグローバル関数・変数をそのまま使う）。
+//    API_BASE/GUILD_ID/cardKey/getUnsureSet/saveUnsureSet/markCardSeen/
+//    loadStudyProgress/clearStudyProgress/saveCompletionRecord/
+//    renderInProgressUI/studyItemKey/studyDataCache/saveStudyDataCache/
+//    pushStudyDataToServer などCardmaker.js側のグローバル関数・変数を
+//    そのまま使う）。
 //
 //  ★ 追加（2026/08/21）：以前は通常のフラッシュカード学習（自動採点・
 //    「わからない」マーク・「わかる率」への学習済み記録）と挙動が
@@ -16,6 +19,12 @@
 //    通常の学習と同じ感覚で使えるよう、markCardSeen（学習済み記録）と
 //    「間違えたら自動でわからないマーク／手動トグルも可能」を追加した。
 //
+//  ★ 追加（2026/08/27）：以前はプレイモード選択自体を経由せず、常に
+//    「すべてのカードを毎回シャッフルして最初から」のみだった。CardMakerの
+//    通常デッキと同じプレイモード選択モーダル（続きから/すべて/わからない
+//    だけ）を経由するようにし、startSoloQuiz(deckId, mode)がその選択に
+//    応じて絞り込み・再開を行うよう変更した（openPlayMode/startStudyMode
+//    ＝Cardmaker.js側参照）。
 //  みんなでクイズ（Quiz.js）でホストが作ったオリジナル4択クイズは、
 //  bot.py側で自動的に「クイズ過去問」フォルダへデッキとしてアーカイブされる
 //  （各カードに choices/correct_indices が入る単一正解デッキとして）。
@@ -32,7 +41,12 @@ let soloQuizScore   = 0;
 let soloQuizAnswered = false;
 let soloQuizSelected = new Set();  // ★ 追加：複数正解モードで、まだ回答確定前に選んでいる選択肢
 
-async function startSoloQuiz(deckId) {
+// ★ 追加：mode（'all' | 'unsure' | 'resume'、省略時は'all'扱い）は、CardMakerの
+//   通常デッキと同じプレイモード選択モーダル（openPlayMode/startStudyMode）から
+//   渡ってくる。以前はここへ来る手段が「すべて」1通りしか無かった（毎回
+//   シャッフルして最初から）が、「続きから」「わからないカードだけ」も
+//   通常デッキと同じ感覚で使えるようにした。
+async function startSoloQuiz(deckId, mode) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
 
@@ -51,7 +65,7 @@ async function startSoloQuiz(deckId) {
   const freshDeck = decks.find(d => d.id === deckId);
   // ★ 修正：4択固定だったのを2〜5択に一般化。旧形式（correct_index単数）の
   //   カードも correct_indices（配列）へ正規化してから使う（元の配列は書き換えない）。
-  const playable = freshDeck.cards
+  const allPlayable = freshDeck.cards
     .filter(c => Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN)
     .map(c => ({
       ...c,
@@ -59,26 +73,82 @@ async function startSoloQuiz(deckId) {
         : (typeof c.correct_index === 'number' ? [c.correct_index] : []),
     }))
     .filter(c => c.correct_indices.length >= 1);
-  if (!playable.length) {
+  if (!allPlayable.length) {
     await showCmAlert({ title: '選択式の問題がありません', desc: 'このデッキには選択式の問題がまだありません。' });
     return;
   }
 
   soloQuizDeckId = deckId;
-  soloQuizCards  = [...playable];
-  // 出題順をシャッフル（Fisher-Yates。shuffleStudy()と同じやり方）
-  for (let i = soloQuizCards.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [soloQuizCards[i], soloQuizCards[j]] = [soloQuizCards[j], soloQuizCards[i]];
+
+  // ★ 追加：「続きから」。保存された並び順（カードキー）でカードを引き直し、
+  //   保存位置・保存スコアから再開する（カード本体は常に最新から引き直すので、
+  //   編集や画像追加が続きから再開に影響しない。通常デッキのloadStudyProgress
+  //   復元処理と同じ考え方）。保存データが壊れている/カードが全部消えていた
+  //   場合は、下のresumed=falseのまま通常の新規開始にフォールバックする。
+  let resumed = false;
+  if (mode === 'resume') {
+    const saved = loadStudyProgress(false, deckId);
+    if (saved) {
+      const byKey = new Map(allPlayable.map(c => [cardKey(c), c]));
+      const restoredCards = saved.order.map(k => byKey.get(k)).filter(Boolean);
+      if (restoredCards.length) {
+        soloQuizCards = restoredCards;
+        soloQuizIdx = Math.min(saved.idx, soloQuizCards.length - 1);
+        soloQuizScore = typeof saved.score === 'number' ? saved.score : 0;
+        resumed = true;
+      }
+    }
   }
-  soloQuizIdx = 0;
-  soloQuizScore = 0;
+  if (!resumed) {
+    let playable = allPlayable;
+    if (mode === 'unsure') {
+      const unsure = getUnsureSet(deckId);
+      playable = allPlayable.filter(c => unsure.has(cardKey(c)));
+      if (!playable.length) {
+        await showCmAlert({ title: 'わからないカードはありません', desc: '「わからない」マークが付いた選択式の問題がまだありません。' });
+        return;
+      }
+    }
+    soloQuizCards = [...playable];
+    // 出題順をシャッフル（Fisher-Yates。shuffleStudy()と同じやり方）
+    for (let i = soloQuizCards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [soloQuizCards[i], soloQuizCards[j]] = [soloQuizCards[j], soloQuizCards[i]];
+    }
+    soloQuizIdx = 0;
+    soloQuizScore = 0;
+    // ★「すべて」「わからないだけ」を新しく選び直した場合は、古い「続きから」データを破棄する
+    //   （startStudyMode側で既にユーザーに確認済みなので、ここでは問答無用で消してよい）。
+    clearStudyProgress(false, deckId);
+  }
 
   document.getElementById('qp-title').textContent = freshDeck.name;
   document.getElementById('qp-result-content').style.display = 'none';
   document.getElementById('qp-play-content').style.display = '';
   showScreen('quiz-play');
   renderQuizPlayQuestion();
+}
+
+// ★ 追加：クイズの「続きから」再開のための進捗保存。Cardmaker.js の
+//   saveStudyProgress/loadStudyProgress/clearStudyProgress と同じ保存先
+//   （studyDataCache.progress、studyItemKey(false, deckId)キー）をそのまま
+//   使うことで、openPlayModeの「続きから」表示・通常デッキ側との「上書きされます」
+//   確認ダイアログを共通化している。フラッシュカード側は reverse/autoGrade/
+//   fourChoiceを持つのに対し、クイズ側は代わりにscore（ここまでの正解数。
+//   再開時に合計点を正しく引き継ぐため）を保存する。
+function saveSoloQuizProgress() {
+  if (!soloQuizDeckId || !soloQuizCards.length) return;
+  const data = {
+    order: soloQuizCards.map(c => cardKey(c)),
+    idx: soloQuizIdx,
+    mode: 'quiz',
+    score: soloQuizScore,
+    updatedAt: Date.now(),
+  };
+  const key = studyItemKey(false, soloQuizDeckId);
+  studyDataCache.progress[key] = data;
+  saveStudyDataCache();
+  pushStudyDataToServer('save_study_progress', { key, data });
 }
 
 function renderQuizPlayQuestion() {
@@ -88,6 +158,7 @@ function renderQuizPlayQuestion() {
   // ★ 追加：通常のフラッシュカード学習（renderStudyCard→markCardSeen）と同じく、
   //   問題を表示した時点で「学習済み」として記録する（みんなの「わかる率」の対象にするため）。
   markCardSeen(soloQuizDeckId, card);
+  saveSoloQuizProgress(); // ★ 追加：問題を表示するたびに現在位置・スコアを保存し、次回「続きから」を出せるようにする
   document.getElementById('qp-score-label').textContent = `${soloQuizScore}点`;
   const pct = soloQuizCards.length > 1 ? (soloQuizIdx / soloQuizCards.length) * 100 : 0;
   document.getElementById('qp-prog-fill').style.width = pct + '%';
@@ -232,6 +303,13 @@ async function finishSoloQuiz() {
   document.getElementById('qp-result-score').textContent = `${soloQuizScore} / ${total} 問正解！`;
   document.getElementById('qp-result-rank').textContent = '結果を送信しています…';
   document.getElementById('qp-leaderboard').innerHTML = '';
+
+  // ★ 追加：完了したら「続きから」の再開データは不要になるので消し、通常デッキの
+  //   フラッシュカード学習（renderStudyCard）と同じくホームの「プレイ済み」欄に
+  //   出るよう完了記録を残す。
+  clearStudyProgress(false, soloQuizDeckId);
+  saveCompletionRecord(false, soloQuizDeckId, total);
+  renderInProgressUI();
 
   const session = getLoginSession();
   const deck = decks.find(d => d.id === soloQuizDeckId);

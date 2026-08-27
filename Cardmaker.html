@@ -547,7 +547,7 @@
     <div class="modal-title" id="play-mode-deck-name" style="font-size:14px;color:var(--text-secondary);font-weight:600;margin-bottom:.75rem"></div>
 
     <!-- ★ 反転モードのトグル -->
-    <label class="reverse-toggle-row" onclick="event.stopPropagation()">
+    <label class="reverse-toggle-row" id="reverse-toggle-row" onclick="event.stopPropagation()">
       <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.6-5.7L20 8.5"/><path d="M20 4v4.5h-4.5"/><path d="M20 12a8 8 0 0 1-13.6 5.7L4 15.5"/><path d="M4 20v-4.5h4.5"/></svg> 問題と解答を逆にする</span>
       <input type="checkbox" id="reverse-mode-checkbox" onchange="onReverseModeToggleChange()">
     </label>

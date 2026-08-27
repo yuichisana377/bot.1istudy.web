@@ -4312,52 +4312,22 @@ async function openFolderPlayMode(folderId) {
 //  ここに残す startSoloQuiz は、openPlayMode()（下記、core側）や
 //  結果画面の「もう一度挑戦する」ボタン（Cardmaker.html）から呼ばれる
 //  入口。チャンク読み込み完了後は同名の本物の実装に上書きされる。
-async function startSoloQuiz(deckId) {
+async function startSoloQuiz(deckId, mode) {
   await loadChunkWithFeedback('quizplay', '/Cardmaker-quizplay.js');
-  return startSoloQuiz(deckId); // ★ この時点では本物の実装に差し替わっている
+  return startSoloQuiz(deckId, mode); // ★ この時点では本物の実装に差し替わっている
+}
+
+// ★ 「クイズ過去問」フォルダの中のデッキ、または多肢選択デッキ（choiceMode有り）かどうか。
+//   これらはプレイモード選択自体はふつうのデッキと同じ（続きから/すべて/わからないだけ/
+//   みんなでクイズ/一覧で見る）だが、反転モード・自動採点（4択にする含む）は意味を持たない
+//   ため出さない（openPlayMode/startStudyMode両方から参照する）。
+function isQuizPlayDeck(deck) {
+  return !!(deck && (isDeckInFolderScope(deck.id, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode));
 }
 
 async function openPlayMode(deckId) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
-  // ★「クイズ過去問」フォルダの中のデッキ、および多肢選択デッキ（choiceMode有り）は、
-  //   通常のフラッシュカード（すべて/わからないだけ/続きから の選択モーダル）
-  //   ではなく、一人用選択式モードでプレイする。
-  //   ★ ただし公開済み（filenameあり）なら「みんなでクイズ」も選べるよう、
-  //     一人用選択式モーダルを出す前に軽く選ばせる（play-mode-itemと同じ見た目）。
-  if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode) {
-    // ★ 追加：「一覧で見る」も選べるようにする（以前はプレイのみで、一覧表示に
-    //   到達する手段が無かった）。「みんなでクイズを始める」は公開済み
-    //   （filenameあり）デッキだけ表示する従来の条件をそのまま維持。
-    const dialogChoices = [
-      { icon: Icons.cmHtml('choice', {size:20}), label: '一人でプレイ', sub: '選択式クイズに一人で挑戦する', value: 'solo' },
-    ];
-    if (deck.filename) {
-      dialogChoices.push({ icon: Icons.cmHtml('quiz', {size:20}), label: 'みんなでクイズを始める', sub: '友達とオンラインで早押し4択', value: 'multi' });
-    }
-    dialogChoices.push({ icon: Icons.html('list', {size:20}), label: '一覧で見る', sub: '問題と答え・解説をまとめて表示', value: 'list' });
-    const choice = await showCmChoiceDialog({ title: deck.name, choices: dialogChoices });
-    if (choice === 'multi') return startQuizFromDeck(deckId);
-    if (choice === 'solo') return startSoloQuiz(deckId);
-    if (choice === 'list') {
-      // ★ startSoloQuizと同じく、開くたびにサーバーの最新カードを取り直してから見せる
-      await waitForPendingSync(deckId);
-      let result = await ensureDeckCardsLoaded(deckId, true);
-      while (!result.ok) {
-        const retry = await showCmConfirm({
-          title: '読み込みに失敗しました',
-          desc: '通信環境を確認してもう一度お試しください。',
-          okLabel: 'もう一度試す', cancelLabel: 'やめる',
-        });
-        if (!retry) return;
-        result = await ensureDeckCardsLoaded(deckId, true);
-      }
-      studyIsFolder = false;
-      studyDeckId = deckId;
-      return openListView();
-    }
-    return; // キャンセル
-  }
   studyIsFolder = false;
   studyDeckId = deckId;
 
@@ -4383,8 +4353,16 @@ async function openPlayMode(deckId) {
   document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：自動採点トグルも未チェックへリセット
   document.getElementById('four-choice-checkbox').checked = false; // ★ 追加：「4択にする」も未チェックへリセット
-  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点・4択にするトグルを表示状態にする
-  onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
+  // ★ 追加：クイズ過去問・多肢選択デッキは反転モード・自動採点系のトグル自体を出さない
+  const isQuizDeck = isQuizPlayDeck(deck);
+  document.getElementById('reverse-toggle-row').style.display = isQuizDeck ? 'none' : '';
+  if (isQuizDeck) {
+    document.getElementById('auto-grade-toggle-row').style.display = 'none';
+    document.getElementById('four-choice-toggle-row').style.display = 'none';
+  } else {
+    onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点・4択にするトグルを表示状態にする
+    onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
+  }
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
   const unsure = getUnsureSet(deckId);
@@ -4446,15 +4424,22 @@ function onFourChoiceToggleChange() {
 }
 
 async function startStudyMode(mode) {
-  studyReverse = document.getElementById('reverse-mode-checkbox').checked;
-  // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
-  studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
-  studyFourChoice = studyAutoGrade && document.getElementById('four-choice-checkbox').checked;
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
+  // ★ 追加：クイズ過去問・多肢選択デッキ（フォルダプレイは対象外）は、反転/自動採点系の
+  //   チェックボックスを読まず、一人用選択式クイズ（Cardmaker-quizplay.js）へ振り分ける。
+  const quizDeck = !studyIsFolder ? decks.find(d => d.id === studyDeckId) : null;
+  const isQuizDeck = isQuizPlayDeck(quizDeck);
+
+  if (!isQuizDeck) {
+    studyReverse = document.getElementById('reverse-mode-checkbox').checked;
+    // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
+    studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
+    studyFourChoice = studyAutoGrade && document.getElementById('four-choice-checkbox').checked;
+  }
 
   // ★ 追加：「すべてのカード」「わからないカードだけ」を選んだ場合、
   //   既に「続きから」の再開データが残っていると、この後の処理で
-  //   問答無用でそのデータが破棄されてしまう（clearStudyProgress）。
+  //   問答無用でそのデータが破棄されてしまう（clearStudyProgress／一人用クイズ側も同様）。
   //   気づかないうちに再開位置が消えてしまわないよう、事前に確認する。
   if (mode !== 'resume') {
     const existing = loadStudyProgress(studyIsFolder, progressId);
@@ -4469,6 +4454,8 @@ async function startStudyMode(mode) {
   }
 
   closeModal('modal-play-mode');
+
+  if (isQuizDeck) return startSoloQuiz(studyDeckId, mode);
 
   if (mode === 'resume') {
     // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定・シャッフル済みか）を復元する。
@@ -4855,7 +4842,11 @@ function answerStudyChoice(idx) {
   result.style.display = 'flex';
   result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
   mark.innerHTML = isCorrect ? '○ 正解' : (Icons.html('close', {size:14}) + ' 不正解');
-  userAnswerEl.textContent = 'あなたの解答：' + entry.choices[idx];
+  // ★ 4択モードでは「あなたの解答：〇〇」は表示しない（選んだ選択肢自体が
+  //   qp-wrong/qp-correctの色分けで既に示されているため冗長、というユーザーの指摘）。
+  //   textContentは空にしておく（前のカードが自動採点の解答入力モードだった場合の
+  //   古いテキストがこのコンテナごと再表示されて残ってしまうのを防ぐため）。
+  userAnswerEl.textContent = '';
 
   [...document.querySelectorAll('#study-choices .qp-choice-btn')].forEach((btn, i) => {
     btn.disabled = true;
