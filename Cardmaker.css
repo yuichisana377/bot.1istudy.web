@@ -878,6 +878,16 @@ html, body {
   font-size: 13px; color: var(--text-secondary); line-height: 1.6;
   white-space: pre-wrap; word-break: break-word;
 }
+/* ★ 追加：選択式デッキ（クイズ過去問含む）の一覧表示で、正解以外の選択肢を
+   小さく添える（解答本文と混同しないよう、解説よりさらに控えめなサイズ・色にする）。 */
+.list-view-choices-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-tertiary); margin: .5rem 0 .3rem;
+}
+.list-view-choices-text {
+  font-size: 12px; color: var(--text-tertiary); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+}
 .list-view-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 .5rem; }
 .list-view-imgs img { height: 68px; border-radius: 6px; object-fit: cover; cursor: pointer; }
 

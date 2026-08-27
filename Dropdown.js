@@ -97,7 +97,14 @@ function enhanceSelect(selectEl) {
       row.appendChild(check);
       row.appendChild(label);
       if (!opt.disabled) {
-        row.addEventListener('click', () => selectOption(i));
+        // ★ preventDefault必須：この<select>が<label>の中に置かれている場合
+        //   （例：Quiz.htmlの「出題数」）、ブラウザは「labelの中がクリックされたら
+        //   中の<select>にもクリックを転送してネイティブの選択UIを開く」という
+        //   標準動作を持っている。これはselect側のpointer-events:noneでは防げず
+        //   （labelの転送はCSSの当たり判定を経由しない別経路のため）、この行の
+        //   クリックイベントでpreventDefault()しない限り、選択直後に一瞬
+        //   OS標準の選択肢一覧が開いてしまう不具合になっていた。
+        row.addEventListener('click', (e) => { e.preventDefault(); selectOption(i); });
       }
       panel.appendChild(row);
     });
@@ -140,6 +147,7 @@ function enhanceSelect(selectEl) {
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
+    e.preventDefault(); // ★ 上のrowクリックと同じ理由（labelの中にあるとネイティブUIも開いてしまうため）
     if (panel.classList.contains('open')) closePanel(); else openPanel();
   });
   btn.addEventListener('keydown', (e) => {

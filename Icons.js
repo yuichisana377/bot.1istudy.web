@@ -138,6 +138,8 @@ const Icons = (function () {
       '<path d="M4 6.7h6l2 2h8v10.6H4Z" fill="currentColor" stroke="none"/>' },
     emptyList: { color: '#64748b', bg: '#f1f5f9', svg:
       '<path d="M4 12v7h16v-7l-4-8H8Z" fill="currentColor" fill-opacity=".16" stroke="none"/><path d="M4 12 8 4h8l4 8" stroke-width="2"/><path d="M4 12h5.3l1 2h3.4l1-2H20" stroke-width="2"/><path d="M4 12v7h16v-7" stroke-width="2"/>' },
+    play: { color: '#0d9488', bg: '#e6fbf8', svg:
+      '<path d="M7.5 4.8v14.4a1 1 0 0 0 1.5.87l11-7.2a1 1 0 0 0 0-1.74l-11-7.2a1 1 0 0 0-1.5.87Z" fill="currentColor" stroke="none"/>' },
     image: { color: '#0d9488', bg: '#e6fbf8', svg:
       '<rect x="4" y="5" width="16" height="14" rx="2.5" fill="currentColor" fill-opacity=".16" stroke-width="1.8"/><circle cx="9" cy="10" r="1.7" fill="currentColor" stroke="none"/><path d="M5 17l5-5 4 4 3-3 3 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' },
     home: { color: '#2563eb', bg: '#eff6ff', svg:

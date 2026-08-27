@@ -1287,7 +1287,7 @@ function renderInProgressUI() {
           <div class="inprogress-title">${it.icon} ${esc(it.name)}</div>
           <div class="inprogress-meta">${it.idx + 1} / ${it.total} 問</div>
           <div class="inprogress-bar-track"><div class="inprogress-bar-fill" style="width:${pct}%"></div></div>
-          <div class="inprogress-resume-btn">▶️ 続きから</div>
+          <div class="inprogress-resume-btn">${Icons.cmHtml('play', {size:14})} 続きから</div>
         </div>`;
       }).join('');
     }
@@ -4263,8 +4263,8 @@ async function openFolderPlayMode(folderId) {
   document.getElementById('reverse-mode-checkbox').checked = false;
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：モーダルを開くたびに未チェックへリセット
   document.getElementById('four-choice-checkbox').checked = false; // ★ 追加：「4択にする」も未チェックへリセット
-  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
-  onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」サブトグルを隠す
+  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点・4択にするトグルを表示状態にする
+  onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
   setIconText(document.getElementById('play-mode-deck-name'), folder ? Icons.cmHtml('folder', {size:15}) : '', folder ? folder.name : 'フォルダ');
 
   const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
@@ -4326,16 +4326,36 @@ async function openPlayMode(deckId) {
   //   ★ ただし公開済み（filenameあり）なら「みんなでクイズ」も選べるよう、
   //     一人用選択式モーダルを出す前に軽く選ばせる（play-mode-itemと同じ見た目）。
   if (isDeckInFolderScope(deckId, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode) {
-    if (!deck.filename) return startSoloQuiz(deckId);
-    const choice = await showCmChoiceDialog({
-      title: deck.name,
-      choices: [
-        { icon: Icons.cmHtml('choice', {size:20}), label: '一人でプレイ', sub: '選択式クイズに一人で挑戦する', value: 'solo' },
-        { icon: Icons.cmHtml('quiz', {size:20}), label: 'みんなでクイズを始める', sub: '友達とオンラインで早押し4択', value: 'multi' },
-      ],
-    });
+    // ★ 追加：「一覧で見る」も選べるようにする（以前はプレイのみで、一覧表示に
+    //   到達する手段が無かった）。「みんなでクイズを始める」は公開済み
+    //   （filenameあり）デッキだけ表示する従来の条件をそのまま維持。
+    const dialogChoices = [
+      { icon: Icons.cmHtml('choice', {size:20}), label: '一人でプレイ', sub: '選択式クイズに一人で挑戦する', value: 'solo' },
+    ];
+    if (deck.filename) {
+      dialogChoices.push({ icon: Icons.cmHtml('quiz', {size:20}), label: 'みんなでクイズを始める', sub: '友達とオンラインで早押し4択', value: 'multi' });
+    }
+    dialogChoices.push({ icon: Icons.html('list', {size:20}), label: '一覧で見る', sub: '問題と答え・解説をまとめて表示', value: 'list' });
+    const choice = await showCmChoiceDialog({ title: deck.name, choices: dialogChoices });
     if (choice === 'multi') return startQuizFromDeck(deckId);
     if (choice === 'solo') return startSoloQuiz(deckId);
+    if (choice === 'list') {
+      // ★ startSoloQuizと同じく、開くたびにサーバーの最新カードを取り直してから見せる
+      await waitForPendingSync(deckId);
+      let result = await ensureDeckCardsLoaded(deckId, true);
+      while (!result.ok) {
+        const retry = await showCmConfirm({
+          title: '読み込みに失敗しました',
+          desc: '通信環境を確認してもう一度お試しください。',
+          okLabel: 'もう一度試す', cancelLabel: 'やめる',
+        });
+        if (!retry) return;
+        result = await ensureDeckCardsLoaded(deckId, true);
+      }
+      studyIsFolder = false;
+      studyDeckId = deckId;
+      return openListView();
+    }
     return; // キャンセル
   }
   studyIsFolder = false;
@@ -4363,8 +4383,8 @@ async function openPlayMode(deckId) {
   document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：自動採点トグルも未チェックへリセット
   document.getElementById('four-choice-checkbox').checked = false; // ★ 追加：「4択にする」も未チェックへリセット
-  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点トグルを表示状態にする
-  onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」サブトグルを隠す
+  onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点・4択にするトグルを表示状態にする
+  onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
   const unsure = getUnsureSet(deckId);
@@ -4401,20 +4421,28 @@ async function openPlayMode(deckId) {
 //   反転ONの間はトグル自体を隠し、内部的にもOFFへ強制的に戻しておく。
 function onReverseModeToggleChange() {
   const reversed = document.getElementById('reverse-mode-checkbox').checked;
-  const row = document.getElementById('auto-grade-toggle-row');
-  row.style.display = reversed ? 'none' : '';
+  document.getElementById('auto-grade-toggle-row').style.display = reversed ? 'none' : '';
+  document.getElementById('four-choice-toggle-row').style.display = reversed ? 'none' : ''; // ★ 4択にするも反転モード中は他と同様に隠す
   if (reversed) {
     document.getElementById('auto-grade-checkbox').checked = false;
-    onAutoGradeToggleChange(); // ★ 追加：自動採点を強制OFFにしたら「4択にする」サブトグルも連動して隠す
+    document.getElementById('four-choice-checkbox').checked = false; // ★ 4択も強制OFF
   }
 }
 
-// ★ 追加：自動採点ONの時だけ「4択にする」サブトグルを表示する（自動採点OFFなら意味が無いため）。
+// ★ 自動採点をOFFにしたら「4択にする」も連動してOFFにする（4択は自動採点が前提のため、
+//   チェックだけ残ると見た目と実際の挙動（studyFourChoiceの判定）がズレてしまう）。
 function onAutoGradeToggleChange() {
   const on = document.getElementById('auto-grade-checkbox').checked;
-  const row = document.getElementById('four-choice-toggle-row');
-  row.style.display = on ? '' : 'none';
   if (!on) document.getElementById('four-choice-checkbox').checked = false;
+}
+
+// ★ 追加：「4択にする」を折りたたまず常に表示するようにしたのに伴い、ONにした瞬間に
+//   自動採点も自動でONにする（4択は自動採点必須の機能のため、先に自動採点を
+//   ONにしてもらう手順を挟まなくても直接ONにできるようにする）。
+function onFourChoiceToggleChange() {
+  if (!document.getElementById('four-choice-checkbox').checked) return;
+  const autoGrade = document.getElementById('auto-grade-checkbox');
+  if (!autoGrade.checked) { autoGrade.checked = true; onAutoGradeToggleChange(); }
 }
 
 async function startStudyMode(mode) {

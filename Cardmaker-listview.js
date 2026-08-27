@@ -22,7 +22,11 @@ let listViewReverse = false;  // 問題と解答を逆にするか
 let pendingListViewScrollKey = null;
 
 function openListView() {
-  listViewReverse = document.getElementById('reverse-mode-checkbox').checked;
+  // ★ 選択式デッキ（クイズ過去問含む）には反転モードの概念が無い（プレイモード選択
+  //   モーダル自体を経由せずここへ来るため、チェックボックスの値も無関係）ため常にfalse。
+  //   通常デッキはこれまで通りプレイモード選択モーダルの反転チェックボックスを引き継ぐ。
+  const relevantDeck = studyIsFolder ? null : decks.find(d => d.id === studyDeckId);
+  listViewReverse = (relevantDeck && relevantDeck.choiceMode) ? false : document.getElementById('reverse-mode-checkbox').checked;
   listViewFilter = 'all';
   closeModal('modal-play-mode');
 
@@ -124,11 +128,17 @@ function renderListView() {
       head.appendChild(badge);
     }
 
-    const editBtn = document.createElement('button');
-    editBtn.className = 'list-view-edit-btn';
-    editBtn.innerHTML = Icons.html('edit', {size:14});
-    editBtn.onclick = () => editListViewCard(cardKey(c), deckId);
-    head.appendChild(editBtn);
+    // ★ 追加：「クイズ過去問」デッキ（みんなでクイズの結果から自動保存されたもの）は
+    //   デッキメニューの「編集」自体を隠している（openDeckMenu参照）読み取り専用の
+    //   デッキなので、一覧からの個別カード編集ボタンも同様に出さない。
+    const deckForEdit = decks.find(x => x.id === deckId);
+    if (!deckForEdit || !deckForEdit.quizArchive) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'list-view-edit-btn';
+      editBtn.innerHTML = Icons.html('edit', {size:14});
+      editBtn.onclick = () => editListViewCard(cardKey(c), deckId);
+      head.appendChild(editBtn);
+    }
 
     item.appendChild(head);
 
@@ -176,6 +186,28 @@ function renderListView() {
       eEl.className = 'list-view-e-text';
       item.appendChild(eEl);
       setMathText(eEl, c.explanation);
+    }
+
+    // ★ 追加：選択式デッキ（クイズ過去問含む）は、正解以外の選択肢も小さく添える。
+    //   正解の判定は correct_indices（新形式・複数対応）／correct_index（旧形式・単数）の
+    //   どちらでも拾えるようにしておく。
+    if (Array.isArray(c.choices) && c.choices.length) {
+      const correctSet = new Set(
+        Array.isArray(c.correct_indices) ? c.correct_indices
+          : (typeof c.correct_index === 'number' ? [c.correct_index] : [])
+      );
+      const otherChoices = c.choices.filter((_, idx) => !correctSet.has(idx));
+      if (otherChoices.length) {
+        const chTag = document.createElement('div');
+        chTag.className = 'list-view-choices-tag';
+        chTag.textContent = '他の選択肢';
+        item.appendChild(chTag);
+
+        const chEl = document.createElement('div');
+        chEl.className = 'list-view-choices-text';
+        chEl.textContent = otherChoices.join(' ／ ');
+        item.appendChild(chEl);
+      }
     }
 
     wrap.appendChild(item);

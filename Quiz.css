@@ -264,6 +264,10 @@ input, select{ font-family:inherit; }
 #screen-host-play, #screen-player-play, #screen-ranking{
   height:100vh; height:100dvh; overflow:hidden;
 }
+/* ★ 追加：上記3画面の表示中だけ、body自体のスクロールもJS側（showScreenQ）で止める。
+   画面側はheight:100dvh固定・overflow:hiddenで収めているが、それだけだとブラウザの
+   誤差でページがわずかに上下スクロールできてしまうことがあったための保険。 */
+body.qz-fixed-screen{ overflow:hidden; }
 #screen-host-play .qz-body, #screen-player-play .qz-body, #screen-ranking .qz-body{
   flex:1; min-height:0; padding-bottom:1.25rem; overflow:hidden;
 }
@@ -380,6 +384,24 @@ input, select{ font-family:inherit; }
 /* ★ 追加：途中経過・最終結果のリストで自分の行をひと目で分かるようにする */
 .qz-lb-row-me{ border-color:var(--accent); background:var(--accent-soft); }
 .qz-lb-row-me .qz-lb-name{ color:var(--accent); }
+
+/* ── 途中経過画面（#rk-list）だけのモーション追加 ─────────────
+   結果画面・正解発表中のミニ順位表も同じ.qz-lb-rowを使っているため、
+   #rk-list配下に限定してここだけ動きを増やす。 */
+#rk-list .qz-lb-rank{ display:inline-flex; align-items:center; justify-content:center; gap:3px; width:auto; min-width:20px; }
+/* ★ 順位が上下した行に付ける矢印バッジ（絵文字/Unicode矢印は使わず、他の
+   クイズ用図形＝▲◆●■と同じCSS三角形で表現し、OS依存の見た目を避ける）。 */
+.qz-rank-move{
+  display:inline-block; width:0; height:0; flex-shrink:0;
+  border-left:4px solid transparent; border-right:4px solid transparent;
+  animation:qzRankPop .4s cubic-bezier(.34,1.56,.64,1);
+}
+.qz-rank-move.up{ border-bottom:6px solid #16a34a; }
+.qz-rank-move.down{ border-top:6px solid #dc2626; }
+@keyframes qzRankPop{ from{ transform:scale(0); opacity:0; } to{ transform:scale(1); opacity:1; } }
+/* ★ この部屋で途中経過を初めて見せる回（比較対象が無くFLIPできない）は、
+   上から順に少し遅れてふわっと現れる演出にする */
+@keyframes qzRowIn{ from{ opacity:0; transform:translateY(10px) scale(.97); } to{ opacity:1; transform:none; } }
 
 /* ── 結果画面 ───────────────────────── */
 .qz-podium{ display:flex; align-items:flex-end; gap:10px; width:100%; max-width:360px; margin:10px 0 22px; }

@@ -88,10 +88,17 @@ function withAuth(extra = {}) {
 }
 
 // ── 画面切り替え ──────────────────────────
+// ★ 出題画面・途中経過画面は height:100dvh 固定・中身も overflow:hidden で
+//   「1画面ぴったり」に収める設計（Quiz.css参照）。ただしこれらの画面のCSSだけ
+//   では、ブラウザ側の誤差（サブピクセルの丸め・アドレスバーの表示切り替わり等）
+//   でページ全体がわずかに上下スクロールできてしまうことがあったため、この
+//   3画面の間だけbody自体のスクロールもJS側で明示的に止める。
+const QZ_FIXED_HEIGHT_SCREENS = new Set(['host-play', 'player-play', 'ranking']);
 function showScreenQ(id) {
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
   document.getElementById('screen-' + id).classList.add('active');
   window.scrollTo(0, 0);
+  document.body.classList.toggle('qz-fixed-screen', QZ_FIXED_HEIGHT_SCREENS.has(id));
 }
 
 // ── 確認モーダル（Cardmaker.js の showCmConfirm と同じ考え方の簡易版） ──
@@ -842,11 +849,16 @@ function quizMarkHtml(p) {
 }
 
 // ★ 追加：正解発表の後・次の問題に進む前に見せる「途中経過」（ホスト/参加者共通の1画面）。
-//   room.players はサーバー側で既にスコア降順（同点は回答時間合計が短い方が上）に
-//   ソート済みなので、そのまま並べるだけでよい。前回この画面を描画したときの各行の
-//   位置と比べて、Kahoot風に順位の入れ替わりをアニメーションさせる（FLIP手法：
-//   新しい並びでDOMを作り直した直後、まず古い位置に見えるようtransformで戻し、
-//   1フレーム置いてtransformを外すことでCSSトランジションが動く）。
+//   QUIZ_RANKING_INTERVAL問（現在5問）に1度だけ挟む。room.players はサーバー側で
+//   既にスコア降順（同点は回答時間合計が短い方が上）にソート済みなので、そのまま
+//   並べるだけでよい。前回この画面を描画したときの各行の位置と比べて、Kahoot風に
+//   順位の入れ替わりをアニメーションさせる（FLIP手法：新しい並びでDOMを作り直した
+//   直後、まず古い位置に見えるようtransformで戻し、1フレーム置いてtransformを
+//   外すことでCSSトランジションが動く）。
+//   ★ モーションを増やす追加要素（表示時間＝QUIZ_RANKING_DURATION_SECは変更しない）：
+//     ①順位が上下した行には▲▼の矢印バッジを弾むように表示、②行の移動そのものも
+//     弾むイージングにする、③この画面を初めて見せる回（前回位置が無く比較できない
+//     ＝1回目の途中経過）は、上から順に少しずつ遅れてふわっと現れる演出にする。
 function renderRanking(room) {
   showScreenQ('ranking');
   const listEl = document.getElementById('rk-list');
@@ -856,26 +868,44 @@ function renderRanking(room) {
     ? `あなたは 現在 ${myIndex + 1}位 / ${room.players.length}人中`
     : '';
 
-  const firstTops = {}; // First：描画し直す前の各行の位置
-  [...listEl.children].forEach(row => {
+  const firstTops = {};  // First：描画し直す前の各行の位置
+  const firstRanks = {}; // ★ 追加：描画し直す前の各行の順位（▲▼矢印の判定用）
+  [...listEl.children].forEach((row, i) => {
     firstTops[row.dataset.playerId] = row.getBoundingClientRect().top;
+    firstRanks[row.dataset.playerId] = i + 1;
   });
+  const isFirstReveal = !Object.keys(firstTops).length; // このルームで途中経過を見せるのが初回か
 
   // Last：新しい順位でDOMを作り直す（自分の行は一目で分かるようにハイライトする）
-  listEl.innerHTML = room.players.map((p, i) => `
+  listEl.innerHTML = room.players.map((p, i) => {
+    const oldRank = firstRanks[p.id];
+    let moveHtml = '';
+    if (oldRank !== undefined && oldRank !== i + 1) {
+      moveHtml = `<span class="qz-rank-move ${oldRank > i + 1 ? 'up' : 'down'}"></span>`;
+    }
+    return `
     <div class="qz-lb-row${p.id === STUDENT.id ? ' qz-lb-row-me' : ''}" data-player-id="${p.id}">
-      <span class="qz-lb-rank">${i + 1}</span>
+      <span class="qz-lb-rank">${i + 1}${moveHtml}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
       <span class="qz-lb-score">${p.score}点</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   // ★ 追加：参加者が多くリストが内部スクロールする場合でも、自分の順位が
   //   隠れたままにならないよう、自分の行を（必要な時だけ）表示範囲に入れる。
   const myRow = listEl.querySelector('.qz-lb-row-me');
   if (myRow) myRow.scrollIntoView({ block: 'nearest' });
 
-  if (!Object.keys(firstTops).length) return; // 初回（1問目終了後）は前回位置が無いのでアニメーションなしで出す
+  if (isFirstReveal) {
+    // ★ 前回位置が無く移動アニメーションを付けられない代わりに、上から順に
+    //   少しずつ遅れて現れる演出にする（モーションを増やす③）。
+    [...listEl.children].forEach((row, i) => {
+      row.style.animation = `qzRowIn .4s cubic-bezier(.2,.8,.2,1) both`;
+      row.style.animationDelay = `${Math.min(i * 35, 350)}ms`;
+    });
+    return;
+  }
 
   // Invert：前回位置が分かる行だけ、動いた分だけ逆方向にずらして「まだ前回の位置にいる」ように見せる
   const rows = [...listEl.children];
@@ -889,7 +919,8 @@ function renderRanking(room) {
   });
   void listEl.offsetHeight; // 強制リフローでtransformを確定させてから外す（Play）
   rows.forEach(row => {
-    row.style.transition = 'transform .5s cubic-bezier(.2,.8,.2,1)';
+    // ★ モーションを増やす②：少し弾む（オーバーシュートする）イージングに変更
+    row.style.transition = 'transform .6s cubic-bezier(.34,1.56,.64,1)';
     row.style.transform = '';
   });
 }

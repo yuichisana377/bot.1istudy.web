@@ -557,16 +557,18 @@
       <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="8.3"/><path d="M8.2 12.3l2.4 2.4 5.2-5.6"/></svg> 自動採点する（解答入力）</span>
       <input type="checkbox" id="auto-grade-checkbox" onchange="onAutoGradeToggleChange()">
     </label>
-    <!-- ★ 追加：自動採点ONの時だけ表示する「4択にする」サブトグル。解答を自分で
-         入力する代わりに、みんなでクイズと同じ4択ボタンで答える（Cardmaker.js参照）。 -->
-    <label class="reverse-toggle-row" id="four-choice-toggle-row" style="display:none;padding-left:1.6rem" onclick="event.stopPropagation()">
+    <!-- ★ 解答を自分で入力する代わりに、みんなでクイズと同じ4択ボタンで答える
+         （Cardmaker.js参照）。以前は自動採点ONの時だけ現れるサブトグルだったが、
+         折りたたまず常に表示するよう変更（反転モード中のみ他と同様に隠す）。
+         4択にするをONにすると自動採点も自動でONになる（4択は自動採点必須のため）。 -->
+    <label class="reverse-toggle-row" id="four-choice-toggle-row" onclick="event.stopPropagation()">
       <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M8.4 14.6l2 2 4.2-4.6"/></svg> 4択にする（みんなでクイズと同じ形式）</span>
-      <input type="checkbox" id="four-choice-checkbox">
+      <input type="checkbox" id="four-choice-checkbox" onchange="onFourChoiceToggleChange()">
     </label>
 
     <!-- ★ 続きから再開（前回途中で終えたデータがある時だけ表示） -->
     <div class="play-mode-item" id="play-mode-resume-item" onclick="startStudyMode('resume')" style="display:none">
-      <span class="play-mode-icon">▶️</span>
+      <span class="play-mode-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#0d9488"><path d="M7.5 4.8v14.4a1 1 0 0 0 1.5.87l11-7.2a1 1 0 0 0 0-1.74l-11-7.2a1 1 0 0 0-1.5.87Z" fill="currentColor" stroke="none"/></svg></span>
       <div>
         <div>続きから</div>
         <div class="play-mode-sub" id="play-mode-resume-sub"></div>
