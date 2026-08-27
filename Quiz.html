@@ -163,6 +163,26 @@
       <p class="qz-hint">許可すると、クイズが始まった後でも「参加する」の一覧からそのクイズを選んで途中から参加できます（一覧には終了するまで「プレイ中」として出続けます）。</p>
     </div>
 
+    <!-- ★ 追加：詳細設定（既定は閉じている。ボーナス問題など、普段は使わない
+         設定をここにまとめる） -->
+    <button type="button" class="qz-advanced-toggle-btn" id="hs-advanced-toggle-btn" onclick="toggleAdvancedSettings()">
+      詳細設定<span class="app-dd-arrow" id="hs-advanced-arrow"></span>
+    </button>
+    <div id="hs-advanced-panel" style="display:none">
+      <div class="qz-field">
+        <span class="qz-field-label">ボーナス問題</span>
+        <div class="qz-toggle-group" id="hs-bonus-toggle">
+          <button type="button" class="qz-toggle-opt active" data-bonus="none" onclick="setBonusMode('none')">なし</button>
+          <button type="button" class="qz-toggle-opt" data-bonus="random" onclick="setBonusMode('random')">ランダム</button>
+          <button type="button" class="qz-toggle-opt" data-bonus="last" onclick="setBonusMode('last')">最後の◯問</button>
+        </div>
+        <div id="hs-bonus-count-wrap" style="display:none;margin-top:.6rem">
+          <input type="number" id="hs-bonus-count" class="qz-input" min="1" max="30" value="1" placeholder="問数">
+        </div>
+        <p class="qz-hint">指定した問題は、正解した時の得点が2倍になります（一番早く正解した人への+2点ボーナスも含めて2倍）。「ランダム」は作成時に抽選して決まり、途中で入れ替わりません。</p>
+      </div>
+    </div>
+
     <p class="qz-hint">1問20秒。全員が回答し終わるか時間切れになったら自動で正解を発表し、しばらくしたら次の問題に進みます。あなたも参加者として一緒に回答できます。</p>
 
     <div class="qz-error" id="hs-error"></div>
@@ -196,6 +216,8 @@
 <!-- ============ 「第N問」表示（毎問の直前・ホスト/参加者共通） ============ -->
 <section class="screen" id="screen-intro">
   <div class="qz-body qz-body-center">
+    <!-- ★ 追加：ホストの詳細設定「ボーナス問題」対象の問題だけ予告バッジを出す -->
+    <span class="qz-bonus-badge" id="in-bonus-badge" style="display:none">ボーナス問題！得点2倍</span>
     <div class="qz-intro-qnum-wrap">
       <div class="qz-intro-ring" aria-hidden="true"></div>
       <div class="qz-intro-qnum" id="in-qnum">第1問</div>
@@ -214,6 +236,7 @@
   <div class="qz-body">
     <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="hp-timerbar"></div></div>
     <div class="qz-answered-count" id="hp-answered"></div>
+    <span class="qz-bonus-badge" id="hp-bonus-badge" style="display:none">ボーナス問題！得点2倍</span>
     <h2 class="qz-question-text" id="hp-question"></h2>
     <div class="qz-choice-spacer" aria-hidden="true"></div>
     <div class="qz-choice-grid" id="hp-choices"></div>
@@ -281,6 +304,7 @@
   <div class="qz-body">
     <div class="qz-timerbar-track"><div class="qz-timerbar-fill" id="pp-timerbar"></div></div>
     <div class="qz-answered-count" id="pp-answered"></div>
+    <span class="qz-bonus-badge" id="pp-bonus-badge" style="display:none">ボーナス問題！得点2倍</span>
     <h2 class="qz-question-text" id="pp-question"></h2>
     <div class="qz-choice-spacer" aria-hidden="true"></div>
     <div class="qz-choice-grid" id="pp-choices"></div>

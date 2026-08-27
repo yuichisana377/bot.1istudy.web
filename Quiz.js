@@ -314,10 +314,33 @@ function setLateJoinOption(v) {
   });
 }
 
+// ★ 追加：詳細設定（ボーナス問題）。'none'（無し）/'random'（ランダムにN問）/
+//   'last'（最後のN問）。作成のたびにデフォルト＝なしへ戻す。
+let hsBonusMode = 'none';
+function toggleAdvancedSettings() {
+  const panel = document.getElementById('hs-advanced-panel');
+  const btn = document.getElementById('hs-advanced-toggle-btn');
+  const nowOpen = panel.style.display === 'none';
+  panel.style.display = nowOpen ? '' : 'none';
+  btn.classList.toggle('open', nowOpen);
+}
+function setBonusMode(mode) {
+  hsBonusMode = mode;
+  document.querySelectorAll('#hs-bonus-toggle .qz-toggle-opt').forEach(b => {
+    b.classList.toggle('active', b.dataset.bonus === mode);
+  });
+  document.getElementById('hs-bonus-count-wrap').style.display = mode === 'none' ? 'none' : '';
+}
+
 async function goHostSetupScreen() {
   showScreenQ('host-setup');
   document.getElementById('hs-error').textContent = '';
   setLateJoinOption(false);
+  // ★ 追加：詳細設定も毎回リセットする（閉じた状態・ボーナス問題なし）
+  document.getElementById('hs-advanced-panel').style.display = 'none';
+  document.getElementById('hs-advanced-toggle-btn').classList.remove('open');
+  document.getElementById('hs-bonus-count').value = '1';
+  setBonusMode('none');
 
   if (launchDeckInfo && launchDeckInfo.filename) {
     // デッキのメニューから直接来た場合：デッキ選択を固定表示にする
@@ -559,6 +582,18 @@ async function submitCreateRoom() {
 
   const body = withAuth({ title, allow_late_join: hsAllowLateJoin });
 
+  // ★ 追加：詳細設定のボーナス問題。「なし」の場合はそもそもキーを送らない
+  //   （サーバー側もbonus_modeが無ければボーナス無しとして扱う）。
+  if (hsBonusMode !== 'none') {
+    const bonusCount = parseInt(document.getElementById('hs-bonus-count').value, 10);
+    if (!Number.isInteger(bonusCount) || bonusCount < 1) {
+      errEl.textContent = 'ボーナス問題の問数を正しく入力してください';
+      return;
+    }
+    body.bonus_mode = hsBonusMode;
+    body.bonus_count = bonusCount;
+  }
+
   if (isDeckSrc) {
     if (!hsSelectedDecks.length) { errEl.textContent = 'デッキを選んでください'; return; }
     body.source = 'deck';
@@ -686,6 +721,8 @@ function renderIntro(room) {
   showScreenQ('intro');
   document.getElementById('in-qnum').textContent = `第${room.current_q + 1}問`;
   document.getElementById('in-total').textContent = `全${room.total_questions}問`;
+  // ★ 追加：ホストの詳細設定「ボーナス問題」対象なら予告バッジを出す
+  document.getElementById('in-bonus-badge').style.display = room.is_bonus ? '' : 'none';
 }
 
 function renderLobby(room) {
@@ -721,7 +758,7 @@ const CHOICE_CLASSES = ['qz-choice-a', 'qz-choice-b', 'qz-choice-c', 'qz-choice-
 //   自動的に正解発表(reveal)へ、発表からしばらくすると自動的に次の問題へ
 //   進むので、ここでは「今の room の状態をそのまま描画する」だけでよい）
 function renderPlayScreen(room, opts) {
-  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, timerbarId, answeredCountId, revealPanelId, firstBadgeId, leaderboardId, spectateNoteId } = opts;
+  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, timerbarId, answeredCountId, revealPanelId, firstBadgeId, leaderboardId, spectateNoteId, bonusBadgeId } = opts;
   const qChanged = room.current_q !== renderedQIndex;
   const stateChanged = room.state !== renderedState;
   if (qChanged) hasAnsweredThisQ = false;
@@ -743,6 +780,7 @@ function renderPlayScreen(room, opts) {
     document.getElementById(waitingNoteId).style.display = 'none';
     document.getElementById(revealPanelId).style.display = 'none';
     document.getElementById(answeredCountId).textContent = '';
+    if (bonusBadgeId) document.getElementById(bonusBadgeId).style.display = 'none';
     const timerEl = document.getElementById(timerbarId);
     delete timerEl.dataset.startedAt; delete timerEl.dataset.limit;
     timerEl.style.transform = 'scaleX(0)';
@@ -752,6 +790,8 @@ function renderPlayScreen(room, opts) {
 
   document.getElementById(questionId).textContent = room.question.question;
   document.getElementById(answeredCountId).textContent = `${room.answered_count} / ${room.total_players} 人が回答`;
+  // ★ 追加：ホストの詳細設定「ボーナス問題」対象なら得点2倍のバッジを出す
+  if (bonusBadgeId) document.getElementById(bonusBadgeId).style.display = room.question.is_bonus ? '' : 'none';
 
   const revealed = room.state === 'reveal';
   const yourAnswer = room.your_answer;
@@ -950,6 +990,7 @@ function renderHostPlay(room) {
     choicesId: 'hp-choices', feedbackId: 'hp-feedback', waitingNoteId: 'hp-waiting-note',
     timerbarId: 'hp-timerbar', answeredCountId: 'hp-answered',
     revealPanelId: 'hp-reveal', firstBadgeId: 'hp-first-badge', leaderboardId: 'hp-leaderboard',
+    bonusBadgeId: 'hp-bonus-badge',
   });
 }
 
@@ -960,7 +1001,7 @@ function renderPlayerPlay(room) {
     choicesId: 'pp-choices', feedbackId: 'pp-feedback', waitingNoteId: 'pp-waiting-note',
     timerbarId: 'pp-timerbar', answeredCountId: 'pp-answered',
     revealPanelId: 'pp-reveal', firstBadgeId: 'pp-first-badge', leaderboardId: 'pp-leaderboard',
-    spectateNoteId: 'pp-spectate-note',
+    spectateNoteId: 'pp-spectate-note', bonusBadgeId: 'pp-bonus-badge',
   });
 }
 
