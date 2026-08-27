@@ -285,13 +285,29 @@ input, select{ font-family:inherit; }
 }
 /* ★ 追加：上記3画面の表示中だけ、body自体のスクロールもJS側（showScreenQ）で止める。
    画面側はheight:100dvh固定・overflow:hiddenで収めているが、それだけだとブラウザの
-   誤差でページがわずかに上下スクロールできてしまうことがあったための保険。 */
-body.qz-fixed-screen{ overflow:hidden; }
+   誤差でページがわずかに上下スクロールできてしまうことがあったための保険。
+   ★ 追加：「まだスワイプできちゃう」との指摘を受け、touch-action:noneも追加した。
+   overflow:hidden/overscroll-behavior（html側で全ページ共通に設定済み）だけでは
+   iOS Safari等でタッチのスワイプ操作そのもの（弾む・わずかに動く挙動）を
+   止めきれない端末があったため、ジェスチャーの解釈自体をブラウザにさせない
+   より強い指定にした。.qz-scroll-list（途中経過の参加者一覧）だけは、人数が
+   多い場合に備えて縦スワイプを明示的に許可し直す。 */
+body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 #screen-host-play .qz-body, #screen-player-play .qz-body, #screen-ranking .qz-body{
-  flex:1; min-height:0; padding-bottom:1.25rem; overflow:hidden;
+  flex:1; min-height:0; overflow:hidden;
+  /* ★ 追加：「ボタンがちょっと下すぎ」との指摘を受け、ホームインジケーター等の
+     セーフエリア分を下側の余白に足した（選択肢欄の下寄せ＝margin-top:autoと
+     組み合わせても、常にセーフエリアより上に収まるようにするため）。 */
+  padding-bottom:calc(1.25rem + env(safe-area-inset-bottom, 0px));
 }
 #screen-ranking .qz-body{ display:flex; flex-direction:column; }
-.qz-scroll-list{ flex:1; min-height:0; width:100%; overflow-y:auto; }
+/* ★ 追加：選択肢欄を下寄せする仕組みを margin-top:auto（アニメーションできない）
+   から、専用の空要素（.qz-choice-spacer）のflex-growをトグルする方式に変更した。
+   flex-growは数値なのでtransitionで滑らかに補間でき、正解発表の前後で
+   選択肢がパッと切り替わらず、スーッとスライドするようになる。 */
+.qz-choice-spacer{ flex-grow:0; transition:flex-grow .35s ease; }
+.qz-choice-spacer.qz-choices-bottom{ flex-grow:1; }
+.qz-scroll-list{ flex:1; min-height:0; width:100%; overflow-y:auto; touch-action:pan-y; }
 #rk-my-rank{ font-weight:700; font-size:15px; color:var(--accent); flex-shrink:0; }
 
 /* ── 出題画面 共通 ───────────────────────── */
@@ -313,15 +329,6 @@ body.qz-fixed-screen{ overflow:hidden; }
 .qz-choice-grid{
   display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;
 }
-/* ★ 追加：出題中（正解発表前）は選択肢を画面の下側に寄せる。.qz-body自体は
-   flex-direction:columnなので、margin-top:autoでこの要素より上の余白を
-   全部吸収させて下に押しやる（＝問題文の長さに関わらず選択肢の位置が揃う）。
-   auto marginは「余白がある時だけ」効くため、問題文が長い/画面が低いなど
-   そもそも余白が無い場合は自動的に今まで通りの詰めた配置に戻る＝押しやられた
-   結果、画面下端で見切れる（端末によっては隠れる）心配は無い。
-   正解発表(reveal)後はこのクラスを外し、今まで通りの配置に戻す（結果発表の
-   見た目は変えない、という要望のため）。 */
-.qz-choice-grid.qz-choices-bottom{ margin-top:auto; }
 .qz-choice-btn{
   position:relative; border:none; border-radius:var(--r-lg); padding:20px 14px 20px 46px;
   min-height:78px; text-align:left; font-weight:700; font-size:15px; color:#fff;
