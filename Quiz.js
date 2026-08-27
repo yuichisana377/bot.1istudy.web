@@ -769,7 +769,17 @@ function renderPlayScreen(room, opts) {
   //   通りの配置に戻す（結果発表の見た目は変えない）。
   const choiceSpacerEl = choicesEl.previousElementSibling;
   if (choiceSpacerEl && choiceSpacerEl.classList.contains('qz-choice-spacer')) {
-    choiceSpacerEl.classList.toggle('qz-choices-bottom', !revealed);
+    if (qChanged) {
+      // ★ 追加：「問題開始時はボタンのスワイプ（スライド）なくていい」との指摘で、
+      //   新しい問題に切り替わった瞬間だけはアニメーション無しで即座に下寄せの
+      //   位置にする（スライドさせるのは、同じ問題のまま正解発表が起きる時だけ）。
+      choiceSpacerEl.style.transition = 'none';
+      choiceSpacerEl.classList.add('qz-choices-bottom');
+      void choiceSpacerEl.offsetHeight; // 強制リフローでtransition:noneを確定させてから元に戻す
+      choiceSpacerEl.style.transition = '';
+    } else {
+      choiceSpacerEl.classList.toggle('qz-choices-bottom', !revealed);
+    }
   }
 
   [...choicesEl.children].forEach((btn, i) => {
@@ -1077,7 +1087,15 @@ function renderResult(room) {
   // ★ 修正：以前は金・銀・銅の3つが同じ形のアイコンを色だけ変えて表示していたため、
   //   色の差が分かりにくく「全部1位に見える」という指摘があった。線画から塗りつぶしに変え、
   //   色そのものもよりはっきり離す（銀は明度を落とし、銅は彩度を上げる）ことで見分けやすくした。
-  const medalMap = [`<svg width="18" height="18" viewBox="0 0 24 24" fill="#94a3b8" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path fill="none" stroke="#fff" d="M12 12v6"/></svg>`, `<svg width="18" height="18" viewBox="0 0 24 24" fill="#f5b400" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path fill="none" stroke="#fff" d="M12 12v6"/></svg>`, `<svg width="18" height="18" viewBox="0 0 24 24" fill="#c2703d" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><path fill="none" stroke="#fff" d="M12 12v6"/></svg>`];
+  // ★ 追加のバグ修正：その際、メダル中央の数字部分（当時は簡易的な縦棒1本）を
+  //   3つとも同じpath（"1"に見える棒）のままコピーしてしまっており、2位・3位の
+  //   メダルにも常に「1」が表示されていた（「順位が2位3位でもメダルの数字が
+  //   1になってる」との指摘で発覚）。数字は実際のSVG<text>で描画し、rankごとに
+  //   正しい値（2位なら"2"、3位なら"3"）を出すよう修正。
+  function medalSvg(color, rank) {
+    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M9 9.6 6.3 3.2h3.1L12 8.4"/><path d="M15 9.6 17.7 3.2h-3.1L12 8.4"/><circle cx="12" cy="15" r="5.8"/><text x="12" y="17.6" text-anchor="middle" font-size="7" font-weight="800" fill="#fff" font-family="sans-serif">${rank}</text></svg>`;
+  }
+  const medalMap = [medalSvg('#94a3b8', 2), medalSvg('#f5b400', 1), medalSvg('#c2703d', 3)];
   const podiumClass = ['qz-podium-2', 'qz-podium-1', 'qz-podium-3'];
   document.getElementById('result-podium').innerHTML = podiumOrder.map((p, i) => {
     if (!p) return `<div class="qz-podium-col ${podiumClass[i]}"></div>`;
