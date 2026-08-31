@@ -1263,13 +1263,19 @@ function getInProgressItems(scopeFolderId) {
       items.push({ isFolder: true, id, name: folder.name, subject: '', icon: Icons.cmHtml('folder', {size:16}),
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     } else {
-      const deck = decks.find(d => d.id === id);
+      // ★ 修正（バグ修正）：キーの中身（id）は、公開済みデッキなら
+      //   studyDataDeckKey()（＝deck.filename）、下書きなら'local:'+deck.id。
+      //   どちらも「そのままdeck.idと一致する」わけではないため、
+      //   d.id === id で探すと常に見つからず（＝一覧が丸ごと出ない）
+      //   バグになっていた（34a4522でキーの発行側だけ変更し、この読み出し側の
+      //   対応漏れ、2026/08/17〜）。studyDataDeckKey()で逆引きする。
+      const deck = decks.find(d => studyDataDeckKey(d) === id);
       if (!deck) continue; // デッキが削除済みなら無視
-      if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
+      if (!isDeckInFolderScope(deck.id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
       // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
       const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
         ? deck.name.slice(deck.subject.length + 1) : deck.name;
-      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: Icons.html('cardmaker', {size:16}),
+      items.push({ isFolder: false, id: deck.id, name: displayName, subject: deck.subject || '', icon: Icons.html('cardmaker', {size:16}),
         idx: data.idx, total: data.order.length, updatedAt: data.updatedAt || 0 });
     }
   }
@@ -1328,13 +1334,16 @@ function getCompletedItems(scopeFolderId) {
       items.push({ isFolder: true, id, name: folder.name, subject: '', icon: Icons.cmHtml('folder', {size:16}),
         total: data.total, completedAt: data.completedAt });
     } else {
-      const deck = decks.find(d => d.id === id);
+      // ★ 修正（バグ修正）：getInProgressItemsと同じ理由で、d.id === id では
+      //   常に見つからず一覧が丸ごと出ないバグになっていた。studyDataDeckKey()
+      //   で逆引きする。
+      const deck = decks.find(d => studyDataDeckKey(d) === id);
       if (!deck) continue; // デッキが削除済みなら無視
-      if (!isDeckInFolderScope(id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
+      if (!isDeckInFolderScope(deck.id, scopeFolderId)) continue; // ★ 表示範囲外なら除外
       // ★ デッキ一覧のカードと同じく、科目名をタイトルの上に分けて表示する
       const displayName = (deck.subject && deck.name.startsWith(deck.subject + ' '))
         ? deck.name.slice(deck.subject.length + 1) : deck.name;
-      items.push({ isFolder: false, id, name: displayName, subject: deck.subject || '', icon: Icons.html('cardmaker', {size:16}),
+      items.push({ isFolder: false, id: deck.id, name: displayName, subject: deck.subject || '', icon: Icons.html('cardmaker', {size:16}),
         total: data.total, completedAt: data.completedAt });
     }
   }
