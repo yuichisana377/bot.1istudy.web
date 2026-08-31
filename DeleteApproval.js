@@ -67,6 +67,11 @@ function renderRequest(data) {
 
   qs('da-title').textContent = `${categoryLabel}を削除してよいか確認してください`;
   qs('da-target-label').textContent = `対象の${categoryLabel}`;
+  // ★ 追加：この依頼が「誰宛か」を明示する。トークン所持だけで本人確認とする
+  //   設計上、宛先と違う人が誤って開いても気づけるようにするための表示
+  //   （実際に「本人以外が拒否してしまい、ログには元の宛先の名前が残る」
+  //   という事故が起きたための対策。2026/08/31）。
+  qs('da-owner').textContent = `${data.owner_nickname || '（不明）'} さん`;
   qs('da-requester').textContent = `${data.requester_nickname || '（不明）'} さん`;
   qs('da-reason').textContent = data.reason || '（理由が入力されていません）';
   qs('da-target-name').textContent = data.target_name || '（不明）';

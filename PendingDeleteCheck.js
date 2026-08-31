@@ -75,6 +75,25 @@
     desc.textContent = `${req.requester_nickname || '（不明）'}さんが、あなたが作成した${categoryLabel}「${req.target_name || '（不明）'}」の削除を依頼しています。`;
     card.appendChild(desc);
 
+    // ★ 追加（2026/08/31）：この確認が「誰宛か」を明示する。トークン所持
+    //   （このAPIでは実質「今ログイン中のセッション」）だけで本人確認とする
+    //   設計のため、何らかの理由でログイン中の本人と依頼の宛先がずれていても
+    //   気づく手段がこれまで無かった（実際に、拒否した人と表示名が食い違う
+    //   事故が起きた）。宛先の名前を出し、今ログイン中のニックネームと
+    //   異なる場合は警告する。
+    const ownerRow = document.createElement('div');
+    ownerRow.style.cssText = 'font-size:13px;font-weight:700;color:#1a1a18;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:10px;';
+    ownerRow.textContent = `宛先: ${req.owner_nickname || '（不明）'}さん`;
+    card.appendChild(ownerRow);
+
+    const session = pdcGetSession();
+    if (req.owner_nickname && session && session.nickname && session.nickname !== req.owner_nickname) {
+      const mismatchNote = document.createElement('div');
+      mismatchNote.style.cssText = 'font-size:12px;color:#991b1b;background:#fee2e2;border-radius:6px;padding:8px 12px;margin-bottom:10px;line-height:1.5;';
+      mismatchNote.textContent = `⚠ 今「${session.nickname}」としてログイン中ですが、この依頼の宛先は「${req.owner_nickname}」さんです。自分宛ではない可能性が高いため、「あとで」を選んで操作しないでください。`;
+      card.appendChild(mismatchNote);
+    }
+
     const reasonLabel = document.createElement('div');
     reasonLabel.style.cssText = 'font-size:11px;font-weight:700;color:#6b6b68;margin-bottom:4px;';
     reasonLabel.textContent = '理由';

@@ -54,6 +54,27 @@
   padding: 10px 12px;
 }
 
+/* ── 宛先（作成者）：誰宛の依頼かを目立たせて表示する ──
+   トークン所持だけで本人確認とする設計のため、リンクが誤って別人に
+   届いた/開かれた場合に、開いた本人が「自分宛ではない」と気づける
+   ようにするための強調表示（2026/08/31 追加）。 */
+.da-field-owner {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+.da-field-owner .da-field-value {
+  font-weight: 700;
+  font-size: 16px;
+}
+.da-owner-note {
+  font-size: 11.5px;
+  color: #92400e;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
 /* ── 削除される中身の詳細（デッキの問題プレビュー／お知らせ本文） ── */
 .da-detail {
   white-space: pre-wrap;
