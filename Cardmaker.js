@@ -5952,7 +5952,16 @@ document.addEventListener('click', function(e) {
 initMathPads();
 
 // ── 起動 ──────────────────────────────
-renderDeckList().then(() => { initPickModeFromUrl(); jumpToDeckFromUrl(); });
+// ★ 修正：以前は renderDeckList()（サーバーからの取得を待つ非同期処理）が
+//   完了してから initPickModeFromUrl() を呼んでいたため、通信が遅い環境では
+//   「?pick=quiz で開いたのに、選択モードに切り替わるまでの間だけ通常の
+//   デッキ一覧（▶ プレイボタン付き）が表示され、その間にタップすると
+//   普通のデッキプレイ画面が開いてしまう」不具合があった。
+//   pickMode の判定・renderDeckListUI() 自体はローカルキャッシュの
+//   decks/folders（763行目・260行目で既に読み込み済み）だけで完結できるため、
+//   renderDeckList() を待たず先に呼び、最初の描画から選択モードにしておく。
+initPickModeFromUrl();
+renderDeckList().then(() => { jumpToDeckFromUrl(); });
 loadChunksInBackground(); // ★ 追加：初期表示をブロックせず、残りの機能チャンクを裏で順に読み込む
 prefetchOtherPages(); // ★ 追加：メニューを開くのを待たず、初期表示後に自動で他ページを裏で先読み
 

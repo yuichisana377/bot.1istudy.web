@@ -17,6 +17,15 @@
 //  「閉じる（×）」を押した部屋は、その部屋が一覧から消える（終了・
 //  ガベージコレクト）までlocalStorageに記憶して再表示しない
 //  （ユーザーの明示的な選択：ページ遷移のたびに毎回出るとうるさいため）。
+//
+//  ★ 追加：ページを開いた瞬間だけでなく、「クイズ部屋が作られた瞬間」にも
+//    通知するため、他ページ（Cardmaker.js等）と同じ仕組み（/api/events、
+//    SSEのライブ更新通知）を使う。bot.py側は quiz_create() で
+//    notify_change(guild_id) を呼ぶだけ（中身は含まない合図のみ）なので、
+//    受け取った側であるここが毎回 qrnCheck() をやり直して最新状態を
+//    取りに行く。スケジュール変更等クイズと無関係な合図でも飛んでくるが、
+//    やることは同じ軽いGET1回なので無駄にはならない（他ページの
+//    startRealtimeUpdates()と同じ設計思想）。
 // ============================================================
 (function () {
   const QRN_API_BASE = "/api/";
@@ -47,6 +56,15 @@
     return room.state === 'lobby' || !!room.allow_late_join;
   }
 
+  // ★ SSE経由でひっきりなしに再チェックが走る（クイズと無関係な合図でも
+  //   毎回qrnCheck()し直すため）中で、内容が変わっていないのに毎回
+  //   通知を作り直すとチラつく。表示中の部屋の組み合わせが前回と同じなら
+  //   再描画をスキップするための署名。
+  let qrnLastSignature = null;
+  function qrnSignature(rooms) {
+    return rooms.map(r => `${r.code}:${r.state}:${r.current_q}`).sort().join('|');
+  }
+
   function qrnBuildMessage(rooms) {
     if (rooms.length === 1) {
       const r = rooms[0];
@@ -58,7 +76,10 @@
   }
 
   function qrnShowToast(rooms) {
-    if (document.getElementById('qrn-toast')) return; // 1ページに1回だけ
+    // ★ 既に表示中の通知があれば作り直す（SSE経由の再チェックで部屋数・
+    //   状態が変わっていても、古い表示のまま放置しないようにするため）。
+    const existing = document.getElementById('qrn-toast');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
     const box = document.createElement('div');
     box.className = 'qrn-toast';
@@ -154,13 +175,44 @@
     if (dismissedChanged) qrnSaveDismissed(dismissed);
 
     const target = rooms.filter(r => qrnIsJoinable(r) && !dismissed[r.code]);
-    if (!target.length) return;
+    if (!target.length) {
+      qrnLastSignature = null;
+      // ★ SSE経由の再チェックで「表示していた部屋が終了した」等の場合、
+      //   古い通知を出しっぱなしにしない。
+      const existing = document.getElementById('qrn-toast');
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+      return;
+    }
+    const sig = qrnSignature(target);
+    if (sig === qrnLastSignature && document.getElementById('qrn-toast')) return; // 内容に変化なし。作り直さない。
+    qrnLastSignature = sig;
     qrnShowToast(target);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', qrnCheck);
-  } else {
+  // ★ 他ページ（Cardmaker.js等）のstartRealtimeUpdates()と同じ方式：
+  //   SSE接続を張っておき、「何か変わった」合図が来るたびにqrnCheck()を
+  //   やり直す。/api/eventsは認証不要（合図だけで中身を含まないため）。
+  function qrnStartRealtime() {
+    const session = qrnGetSession();
+    const guildId = qrnGetGuildId();
+    if (!session || !session.session_token || !guildId) return;
+    try {
+      const es = new EventSource(`${QRN_API_BASE}events?guild_id=${guildId}`);
+      es.onmessage = () => { qrnCheck(); };
+      // onerrorは特に何もしない（EventSourceが自動的に再接続を試みる）
+    } catch (e) {
+      // EventSource非対応環境でも、ページを開いた瞬間のqrnCheck()だけで最低限は機能する
+    }
+  }
+
+  function qrnInit() {
     qrnCheck();
+    qrnStartRealtime();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', qrnInit);
+  } else {
+    qrnInit();
   }
 })();
