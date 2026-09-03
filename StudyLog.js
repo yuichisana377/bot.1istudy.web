@@ -309,6 +309,7 @@ let myPoints          = 0;    // 自分の累計ポイント
 let completedTasks    = [];   // 達成済み課題（自分のみ） [{id, date, points, nickname}, ...]
 let allCompletedTasks = {};   // 達成済み課題（全ユーザー） { "1I001": [{id,date,points,nickname}], ... }
 let nicknameMap       = {};   // { "1I001": "太郎", ... }
+let studyingNow       = [];   // 現在学習中（勉強タイマー計測中） [{student_id, nickname}, ...]
 
 // ★ 現在サーバーに送信中のタスクID（二重送信・ポーリング競合防止）
 let pendingTaskIds = new Set();
@@ -355,6 +356,7 @@ window.addEventListener("load", function() {
     loadPoints(),
     loadCompletedTasks(),
     loadAllCompletedTasks(),
+    loadStudyingNow(),     // ★ 現在学習中（勉強タイマー計測中の人）
     loadTasks()
   ]).then(function() {
     renderSubjectDropdown();
@@ -820,6 +822,31 @@ async function loadPoints() {
   } catch(e) { allPoints = {}; myPoints = 0; }
 }
 
+// ── 現在学習中（勉強タイマーを計測中のメンバー） ────────
+async function loadStudyingNow() {
+  try {
+    var data = await api("/studying_now?guild_id=" + GUILD_ID);
+    studyingNow = data.ok ? (data.studying || []) : [];
+  } catch(e) { studyingNow = []; }
+}
+
+function renderStudyingNow() {
+  var el = document.getElementById("studying-now-list");
+  if (!el) return;
+  if (!studyingNow.length) {
+    el.innerHTML = '<div class="sl-rank-empty">現在学習中の人はいません</div>';
+    return;
+  }
+  // nicknameMap（loadUsers()由来）を優先し、無ければAPIが返したnicknameで補う
+  el.innerHTML = '<div class="sl-studying-list">' +
+    studyingNow.map(function(s) {
+      var nickname = nicknameMap[s.student_id] || s.nickname || s.student_id;
+      var youBadge = s.student_id === STUDENT.id ? '<span class="sl-you-badge">あなた</span>' : "";
+      return '<span class="sl-studying-chip"><span class="sl-studying-dot"></span>' + esc(nickname) + youBadge + '</span>';
+    }).join("") +
+  '</div>';
+}
+
 // ── ログ投稿 ──────────────────────────────────────────
 // ★ 戻り値 { ok: true } / { ok: false, error: "…" }
 //    サーバー側の不正防止チェック（連続記録の制限など）で拒否された場合や
@@ -1004,6 +1031,7 @@ function renderAll() {
   renderRankings(wl);
   renderLogs();
   renderEveryone(wl, tot);
+  renderStudyingNow();
 }
 
 function renderRankings(wl) {
@@ -1972,12 +2000,13 @@ async function hashOfEndpoint(path) {
   return digestMessage(txt);
 }
 
-// 監視対象4種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
+// 監視対象5種類の最新ハッシュ（初回はnull＝比較せず保存だけ）
 let watchHashes = {
   schedule:  null, // 予定・課題（list_schedule）
   logs:      null, // 勉強ログ（list_study_logs）
   points:    null, // 累計ポイント（get_points）
   completed: null, // 課題達成状況（get_completed_tasks・全ユーザー）
+  studying:  null, // 現在学習中（studying_now）
 };
 
 // 監視対象データをまとめて再取得＆再描画（タイマーには触れない）
@@ -1993,6 +2022,7 @@ async function refreshWatchedData() {
     loadPoints(),
     loadCompletedTasks(),
     loadAllCompletedTasks(),
+    loadStudyingNow(),
     loadTasks()
   ]);
   renderSubjectDropdown();
@@ -2003,11 +2033,12 @@ async function refreshWatchedData() {
 // 変更チェック本体
 async function checkForUpdates() {
   try {
-    const [scheduleHash, logsHash, pointsHash, completedHash] = await Promise.all([
+    const [scheduleHash, logsHash, pointsHash, completedHash, studyingHash] = await Promise.all([
       hashOfEndpoint("/list_schedule?guild_id=" + GUILD_ID),
       hashOfEndpoint("/list_study_logs?guild_id=" + GUILD_ID),
       hashOfEndpoint("/get_points?guild_id=" + GUILD_ID),
       hashOfEndpoint("/get_completed_tasks?guild_id=" + GUILD_ID),
+      hashOfEndpoint("/studying_now?guild_id=" + GUILD_ID),
     ]);
 
     const isFirstCheck = watchHashes.schedule === null;
@@ -2016,7 +2047,8 @@ async function checkForUpdates() {
       scheduleHash  !== watchHashes.schedule  ||
       logsHash      !== watchHashes.logs      ||
       pointsHash    !== watchHashes.points    ||
-      completedHash !== watchHashes.completed
+      completedHash !== watchHashes.completed ||
+      studyingHash  !== watchHashes.studying
     );
 
     watchHashes = {
@@ -2024,6 +2056,7 @@ async function checkForUpdates() {
       logs:      logsHash,
       points:    pointsHash,
       completed: completedHash,
+      studying:  studyingHash,
     };
 
     if (changed) {

@@ -248,6 +248,43 @@ html, body {
 }
 
 /* ══════════════════════════════════════════
+   現在学習中（study_timers由来、live表示）
+══════════════════════════════════════════ */
+.sl-studying-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sl-studying-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px 5px 8px;
+  border-radius: 20px;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sl-studying-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+  animation: slStudyingPulse 1.6s ease-in-out infinite;
+}
+@keyframes slStudyingPulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: .45; transform: scale(.75); }
+}
+
+/* ══════════════════════════════════════════
    ログ一覧
 ══════════════════════════════════════════ */
 .sl-log-item {
