@@ -1132,6 +1132,19 @@ async function deleteMyLog(timeKey, btn) {
   renderAll();
 }
 
+// ★ 追加：登録されている「全員」のstudent_id一覧（nicknameMapに存在する全員＋
+//   ポイント・課題達成のある全員を対象にする）。以前はrenderEveryoneの中だけに
+//   あったロジックだが、課題の達成率表示（renderTasks）でも同じ「全員」の
+//   定義が必要になったため共通関数として切り出した。
+function allMemberIds() {
+  var memberIds = {};
+  Object.keys(nicknameMap).forEach(function(id) { memberIds[id] = true; });
+  Object.keys(allPoints).forEach(function(id) { memberIds[id] = true; });
+  Object.keys(allCompletedTasks).forEach(function(id) { memberIds[id] = true; });
+  memberIds[STUDENT.id] = true;
+  return Object.keys(memberIds);
+}
+
 // ── みんなの記録 ──────────────────────────────────────
 function renderEveryone(wl, totMin) {
   var weekPtsRaw = calcWeeklyPoints(wl);
@@ -1147,14 +1160,7 @@ function renderEveryone(wl, totMin) {
     weekMinMap[l.student_id] = (weekMinMap[l.student_id] || 0) + l.minutes;
   });
 
-  // nicknameMap に存在する全員＋ポイント・課題達成のある全員を対象にする
-  var memberIds = {};
-  Object.keys(nicknameMap).forEach(function(id) { memberIds[id] = true; });
-  Object.keys(allPoints).forEach(function(id) { memberIds[id] = true; });
-  Object.keys(allCompletedTasks).forEach(function(id) { memberIds[id] = true; });
-  memberIds[STUDENT.id] = true;
-
-  var members = Object.keys(memberIds).map(function(id) {
+  var members = allMemberIds().map(function(id) {
     return {
       id:       id,
       nickname: nicknameMap[id] || id,
@@ -1200,9 +1206,12 @@ function renderEveryone(wl, totMin) {
 // ── 課題一覧 ──────────────────────────────────────────
 // ★② 達成済みは下に並ぶようソートする
 // ★① pendingTaskIds に含まれるタスクは「送信中」表示にしてボタンを無効化
+// ★ 追加：課題ごとに「何人中何人が達成しているか」のバッジをタップ可能にし、
+//   タップすると達成者のニックネーム一覧を表示する。
 function renderTasks() {
   var el = document.getElementById("task-list");
   var doneIds = completedTasks.map(function(e) { return e.id; });
+  var totalMembers = allMemberIds().length; // ★ 追加：分母（登録されている全員の人数）
 
   var sorted = TASKS_JSON.slice().sort(function(a, b) {
     var aDone = doneIds.includes(a.id) ? 1 : 0;
@@ -1223,6 +1232,11 @@ function renderTasks() {
     var noteDot  = t.note ? ('<span class="note-dot" title="備考あり">' + Icons.html('memo', {size:13}) + '</span>') : '';
     var noteHtml = t.note ? '<div class="sl-task-note">' + esc(t.note) + '</div>' : '';
 
+    // ★ 追加：達成者数バッジ（タップで達成者一覧を表示、initTaskListEvents参照）
+    var achieveCount = getTaskAchievers(t.id).length;
+    var achieveBadge = '<span class="sl-achieve-badge" data-task-id="' + escAttr(t.id) + '">' +
+      Icons.html('people', {size:12}) + ' ' + achieveCount + '/' + totalMembers + '人達成</span>';
+
     return '<div class="sl-task-row' + (done ? " done-row" : "") + '">' +
       '<div class="sl-task-body' + (t.note ? " has-note" : "") + '">' +
         '<div class="sl-task-title' + (done ? " done" : "") + '">' + esc(t.title) + '</div>' +
@@ -1230,6 +1244,7 @@ function renderTasks() {
           '<span class="sl-subject-badge">' + esc(t.subject) + '</span>' +
           '<span class="sl-due">締切: ' + t.due + '</span>' +
           '<span class="sl-pts-badge">' + Icons.html('star', {size:13}) + ' +' + t.points + 'pt</span>' +
+          achieveBadge +
           noteDot +
         '</div>' +
         noteHtml +
@@ -1242,9 +1257,33 @@ function renderTasks() {
   }).join("");
 }
 
+// ★ 追加：課題1件を達成しているユーザーのニックネーム一覧（五十音順）を返す。
+//   allCompletedTasks（全ユーザー分の達成済み課題、loadAllCompletedTasks参照）
+//   から集計するので、追加の通信は発生しない。
+function getTaskAchievers(taskId) {
+  var names = [];
+  Object.keys(allCompletedTasks).forEach(function(sid) {
+    var hit = (allCompletedTasks[sid] || []).some(function(e) { return e.id === taskId; });
+    if (hit) names.push(nicknameMap[sid] || sid);
+  });
+  return names.sort(function(a, b) { return a.localeCompare(b, "ja"); });
+}
+
+// ★ 追加：達成者バッジをタップしたときに一覧をダイアログで表示する。
+function showTaskAchievers(taskId) {
+  var task  = TASKS_JSON.find(function(t) { return t.id === taskId; });
+  var names = getTaskAchievers(taskId);
+  showAppAlert({
+    title: (task ? task.title : "課題") + "の達成者",
+    desc:  names.length ? names.join("\n") : "まだ誰も達成していません",
+    icon:  Icons.html('people', {size:16}),
+  });
+}
+
 // ★ 課題リストのクリックをイベント委譲で処理する（一度だけ登録すればOK）
 //   ・「達成する／達成済み」ボタン → toggleTask()
 //   ・備考ありの本文（.has-note） → toggleTaskNote()
+//   ・達成者数バッジ（.sl-achieve-badge） → showTaskAchievers()
 //   inline onclick に生のIDや備考文字列を直接埋め込むと、内容に引用符（' や "）が
 //   含まれた場合にHTML/JSが壊れて達成ボタンが反応しなくなるため、この方式に変更。
 function initTaskListEvents() {
@@ -1256,6 +1295,11 @@ function initTaskListEvents() {
     if (btn) {
       if (btn.disabled) return;
       toggleTask(btn.dataset.taskId);
+      return;
+    }
+    var achieveBadge = e.target.closest(".sl-achieve-badge");
+    if (achieveBadge) {
+      showTaskAchievers(achieveBadge.dataset.taskId);
       return;
     }
     var body = e.target.closest(".sl-task-body.has-note");

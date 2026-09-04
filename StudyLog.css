@@ -501,6 +501,23 @@ html, body {
   color: var(--text-tertiary);
 }
 
+/* ★ 追加：達成者数バッジ（タップで達成者一覧を表示、StudyLog.jsのshowTaskAchievers参照） */
+.sl-achieve-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.sl-achieve-badge:active { background: #d1fae5; }
+
 /* 備考ありマーク（📝）。行に備考があるときだけ表示される */
 .note-dot {
   font-size: 12px;
