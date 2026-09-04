@@ -1097,18 +1097,15 @@ function renderDeckListUI() {
       unsureBadge = unsureCount > 0
         ? `<span class="unsure-badge" onclick="event.stopPropagation();showUnsureRatio(${unsureCount}, ${questionCount})">${Icons.cmHtml('bookmark', {size:13})} ${unsureCount}</span>` : '';
     }
-    // ★ 追加：プレイの進捗バッジ（青＝プレイ中＝続きから再開できる下書きあり、
-    //   緑＝完了＝最後まで学習し終えた記録あり）。ホーム画面の「プレイ中」
-    //   「プレイ済み」欄は直近1週間だけの表示だが、こちらは一覧の各デッキに
-    //   常時つけるバッジなので、期間で消さず記録がある限りずっと表示する。
+    // ★ 追加：プレイの進捗（青＝プレイ中＝続きから再開できる下書きあり、
+    //   緑＝完了＝最後まで学習し終えた記録あり）を、ホーム画面の「プレイ中の
+    //   デッキ」カードと同じ見た目（カード左端の色付きライン）で示す。
+    //   ホームの「プレイ中/プレイ済み」欄は直近1週間だけの表示だが、こちらは
+    //   一覧の各デッキに常時つく表示なので、期間で消さず記録がある限りずっと表示する。
     //   両方の記録がある場合は「今まさに再開できる」方を優先してプレイ中を表示する。
     const studyProgress  = loadStudyProgress(false, d.id);
     const studyCompleted = loadCompletionRecord(false, d.id);
-    const studyStatusBadge = studyProgress
-      ? `<span class="pub-badge study-doing">${Icons.html('dot', {size:13})} プレイ中</span>`
-      : studyCompleted
-        ? `<span class="pub-badge study-done">${Icons.html('dot', {size:13})} 完了</span>`
-        : '';
+    const studyStatusClass = studyProgress ? ' study-doing' : studyCompleted ? ' study-done' : '';
     // ★ 公開状態バッジ：作成中／非公開／公開済み／未完成 のいずれか1つだけを表示する。
     //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
     //   分かりにくいので同じ場所に1つだけ出すよう統合した）
@@ -1194,7 +1191,7 @@ function renderDeckListUI() {
     const deckDescLine = d.description
       ? `<div class="deck-card-desc">${esc(d.description)}</div>` : '';
     return { key: orderKey, html: `
-    <div class="deck-card" data-key="${orderKey}">
+    <div class="deck-card${studyStatusClass}" data-key="${orderKey}">
       <div class="deck-card-info">
         ${subjectLabel}
         <div class="deck-card-title">${esc(displayName)}</div>
@@ -1203,7 +1200,6 @@ function renderDeckListUI() {
           ${pubBadge}
           ${quizArchiveBadge}
           ${choiceModeBadge}
-          ${studyStatusBadge}
           ${unsureBadge}
         </div>
         ${deckDescLine}

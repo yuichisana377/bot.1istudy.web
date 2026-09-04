@@ -411,11 +411,13 @@ html, body {
 /* ★ 「クイズ過去問」フォルダ内（一人用4択モードでプレイする）デッキ用バッジ、および
    選択式デッキ用バッジ。どちらも黒（灰色）系に変更（ユーザー指定） */
 .pub-badge.archive    { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
-/* ★ 追加：デッキ一覧の各カードに常時つける、自分のプレイ進捗バッジ
-   （青＝プレイ中＝続きから再開できる、緑＝完了＝最後まで学習し終えた）。
+
+/* ★ 追加：デッキ一覧の各カードにつける、自分のプレイ進捗の表示（バッジではなく
+   ホーム画面の「プレイ中のデッキ」カードと同じ、左端の色付きライン）。
+   青＝プレイ中＝続きから再開できる、緑＝完了＝最後まで学習し終えた。
    期間で消えるホーム画面の「プレイ中/プレイ済み」欄とは異なり、記録がある限りずっと表示する。 */
-.pub-badge.study-doing { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-.pub-badge.study-done  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.deck-card.study-doing { border-left: 4px solid #2563eb; }
+.deck-card.study-done  { border-left: 4px solid #16a34a; }
 
 /* ── カード編集/作成フォームの選択式入力欄（choice-mode） ── */
 /* ★ 正解は常にチェックボックスで選ぶ（チェック数で択一/複数回答が自動的に決まる） */
