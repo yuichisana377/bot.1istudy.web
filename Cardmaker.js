@@ -1096,7 +1096,9 @@ function renderDeckListUI() {
     //   両方の記録がある場合は「今まさに再開できる」方を優先してプレイ中を表示する。
     const studyProgress  = loadStudyProgress(false, d.id);
     const studyCompleted = loadCompletionRecord(false, d.id);
-    const studyStatusClass = studyProgress ? ' study-doing' : studyCompleted ? ' study-done' : '';
+    // ★ バグ修正：クラス名は「学習画面の完走演出」用の既存`.study-done`と衝突しない
+    //   専用名（deck-status-*）にしてある（Cardmaker.css側の同コメント参照）。
+    const studyStatusClass = studyProgress ? ' deck-status-doing' : studyCompleted ? ' deck-status-done' : '';
     // ★ 公開状態バッジ：作成中／非公開／公開済み／未完成 のいずれか1つだけを表示する。
     //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
     //   分かりにくいので同じ場所に1つだけ出すよう統合した）
