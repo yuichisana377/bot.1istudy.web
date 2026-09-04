@@ -772,7 +772,6 @@ html, body {
   display: inline-flex; align-items: center;
   font-size: 10px; background: #fffbeb; color: #b45309;
   border: 1px solid #fcd34d; padding: 1px 7px; border-radius: 20px; font-weight: 700;
-  cursor: pointer; /* ★ タップで「何問中何問」かを表示できるようにした */
 }
 
 /* ★ 追加：学習画面右上の「みんなのわかる率」バッジ */
@@ -781,6 +780,7 @@ html, body {
   font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
   background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
   padding: 3px 9px; border-radius: 20px;
+  cursor: pointer; /* ★ タップで「何人分の何人」かを表示できるようにした */
 }
 
 /* ★ 追加：プレイモード選択シート内、デッキ／フォルダの説明（設定されている場合だけ表示） */
