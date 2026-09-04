@@ -1269,13 +1269,14 @@ function getTaskAchievers(taskId) {
   return names.sort(function(a, b) { return a.localeCompare(b, "ja"); });
 }
 
-// ★ 追加：達成者バッジをタップしたときに一覧をダイアログで表示する。
+// ★ 追加：達成者バッジをタップしたときに達成者数をダイアログで表示する。
+//   ★ 人の名前は出さず、人数のみを表示する。
 function showTaskAchievers(taskId) {
   var task  = TASKS_JSON.find(function(t) { return t.id === taskId; });
-  var names = getTaskAchievers(taskId);
+  var count = getTaskAchievers(taskId).length;
   showAppAlert({
     title: (task ? task.title : "課題") + "の達成者",
-    desc:  names.length ? names.join("\n") : "まだ誰も達成していません",
+    desc:  count ? (count + "人が達成しています") : "まだ誰も達成していません",
     icon:  Icons.html('people', {size:16}),
   });
 }
