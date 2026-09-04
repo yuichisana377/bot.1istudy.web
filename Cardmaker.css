@@ -90,6 +90,13 @@ html, body {
 .btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; width: auto; margin-top: 0; }
 .btn-sm      { height: 36px; padding: 0 .9rem; font-size: 13px; border-radius: 6px; }
 
+/* ★ 追加：編集画面上部、デッキの説明（設定されている場合だけ表示。編集は「デッキを編集」から） */
+.edit-deck-desc {
+  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
+  background: var(--surface); box-shadow: var(--shadow); border-radius: var(--r-lg);
+  padding: 10px 14px; margin-bottom: 1rem; white-space: pre-wrap; word-break: break-word;
+}
+
 /* ── カードブロック（編集） ── */
 .card-block {
   background: var(--surface); border-radius: var(--r-lg);
@@ -375,6 +382,11 @@ html, body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .deck-card-meta { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+/* ★ 追加：デッキ／フォルダの説明（設定されている場合だけ、1行に省略して表示） */
+.deck-card-desc {
+  font-size: 12px; color: var(--text-tertiary); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .deck-card-actions { display: flex; gap: .5rem; flex-shrink: 0; align-items: center; }
 .icon-btn {
   width: 40px; height: 40px; border-radius: 50%;
@@ -503,6 +515,13 @@ html, body {
 }
 .folder-breadcrumb .crumb:active { background: var(--bg); }
 .folder-breadcrumb .crumb-sep { color: var(--text-secondary); margin: 0 1px; }
+
+/* ★ 追加：今開いているフォルダの説明（設定されている場合だけ表示） */
+.folder-desc {
+  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
+  background: var(--bg); border-radius: var(--r-md);
+  padding: 10px 12px; margin: -.5rem 0 1rem; white-space: pre-wrap; word-break: break-word;
+}
 
 .move-picker-list {
   max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -754,6 +773,13 @@ html, body {
   font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
   background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
   padding: 3px 9px; border-radius: 20px;
+}
+
+/* ★ 追加：プレイモード選択シート内、デッキ／フォルダの説明（設定されている場合だけ表示） */
+.play-mode-desc {
+  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
+  background: var(--bg); border-radius: var(--r-md);
+  padding: 10px 12px; margin: -.4rem 0 .75rem; white-space: pre-wrap; word-break: break-word;
 }
 
 /* プレイモード */

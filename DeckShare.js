@@ -240,6 +240,14 @@ function renderIntroMeta() {
     sub.appendChild(b);
   });
   meta.appendChild(sub);
+
+  // ★ 追加：デッキに説明が設定されていれば表示する（textContentなのでescは不要）
+  if (deckShare.description) {
+    const desc = document.createElement('div');
+    desc.className = 'ds-deck-meta-desc';
+    desc.textContent = deckShare.description;
+    meta.appendChild(desc);
+  }
 }
 
 // ── 案内画面からの開始 ──────────────────────────

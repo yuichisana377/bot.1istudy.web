@@ -451,7 +451,7 @@ async function fetchAndMergeFolders() {
   clearTimeout(timer);
   const data = await res.json();
   if (!data.ok) return false;
-  folders = (data.folders || []).map(f => ({ id: f.id, name: f.name, parentId: f.parent_id ?? null }));
+  folders = (data.folders || []).map(f => ({ id: f.id, name: f.name, parentId: f.parent_id ?? null, description: f.description || null }));
   saveFoldersCache(folders);
   return true;
 }
@@ -1051,11 +1051,15 @@ function renderDeckListUI() {
   </div>` };
   }
 
+  // ★ 追加：フォルダの説明（設定されている場合だけ、1行に省略して表示）
+  const folderDescLine = f.description
+    ? `<div class="deck-card-desc">${esc(f.description)}</div>` : '';
   return { key: `folder:${f.id}`, html: `
   <div class="deck-card folder-card" data-key="folder:${f.id}" onclick="openFolder('${f.id}')">
     <div class="deck-card-info">
       <div class="deck-card-title">${Icons.cmHtml('folder', {size:15})} ${esc(f.name)}</div>
       <div class="deck-card-meta">${cnt} デッキ・${totalCards} 問${folderUnsureBadge}</div>
+      ${folderDescLine}
     </div>
     <div class="deck-card-actions">
       <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
@@ -1165,6 +1169,9 @@ function renderDeckListUI() {
     </div>` };
     }
 
+    // ★ 追加：デッキの説明（設定されている場合だけ、1行に省略して表示）
+    const deckDescLine = d.description
+      ? `<div class="deck-card-desc">${esc(d.description)}</div>` : '';
     return { key: orderKey, html: `
     <div class="deck-card" data-key="${orderKey}">
       <div class="deck-card-info">
@@ -1177,6 +1184,7 @@ function renderDeckListUI() {
           ${choiceModeBadge}
           ${unsureBadge}
         </div>
+        ${deckDescLine}
       </div>
       <div class="deck-card-actions">
         <button class="btn btn-blue btn-sm" onclick="openPlayMode('${d.id}')"
@@ -1204,13 +1212,27 @@ function renderDeckListUI() {
 // ── パンくずリスト ────────────────────
 function renderBreadcrumb() {
   const bar = document.getElementById('folder-breadcrumb');
-  if (!currentFolderId) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const descBox = document.getElementById('folder-desc');
+  if (!currentFolderId) {
+    bar.style.display = 'none'; bar.innerHTML = '';
+    descBox.style.display = 'none'; descBox.textContent = '';
+    return;
+  }
   const chain = [];
   let cur = folders.find(f => f.id === currentFolderId);
   while (cur) { chain.unshift(cur); cur = folders.find(f => f.id === cur.parentId); }
   bar.style.display = 'flex';
   bar.innerHTML = `<span class="crumb" onclick="openFolder(null)">${Icons.html('home', {size:14})} ホーム</span>` +
     chain.map(f => `<span class="crumb-sep">/</span><span class="crumb" onclick="openFolder('${f.id}')">${esc(f.name)}</span>`).join('');
+  // ★ 追加：今開いているフォルダ自身に説明が設定されていれば表示する
+  //   （textContentで入れるのでescは不要＝ユーザー入力をHTMLとして解釈させない）
+  const currentFolder = folders.find(f => f.id === currentFolderId);
+  if (currentFolder && currentFolder.description) {
+    descBox.textContent = currentFolder.description;
+    descBox.style.display = '';
+  } else {
+    descBox.style.display = 'none'; descBox.textContent = '';
+  }
 }
 
 // ★ フォルダの通し名（パンくずと同じ辿り方）を「/」区切りの文字列にして返す。
@@ -1472,9 +1494,12 @@ function openFolderNameModal(mode, folderId) {
   folderNameMode = mode;
   folderNameTargetId = folderId;
   const input = document.getElementById('folder-name-input');
+  const descInput = document.getElementById('folder-desc-input');
   document.getElementById('folder-name-modal-title').textContent =
     mode === 'rename' ? 'フォルダ名を変更' : '新しいフォルダ';
-  input.value = mode === 'rename' ? (folders.find(f => f.id === folderId)?.name || '') : '';
+  const targetFolder = mode === 'rename' ? folders.find(f => f.id === folderId) : null;
+  input.value = targetFolder?.name || '';
+  descInput.value = targetFolder?.description || ''; // ★ 追加：説明欄も一緒に編集する
   openModal('modal-folder-name');
   setTimeout(() => input.focus(), 150);
 }
@@ -1484,6 +1509,8 @@ async function saveFolderName() {
   const name = input.value.trim();
   if (!name) { shake('folder-name-input'); return; }
   if (await warnIfBugChars(name, 'folder-name-input')) return;
+  const description = document.getElementById('folder-desc-input').value.trim(); // ★ 追加
+  if (description && await warnIfBugChars(description, 'folder-desc-input')) return;
 
   const btn = document.querySelector('#modal-folder-name .btn-blue');
   const targetFolder = folderNameMode === 'rename' ? folders.find(f => f.id === folderNameTargetId) : null;
@@ -1491,6 +1518,7 @@ async function saveFolderName() {
     guild_id: GUILD_ID,
     session_token: getLoginSession()?.session_token, // ★ 追加：変更にはログイン必須
     name,
+    description, // ★ 追加：フォルダの説明欄（任意）
     parent_id: folderNameMode === 'rename' ? (targetFolder ? targetFolder.parentId : null) : currentFolderId,
     nickname: getLoginSession()?.nickname, // ★ 追加：運用ログの実行者表示用
   };
@@ -1760,6 +1788,7 @@ async function fetchAndMergeDecks() {
       //   save_cards参照）で判定する。
       quizArchive: !!s.quiz_archive,
       subject: s.subject || (existing && existing.subject) || null,
+      description: s.description || (existing && existing.description) || null, // ★ 追加：デッキの説明欄（任意）
       published_by: s.published_by || (existing && existing.published_by) || null,
       // ★ 未完成フラグはサーバー側の索引（list_cards）にも保存されるようになったため、
       //   他人の端末でも同じ表示になるようサーバー値を信頼する。
@@ -2551,6 +2580,7 @@ async function announceNewDeckToServer(deckId) {
         guild_id: GUILD_ID,
         session_token: session ? session.session_token : undefined,
         subject: deck.subject || null,
+        description: deck.description || null, // ★ 追加：デッキの説明欄（任意）
         folder_id: deck.folderId || null,
         publisher_id: session ? session.student_id : null,
         publisher_nickname: session ? session.nickname : '匿名',
@@ -2602,6 +2632,14 @@ async function openEditDeck(deckId) {
   if (!ok) return; // ユーザーが「やめる」を選んだ場合は編集画面を開かない
 
   document.getElementById('edit-deck-title').textContent = deck.name;
+  // ★ 追加：デッキに説明が設定されていれば表示する（textContentなのでescは不要）
+  const descBox = document.getElementById('edit-deck-desc');
+  if (deck.description) {
+    descBox.textContent = deck.description;
+    descBox.style.display = '';
+  } else {
+    descBox.style.display = 'none'; descBox.textContent = '';
+  }
   // ★ 修正（2026/08/27、再度revert）：一時期は「サーバー登録済み（公開予定／
   //   作成中を含む）」でも「保存」ボタンを常に表示し、通知なしで静かに
   //   サーバーへ反映していた（利便性優先）。しかしこれだと、他の人や自分が
@@ -2827,6 +2865,7 @@ async function publishDeck(deckId, isComplete = true) {
     guild_id: GUILD_ID,
     session_token: session ? session.session_token : undefined,
     subject: deck.subject || null,                       // ★ 科目ごとのチャンネル振り分け用
+    description: deck.description || null,               // ★ 追加：デッキの説明欄（任意）
     folder_id: deck.folderId || null,                     // ★ フォルダ所属（みんなで共有）
     publisher_id: session ? session.student_id : null,     // ★ 公開者の学籍番号
     publisher_nickname: session ? session.nickname : '匿名', // ★ 公開者のニックネーム
@@ -3801,6 +3840,7 @@ async function openRename(id) {
   const currentName = currentSubject && deck.name.startsWith(currentSubject + ' ')
     ? deck.name.slice(currentSubject.length + 1) : deck.name;
   document.getElementById('modal-rename-input').value = currentName;
+  document.getElementById('modal-rename-desc').value = deck.description || ''; // ★ 追加：説明欄も一緒に編集する
   // ★ 追加：まだサーバー未登録（非公開・作成中のローカル下書き）のデッキだけ
   //   「公開予定」トグルを表示する。既にサーバー登録済み（filenameあり）の
   //   デッキは、公開予定を取り消したい場合は既存の「非公開に戻す」メニューを使う。
@@ -3835,6 +3875,8 @@ async function saveRename() {
   const input   = document.getElementById('modal-rename-input').value.trim();
   if (!input) return;
   if (await warnIfBugChars(input, 'modal-rename-input')) return;
+  const description = document.getElementById('modal-rename-desc').value.trim(); // ★ 追加
+  if (description && await warnIfBugChars(description, 'modal-rename-desc')) return;
   const deck = decks.find(d => d.id === renamingDeckId);
   const newName = subject ? `${subject} ${input}` : input;
   // ★ 追加：まだサーバー未登録のデッキのみ、公開予定トグルの変更を反映する
@@ -3847,6 +3889,7 @@ async function saveRename() {
   }
   deck.subject = subject;
   deck.name    = newName;
+  deck.description = description || null; // ★ 追加
   saveDecks(decks);
   closeModal('modal-rename');
   renderDeckListUI();
@@ -3918,6 +3961,7 @@ async function syncDeckToServer(deck) {
         guild_id: GUILD_ID,
         session_token: session ? session.session_token : undefined,
         subject: deck.subject || null,
+        description: deck.description || null, // ★ 追加：デッキの説明欄（任意）
         folder_id: deck.folderId || null, // ★ フォルダ所属（みんなで共有）
         publisher_id: session ? session.student_id : null,
         publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
@@ -4289,6 +4333,7 @@ async function openFolderPlayMode(folderId) {
   onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点・4択にするトグルを表示状態にする
   onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
   setIconText(document.getElementById('play-mode-deck-name'), folder ? Icons.cmHtml('folder', {size:15}) : '', folder ? folder.name : 'フォルダ');
+  setPlayModeDesc(folder ? folder.description : null); // ★ 追加：フォルダの説明があれば表示する
 
   const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
   document.getElementById('play-mode-all-sub').textContent = `${allCount} 問`;
@@ -4387,6 +4432,7 @@ async function openPlayMode(deckId) {
     onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
   }
   document.getElementById('play-mode-deck-name').textContent = deck.name;
+  setPlayModeDesc(deck.description); // ★ 追加：デッキの説明があれば表示する
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
   const unsure = getUnsureSet(deckId);
   const unsureCount = deck.cards.filter(c => unsure.has(cardKey(c))).length;
@@ -5542,6 +5588,13 @@ function setIconText(el, iconHtml, text) {
   el.innerHTML = '';
   if (iconHtml) el.insertAdjacentHTML('beforeend', iconHtml);
   el.appendChild(document.createTextNode((iconHtml ? ' ' : '') + text));
+}
+// ★ 追加：プレイモード選択シートの説明欄（#play-mode-desc）を表示/非表示する共通ヘルパー。
+//   textContentで入れるのでescは不要（デッキ名・フォルダ名と同じ安全性）。
+function setPlayModeDesc(text) {
+  const el = document.getElementById('play-mode-desc');
+  if (text) { el.textContent = text; el.style.display = ''; }
+  else { el.textContent = ''; el.style.display = 'none'; }
 }
 // ★ セキュリティ：問題・解答の画像は、直接APIを叩けば任意の文字列を
 //   imgs_q/imgs_aへ入れられてしまう（save_cardsはこの中身を検証していない）。
