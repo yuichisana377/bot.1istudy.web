@@ -4188,14 +4188,24 @@ function markCardSeen(deckId, card) {
   pushStudyDataToServer('save_seen', { deck_id: key, seen: arr });
 }
 
+// ★ カードごとの「わかる率」データ（loadUnderstandingBadge()で取得したキャッシュ）。
+//   key: "<デッキのfilename>:<カードキー>" → [わからないが付いていない人数, 学習した人数]
+//   未取得の間はnull。
+let studyCardUnderstanding = null;
+
 // ★ 追加：学習画面右上に「みんなのわかる率」を出す（自分だけでなく、その公開デッキを
-//   学習した全員分の「学習済みカードのうち、今わからないマークが付いていない割合」）。
-//   フォルダをまとめてプレイしている場合は、対象フォルダ内の公開デッキ全部をまとめて集計する。
+//   学習した全員分のデータをまとめて取得しておく）。
+//   フォルダをまとめてプレイしている場合は、対象フォルダ内の公開デッキ全部をまとめて取得する。
 //   非公開デッキだけの場合は「他の人」がいないので出さない。
+//   ★ 2026/09/04：以前はデッキ全体で合算した1つの数値を表示していたが、デッキ内の
+//   複数カード分を足し算すると「実際の生徒数よりずっと大きい延べ数」になってしまい、
+//   人数として誤解を招くとの指摘を受け、bot.py側もカードごとの内訳を返すように変更した。
+//   このバッジも今表示中のカード1枚だけの「何人中何人がわかっているか」を示す
+//   （更新は updateUnderstandingBadgeForCurrentCard() が担当。カードが切り替わるたびに
+//   renderStudyCard() から呼ばれる）。
 async function loadUnderstandingBadge() {
-  const badge = document.getElementById('study-understand-badge');
-  if (!badge) return;
-  badge.style.display = 'none';
+  studyCardUnderstanding = null;
+  updateUnderstandingBadgeForCurrentCard(); // 取得できるまでは非表示にしておく
   const session = getLoginSession();
   if (!session || !session.session_token) return;
   const targetDecks = studyIsFolder
@@ -4214,19 +4224,48 @@ async function loadUnderstandingBadge() {
     });
     clearTimeout(timer);
     const data = await res.json();
-    // ★ まだ誰も（自分も含め）1枚も学習していなければ、0%という誤解を招く表示はしない
-    if (!data.ok || !data.studied) return;
-    const pct = Math.round((data.understood / data.studied) * 100);
-    badge.innerHTML = `${Icons.cmHtml('globe', {size:13})} わかる率 ${pct}%`;
-    badge.title = `学習済みカードのうち「わからない」が付いていない割合（みんなの合計 ${data.understood}/${data.studied}）`;
-    // ★ 追加：タップすると「何人分の何人」かをダイアログで表示する
-    //   （titleのホバー表示はスマホでは見られないため、タップでも同じ内訳を確認できるようにする）
-    badge.onclick = () => showCmAlert({
-      title: 'みんなのわかる率',
-      desc: `学習済みカードのうち「わからない」が付いていないものの割合です。\n\n${data.understood} / ${data.studied}`,
-    });
-    badge.style.display = '';
+    if (!data.ok) return;
+    studyCardUnderstanding = data.cards || {};
+    updateUnderstandingBadgeForCurrentCard();
   } catch (e) {} // 通信失敗時は出さないだけ（学習自体は止めない）
+}
+
+// ★ 追加：カードが所属するデッキのfilenameを引く（study-understand-badgeなど、
+//   カード単位でサーバー側データ（bot.py側のstudyDataDeckKeyと同じ形式）と
+//   突き合わせる処理で使う）。
+function studyCardDeckFilename(card) {
+  const deckId = studyIsFolder ? card.__deckId : studyDeckId;
+  const deck = decks.find(d => d.id === deckId);
+  return deck ? deck.filename : null;
+}
+
+// ★ 追加：今表示中の1枚のカードについて「わかる率」バッジを最新化する。
+//   loadUnderstandingBadge()の取得完了時と、renderStudyCard()でカードが
+//   切り替わるたびに呼ぶ。
+function updateUnderstandingBadgeForCurrentCard() {
+  const badge = document.getElementById('study-understand-badge');
+  if (!badge) return;
+  badge.style.display = 'none';
+  badge.onclick = null;
+  if (!studyCardUnderstanding) return; // まだ取得できていない
+  const c = studyCards[studyIdx];
+  if (!c) return;
+  const filename = studyCardDeckFilename(c);
+  if (!filename) return;
+  const stat = studyCardUnderstanding[`${filename}:${cardKey(c)}`];
+  // ★ まだ誰も（自分も含め）このカードを学習していなければ、0%という誤解を招く表示はしない
+  if (!stat) return;
+  const [understood, studied] = stat;
+  const pct = Math.round((understood / studied) * 100);
+  badge.innerHTML = `${Icons.cmHtml('globe', {size:13})} わかる率 ${pct}%`;
+  badge.title = `このカードを学習した人のうち「わからない」が付いていない人数（${understood}/${studied}人）`;
+  // ★ タップすると「何人中何人」かをダイアログで表示する
+  //   （titleのホバー表示はスマホでは見られないため、タップでも確認できるようにする）
+  badge.onclick = () => showCmAlert({
+    title: 'このカードのわかる率',
+    desc: `このカードを学習した人のうち、今「わからない」が付いていない人数です。\n\n${understood} / ${studied} 人`,
+  });
+  badge.style.display = '';
 }
 
 // ★ 学習の続きから再開するための進捗保存・読込・削除
@@ -5095,6 +5134,7 @@ function updateStudyOriginalNumberBadge(c) {
 function renderStudyCard() {
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
   if (studyIdx >= studyCards.length) {
+    updateUnderstandingBadgeForCurrentCard(); // ★ 追加：完了画面には「今のカード」が無いので隠す
     document.getElementById('study-content').style.display = 'none';
     document.getElementById('study-done').style.display    = 'flex';
     document.getElementById('study-prog-fill').style.width  = '100%';
@@ -5118,6 +5158,7 @@ function renderStudyCard() {
   }
   const c = studyCards[studyIdx];
   markCardSeen(studyIsFolder ? c.__deckId : studyDeckId, c); // ★ 追加：みんなの「わかる率」用に学習済み記録
+  updateUnderstandingBadgeForCurrentCard(); // ★ 追加：カードが切り替わるたび、このカード1枚分の「わかる率」に更新する
 
   // ★ 反転モードなら「問題」欄に解答、「解答」欄に問題文を出す（解説はそのまま解答側に表示）
   const qText = studyReverse ? c.answer   : c.question;
