@@ -121,6 +121,21 @@ window.addEventListener("load", () => {
     return;
   }
   localStorage.removeItem(SESSION_KEY); // session_tokenの無い旧形式セッション、current_guild不明のセッションは破棄
+
+  // ★ 追加：DiscordのDM・チャンネルに貼られたCardMaker等のリンクをアプリ内ブラウザで
+  //   開いた場合、そのアプリ内ブラウザは端末の普段のブラウザとはlocalStorageを共有しない
+  //   別のブラウザ環境として扱われるため、保存済みセッションが見つからず（＝上のsaved判定に
+  //   引っかからず）必ずここに来てしまう。ただしDiscordのアプリ内ブラウザを開けている時点で
+  //   本人はDiscordにログイン済みであることが保証されているため、「Discordでログイン」
+  //   ボタンを待たず自動的にOAuth認可へ進む（Discord側が過去に一度でも認可済みなら、
+  //   認可確認すら出ずそのまま戻ってくることが多い＝体感上ほぼ自動ログインになる）。
+  //   ・UA判定はDiscordクライアントのバージョンや将来の仕様変更で変わりうるベストエフォート。
+  //     判定できない場合は従来通りボタンを表示するだけなので、誤判定しても実害はない。
+  //   ・「サーバーコードをお持ちの方はこちら」等の代替導線を必要とする少数のケースのために、
+  //     ボタン自体は消さず、画面はそのまま出したうえで自動的に遷移させる形にしている。
+  if (isDiscordInAppBrowser()) {
+    loginWithDiscord();
+  }
   showStep("step-id");
 });
 
@@ -256,6 +271,14 @@ function setLoadingMsg(msg) {
 function backToId() {
   document.getElementById("discord-reg-err").style.display = "none";
   showStep("step-id");
+}
+
+// ★ 追加：Discordのアプリ内ブラウザ（DM・チャンネルのリンクをタップして開いた場合）
+//   かどうかをUser-Agentから判定する。iOS/Android版DiscordのUAには"Discord/"という
+//   トークンが含まれる（ベストエフォート。将来のDiscordアプリの更新でUAが変わった
+//   場合は判定できなくなるだけで、その場合も従来通りボタン操作でログインできる）。
+function isDiscordInAppBrowser() {
+  return /\bDiscord\//i.test(navigator.userAgent || "");
 }
 
 // ============================================================
