@@ -516,6 +516,12 @@ function countUnsureRecursive(folderId) {
   }, 0);
 }
 
+// ★ 追加：「わからない」バッジをタップしたときに「何問中何問」かをダイアログで表示する。
+//   （一覧では件数だけしか出せないため、タップで内訳が分かるようにする）
+function showUnsureRatio(count, total) {
+  showCmAlert({ title: 'わからないカード', desc: `${count} / ${total} 問` });
+}
+
 // フォルダ配下（サブフォルダ含む）の全デッキを集める
 function collectDecksInFolder(folderId) {
   const direct = decks.filter(d => (d.folderId || null) === folderId);
@@ -1029,8 +1035,9 @@ function renderDeckListUI() {
   const unsureCount = countUnsureRecursive(f.id);              // ★ 追加
   const isLoadingThisFolder = loadingFolderIds.has(f.id);
   const folderPlayDisabled = totalCards === 0 || isLoadingThisFolder;
-  const folderUnsureBadge = unsureCount > 0                     // ★ 追加
-    ? `<span class="unsure-badge">${Icons.cmHtml('bookmark', {size:13})} ${unsureCount}</span>` : '';
+  // ★ 追加：タップすると「何問中何問」かをダイアログで表示する
+  const folderUnsureBadge = unsureCount > 0
+    ? `<span class="unsure-badge" onclick="event.stopPropagation();showUnsureRatio(${unsureCount}, ${totalCards})">${Icons.cmHtml('bookmark', {size:13})} ${unsureCount}</span>` : '';
 
   // ★ 追加：クイズ用デッキ選択モードでは、通常のプレイ/メニューボタンの代わりに
   //   チェックボックスを出す。フォルダ本体をタップすれば中を見に行けるのはそのまま。
@@ -1078,16 +1085,30 @@ function renderDeckListUI() {
     // ★ カード本体を未読み込みのデッキ（公開デッキで cardsLoaded=false）は
     //   d.cards が空のままなので、「わからない」バッジは読み込み後にしか出せない。
     //   ここでは読み込み済みの場合だけ計算する。
+    // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
+    //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
+    //   （pubBadge・unsureBadge の判定でも使うため、先に計算しておく）
+    const questionCount = d.filename ? (d.count ?? d.cards.length) : d.cards.length;
     let unsureBadge = '';
     if (d.cardsLoaded !== false) {
       const unsureSet   = getUnsureSet(d.id);
       const unsureCount = d.cards.filter(c => unsureSet.has(cardKey(c))).length;
-      unsureBadge = unsureCount > 0 ? `<span class="unsure-badge">${Icons.cmHtml('bookmark', {size:13})} ${unsureCount}</span>` : '';
+      // ★ タップすると「何問中何問」かをダイアログで表示する
+      unsureBadge = unsureCount > 0
+        ? `<span class="unsure-badge" onclick="event.stopPropagation();showUnsureRatio(${unsureCount}, ${questionCount})">${Icons.cmHtml('bookmark', {size:13})} ${unsureCount}</span>` : '';
     }
-    // ★ 問題数は常にサーバー側の count（軽量メタ情報）を優先して表示する。
-    //   d.cards はカード本体が未読み込みの間は空配列なので、そちらを見てはいけない。
-    //   （pubBadge の判定でも使うため、先に計算しておく）
-    const questionCount = d.filename ? (d.count ?? d.cards.length) : d.cards.length;
+    // ★ 追加：プレイの進捗バッジ（青＝プレイ中＝続きから再開できる下書きあり、
+    //   緑＝完了＝最後まで学習し終えた記録あり）。ホーム画面の「プレイ中」
+    //   「プレイ済み」欄は直近1週間だけの表示だが、こちらは一覧の各デッキに
+    //   常時つけるバッジなので、期間で消さず記録がある限りずっと表示する。
+    //   両方の記録がある場合は「今まさに再開できる」方を優先してプレイ中を表示する。
+    const studyProgress  = loadStudyProgress(false, d.id);
+    const studyCompleted = loadCompletionRecord(false, d.id);
+    const studyStatusBadge = studyProgress
+      ? `<span class="pub-badge study-doing">${Icons.html('dot', {size:13})} プレイ中</span>`
+      : studyCompleted
+        ? `<span class="pub-badge study-done">${Icons.html('dot', {size:13})} 完了</span>`
+        : '';
     // ★ 公開状態バッジ：作成中／非公開／公開済み／未完成 のいずれか1つだけを表示する。
     //   （以前は「公開済み」と「未完成」を別々のバッジとして両方表示していたが、
     //   分かりにくいので同じ場所に1つだけ出すよう統合した）
@@ -1182,6 +1203,7 @@ function renderDeckListUI() {
           ${pubBadge}
           ${quizArchiveBadge}
           ${choiceModeBadge}
+          ${studyStatusBadge}
           ${unsureBadge}
         </div>
         ${deckDescLine}
@@ -3142,20 +3164,23 @@ function renderCreatedList() {
   function checkHoverFolder(clientX, clientY) {
     if (!dragEl || hoverOpenInProgress) return;
 
+    // ★ フォルダをドラッグしてフォルダへ入れる（＝自動オープンでの再親化、
+    //   autoOpenFolderDuringDrag）は無効化した。開いた瞬間にドラッグを継続させる
+    //   ための非同期処理（デッキ読み込み待ち・再描画・要素の張り直し等）が絡み合い
+    //   不具合の温床になりやすいうえ、フォルダの移動は「フォルダメニュー→移動」
+    //   （openMovePicker、canMoveFolderToで階層チェック済み）から確実に行えるため、
+    //   ドラッグ操作からはサーバーに送らないようにする。
+    //   デッキをフォルダへドラッグして入れる機能は従来通り維持する。
+    if (dragEl.dataset.key.startsWith('folder:')) { clearHoverFolder(); return; }
+
     // ① まず「パンくず付近まで持ち上げたら親フォルダへ戻る」ゾーンを判定する
     //   （フォルダの中にいる時だけ。ルート表示中は戻り先が無いので対象外）
     const exitZone = getExitZoneRect();
     if (exitZone && clientY <= exitZone.bottom) {
       const parentFolder = folders.find(f => f.id === currentFolderId);
       const parentId = parentFolder ? (parentFolder.parentId ?? null) : null;
-      const dragKey = dragEl.dataset.key;
-      let ok = true;
-      if (dragKey.startsWith('folder:')) {
-        ok = canMoveFolderTo(dragKey.slice('folder:'.length), parentId);
-      } else {
-        const deckId = resolveDeckIdFromDragKey(dragKey);
-        ok = deckId ? canMoveDeckTo(deckId, parentId) : true;
-      }
+      const deckId = resolveDeckIdFromDragKey(dragEl.dataset.key);
+      const ok = deckId ? canMoveDeckTo(deckId, parentId) : true;
       if (ok) {
         applyHoverTarget(exitZone.el, parentId);
         return;
@@ -3174,16 +3199,8 @@ function renderCreatedList() {
 
     if (folderCard && folderCard.parentElement === grid && folderCard !== dragEl) {
       const fid = folderCard.dataset.key.slice('folder:'.length);
-      const dragKey = dragEl.dataset.key;
-      // 掴んでいるのがフォルダで、その移動先が自分自身／自分の子孫フォルダの場合は
-      // 開けない（無限ループ・不正な階層構造の防止。canMoveFolderToで判定）
-      if (dragKey.startsWith('folder:')) {
-        const draggedFolderId = dragKey.slice('folder:'.length);
-        if (canMoveFolderTo(draggedFolderId, fid)) targetFolderId = fid;
-      } else {
-        const deckId = resolveDeckIdFromDragKey(dragKey);
-        if (!deckId || canMoveDeckTo(deckId, fid)) targetFolderId = fid;
-      }
+      const deckId = resolveDeckIdFromDragKey(dragEl.dataset.key);
+      if (!deckId || canMoveDeckTo(deckId, fid)) targetFolderId = fid;
     }
 
     if (targetFolderId) {
