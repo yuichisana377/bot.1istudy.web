@@ -501,7 +501,7 @@ html, body {
   color: var(--text-tertiary);
 }
 
-/* ★ 追加：達成者数バッジ（タップで達成者一覧を表示、StudyLog.jsのshowTaskAchievers参照） */
+/* ★ 追加：達成者数バッジ（人数のみの表示。達成者の名前は出さないためタップ不可） */
 .sl-achieve-badge {
   display: inline-flex;
   align-items: center;
@@ -513,10 +513,7 @@ html, body {
   color: #047857;
   border: 1px solid #a7f3d0;
   font-weight: 700;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
-.sl-achieve-badge:active { background: #d1fae5; }
 
 /* 備考ありマーク（📝）。行に備考があるときだけ表示される */
 .note-dot {

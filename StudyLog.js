@@ -1232,9 +1232,9 @@ function renderTasks() {
     var noteDot  = t.note ? ('<span class="note-dot" title="備考あり">' + Icons.html('memo', {size:13}) + '</span>') : '';
     var noteHtml = t.note ? '<div class="sl-task-note">' + esc(t.note) + '</div>' : '';
 
-    // ★ 追加：達成者数バッジ（タップで達成者一覧を表示、initTaskListEvents参照）
+    // ★ 追加：達成者数バッジ（人数のみ表示。達成者の名前は個人が特定できる情報のため出さない）
     var achieveCount = getTaskAchievers(t.id).length;
-    var achieveBadge = '<span class="sl-achieve-badge" data-task-id="' + escAttr(t.id) + '">' +
+    var achieveBadge = '<span class="sl-achieve-badge">' +
       Icons.html('people', {size:12}) + ' ' + achieveCount + '/' + totalMembers + '人達成</span>';
 
     return '<div class="sl-task-row' + (done ? " done-row" : "") + '">' +
@@ -1257,33 +1257,25 @@ function renderTasks() {
   }).join("");
 }
 
-// ★ 追加：課題1件を達成しているユーザーのニックネーム一覧（五十音順）を返す。
+// ★ 追加：課題1件を達成しているユーザーのstudent_id一覧を返す（達成者数バッジ用）。
 //   allCompletedTasks（全ユーザー分の達成済み課題、loadAllCompletedTasks参照）
 //   から集計するので、追加の通信は発生しない。
+//   ★ 達成者の名前（ニックネーム）はここでは返さない。達成状況は「みんなの記録」
+//   （study_logs）と違い個人が特定されやすい情報のため、UI上は人数のみを表示する方針。
 function getTaskAchievers(taskId) {
-  var names = [];
+  var ids = [];
   Object.keys(allCompletedTasks).forEach(function(sid) {
     var hit = (allCompletedTasks[sid] || []).some(function(e) { return e.id === taskId; });
-    if (hit) names.push(nicknameMap[sid] || sid);
+    if (hit) ids.push(sid);
   });
-  return names.sort(function(a, b) { return a.localeCompare(b, "ja"); });
-}
-
-// ★ 追加：達成者バッジをタップしたときに一覧をダイアログで表示する。
-function showTaskAchievers(taskId) {
-  var task  = TASKS_JSON.find(function(t) { return t.id === taskId; });
-  var names = getTaskAchievers(taskId);
-  showAppAlert({
-    title: (task ? task.title : "課題") + "の達成者",
-    desc:  names.length ? names.join("\n") : "まだ誰も達成していません",
-    icon:  Icons.html('people', {size:16}),
-  });
+  return ids;
 }
 
 // ★ 課題リストのクリックをイベント委譲で処理する（一度だけ登録すればOK）
 //   ・「達成する／達成済み」ボタン → toggleTask()
 //   ・備考ありの本文（.has-note） → toggleTaskNote()
-//   ・達成者数バッジ（.sl-achieve-badge） → showTaskAchievers()
+//   達成者数バッジ（.sl-achieve-badge）は人数のみの表示（名前は出さない）なので
+//   タップ動作は無し。
 //   inline onclick に生のIDや備考文字列を直接埋め込むと、内容に引用符（' や "）が
 //   含まれた場合にHTML/JSが壊れて達成ボタンが反応しなくなるため、この方式に変更。
 function initTaskListEvents() {
@@ -1295,11 +1287,6 @@ function initTaskListEvents() {
     if (btn) {
       if (btn.disabled) return;
       toggleTask(btn.dataset.taskId);
-      return;
-    }
-    var achieveBadge = e.target.closest(".sl-achieve-badge");
-    if (achieveBadge) {
-      showTaskAchievers(achieveBadge.dataset.taskId);
       return;
     }
     var body = e.target.closest(".sl-task-body.has-note");
