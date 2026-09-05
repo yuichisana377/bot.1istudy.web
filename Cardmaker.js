@@ -3019,8 +3019,15 @@ function renderCreatedList() {
   //     （autoOpenFolderDuringDrag は「どこへ移動して開くか」を汎用的に扱うので、
   //     戻り先（親フォルダ）を渡せば「出る」動作もそのまま実現できる）。
   const HOVER_OPEN_MS = 650; // これだけ同じ場所（フォルダ／パンくず付近）で止めておくと自動的に反応する
+  // ★ 追加：指先の微妙な震え・elementFromPointの一瞬の誤検出などで、フォルダの上に
+  //   ちゃんと重ねているつもりでも一瞬だけ対象を見失うことがあり、そのたびに
+  //   即座にホバー判定をリセットしていると HOVER_OPEN_MS のタイマーが永遠に完了せず
+  //   「フォルダに重ねても反応しない」ように見える不具合があった。対象を見失っても
+  //   すぐには消さず、この猶予時間内に同じ対象へ戻ってくればリセットしなかったことにする。
+  const HOVER_MISS_GRACE_MS = 200;
   let hoverFolderEl = null;
   let hoverFolderTimer = null;
+  let hoverClearTimer = null; // ★ 追加：上記の猶予時間用タイマー
   let hoverOpenInProgress = false; // ★ フォルダ自動オープンの処理中に二重発火しないようにする
   // ★ バグ修正：デッキ／フォルダを掴んだ位置がたまたま画面の上端／下端付近
   //   （例：スクロールしてすぐ見えている一番上の項目を掴んだ場合など）だと、
@@ -3111,6 +3118,7 @@ function renderCreatedList() {
     dragEl.style.transform = `translateY(${initialDy}px) scale(1.02)`;
     if (navigator.vibrate) navigator.vibrate(12); // ★ つかんだ瞬間に軽い振動でフィードバック（対応端末のみ）
     if (autoScrollRAF === null) autoScrollRAF = requestAnimationFrame(autoScrollTick);
+    updateFolderExitDropzoneVisibility(); // ★ 追加：フォルダの中でドラッグを始めたら、上部の「外へ出す」受け皿を出す
   }
 
   function moveDrag(clientX, clientY) {
@@ -3200,24 +3208,34 @@ function renderCreatedList() {
     if (targetFolderId) {
       applyHoverTarget(folderCard, targetFolderId);
     } else {
-      clearHoverFolder();
+      scheduleClearHoverFolder(); // ★ 修正：即座に消さず、少し待ってから消す（上のコメント参照）
     }
   }
 
-  // ★ 追加：② のゾーン判定用。画面上部のパンくずバー付近（少し余白を持たせた範囲）を返す。
-  //   ルート表示中（パンくず非表示）は戻り先が無いのでnullを返す。
+  // ★ 追加：ドラッグ中、フォルダの中にいる間だけ画面上部に「外へ出す」受け皿バーを
+  //   表示する。以前はパンくずリスト付近（狭く、スクロールで見えなくなることもある）に
+  //   重ねる必要があったが、常に画面最上部に留まる大きな専用スペースに変更した。
+  function updateFolderExitDropzoneVisibility() {
+    const bar = document.getElementById('folder-exit-dropzone');
+    if (!bar) return;
+    bar.style.display = (dragEl && currentFolderId) ? '' : 'none';
+  }
+
+  // ★ 追加：② のゾーン判定用。画面上部の「外へ出す」受け皿バーの位置を返す。
+  //   ルート表示中（受け皿が非表示）は戻り先が無いのでnullを返す。
   function getExitZoneRect() {
-    if (!currentFolderId) return null;
-    const bar = document.getElementById('folder-breadcrumb');
-    if (!bar || getComputedStyle(bar).display === 'none') return null;
+    const bar = document.getElementById('folder-exit-dropzone');
+    if (!bar || bar.style.display === 'none') return null;
     const r = bar.getBoundingClientRect();
-    const PAD = 16; // パンくずの少し上・下まで含めて「持ち上げたら戻る」を反応しやすくする
-    return { top: r.top - PAD, bottom: r.bottom + PAD, el: bar };
+    return { top: r.top, bottom: r.bottom, el: bar };
   }
 
   // ★ 追加：ホバー対象（フォルダカード or パンくず）が確定した際の共通処理。
   //   同じ対象に留まり続けている間だけタイマーを進め、離れたらリセットする。
   function applyHoverTarget(el, targetFolderId) {
+    // ★ 追加：猶予時間中に対象を再検出できた（同じ対象でも別の対象でも）ので、
+    //   保留中の「消す」予約はキャンセルする（hoverFolderTimer自体はそのまま継続）。
+    if (hoverClearTimer) { clearTimeout(hoverClearTimer); hoverClearTimer = null; }
     if (hoverFolderEl === el) return; // 既に同じ対象を計測中
     clearHoverFolder();
     hoverFolderEl = el;
@@ -3230,7 +3248,19 @@ function renderCreatedList() {
     }, HOVER_OPEN_MS);
   }
 
+  // ★ 追加：対象を見失った瞬間に即座に消さず、HOVER_MISS_GRACE_MSだけ待ってから消す。
+  //   その間にapplyHoverTargetが呼ばれれば（＝対象を再検出できれば）、このタイマーは
+  //   キャンセルされ、進行中のホバー判定（hoverFolderTimer）は途切れない。
+  function scheduleClearHoverFolder() {
+    if (!hoverFolderEl || hoverClearTimer) return; // 何もホバーしていない／既に予約済みなら何もしない
+    hoverClearTimer = setTimeout(() => {
+      hoverClearTimer = null;
+      clearHoverFolder();
+    }, HOVER_MISS_GRACE_MS);
+  }
+
   function clearHoverFolder() {
+    if (hoverClearTimer) { clearTimeout(hoverClearTimer); hoverClearTimer = null; }
     if (hoverFolderTimer) { clearTimeout(hoverFolderTimer); hoverFolderTimer = null; }
     if (hoverFolderEl) {
       hoverFolderEl.style.outline = '';
@@ -3296,6 +3326,7 @@ function renderCreatedList() {
 
       // フォルダを開く
       currentFolderId = targetFolderId;
+      updateFolderExitDropzoneVisibility(); // ★ 追加：ルートまで戻った場合は受け皿を隠す（逆に潜った場合は出す）
 
       // ★ ドラッグ中は renderDeckListUI() が丸ごとスキップされるため、ここだけ
       //   一時的にガードを外して再描画し、開いたフォルダの中身を表示する。
@@ -3350,6 +3381,7 @@ function renderCreatedList() {
     dragEl.style.position = '';
     dragEl.style.touchAction = '';
     dragEl = null;
+    updateFolderExitDropzoneVisibility(); // ★ 追加：ドラッグ終了で受け皿を隠す
     cmListDragActive = false; // ★ 再描画スキップガードを解除（次のポーリングで最新状態に更新される）
 
     // ★ DOM上の最終的な並び順（data-key）をこのフォルダのスコープに保存する
@@ -4268,6 +4300,39 @@ function updateUnderstandingBadgeForCurrentCard() {
   badge.style.display = '';
 }
 
+// ★ 追加：CardMakerでデッキ／フォルダをプレイし始めたとき、勉強ログ（StudyLog）の
+//   タイマーが動いていなければ自動的に計測を開始する。
+//   ・既に計測中／休憩中（＝本人が既に何か計測している最中）なら横取りしない
+//     （"idle"のときだけ開始する）。
+//   ・開始できたら、そのメモ欄に引き継ぐテキストをlocalStorageに控えておく
+//     （StudyLog.js側は別ページなのでここのDOMは触れない。StudyLog.jsの
+//     consumePendingTimerMemo()が「停止」して確認画面を出すときに読み取り、
+//     メモ欄へ自動入力する）。
+//   ・完全にベストエフォート：ログインしていない／通信に失敗した場合は
+//     何もせず、プレイ自体は止めない。
+async function maybeAutoStartStudyTimer(memo) {
+  try {
+    const session = getLoginSession();
+    if (!session || !session.session_token || !GUILD_ID) return;
+    const qs = new URLSearchParams({ guild_id: GUILD_ID });
+    const stateRes = await fetch(`${API_BASE}timer_state?${qs.toString()}`, {
+      cache: 'no-store', signal: AbortSignal.timeout(5000),
+      headers: { 'Authorization': 'Bearer ' + session.session_token },
+    });
+    const state = await stateRes.json();
+    if (!state.ok || state.state !== 'idle') return; // 計測中／休憩中なら何もしない
+
+    const startRes = await fetch(`${API_BASE}timer_start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const started = await startRes.json();
+    if (!started.ok) return;
+    localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, ts: Date.now() }));
+  } catch (e) {} // 通信失敗時は何もしない（プレイ自体は止めない）
+}
+
 // ★ 学習の続きから再開するための進捗保存・読込・削除
 //   ・デッキ / フォルダそれぞれ独立したキーで保存する
 //   ・保存するのは「そのときのカードの並び順（キー配列）」「今何問目か」
@@ -4692,6 +4757,7 @@ async function startStudyMode(mode) {
   document.getElementById('study-content').style.display = 'flex';
   renderStudyCard();
   loadUnderstandingBadge(); // ★ 追加：みんなの「わかる率」を右上に読み込む（非同期・表示はブロックしない）
+  maybeAutoStartStudyTimer(`CardMaker「${studyBaseTitle}」をプレイ`); // ★ 追加：勉強ログのタイマーが止まっていれば自動計測を始める（非同期・表示はブロックしない）
 }
 
 // ============================================================
@@ -5909,6 +5975,22 @@ function mathToPlainText(raw) {
   s = s.replace(/\^\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUP_MAP[a] ? MATH_SUP_MAP[a] : `^${a}`);
   s = s.replace(/_\{([^{}]*)\}/g, (m, a) => a.length === 1 && MATH_SUB_MAP[a] ? MATH_SUB_MAP[a] : `_${a}`);
   return s;
+}
+
+// ★ 追加：検索の「多少の表記ゆれ」を許容するための正規化。
+//   ・Unicode正規化(NFKC)で全角/半角の違いを吸収
+//   ・カタカナ→ひらがなに変換して、ひらがな/カタカナの違いを無視
+//   ・大文字/小文字を無視
+//   ・空白（半角・全角）を無視
+//   元々Cardmaker-search.js（単語検索）だけのローカル関数だったが、
+//   「一覧で見る」画面内の検索（Cardmaker-listview.js）でも同じ正規化を
+//   使いたいため、両チャンクから確実に参照できるコア（Cardmaker.js）側へ移した。
+function normalizeForSearch(s) {
+  if (!s) return '';
+  let t = String(s).normalize('NFKC').toLowerCase();
+  t = t.replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)); // カタカナ→ひらがな
+  t = t.replace(/[\s　]+/g, ''); // 半角・全角の空白を除去
+  return t;
 }
 
 // 学習画面など「編集ではなく表示するだけ」の場所で使う簡易表示用ヘルパー。

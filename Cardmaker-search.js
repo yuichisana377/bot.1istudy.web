@@ -5,9 +5,9 @@
 //    Cardmaker.js側の loadChunksInBackground() が、一覧の初期表示が
 //    終わった後にバックグラウンドで読み込む（このファイル単体では動かず、
 //    Cardmaker.jsが先に読み込まれている前提。decks/folders/showScreen/
-//    esc/cardKey/mathToPlainText/collectDecksInFolder/folderPathLabel/
-//    ensureDeckCardsLoaded/renderListView などCardmaker.js側のグローバル
-//    関数・変数をそのまま使う）。
+//    esc/cardKey/mathToPlainText/normalizeForSearch/collectDecksInFolder/
+//    folderPathLabel/ensureDeckCardsLoaded/renderListView などCardmaker.js
+//    側のグローバル関数・変数をそのまま使う）。
 //
 //  ・検索対象は「検索を開いた時点で表示していたフォルダ」の中身だけ
 //    （サブフォルダは含む。collectDecksInFolder と同じ範囲）。
@@ -24,14 +24,8 @@
 let searchScopeFolderId = null; // 検索対象として固定したフォルダ（開いた時点のcurrentFolderId）
 let searchTargetDecks   = null; // 読み込み準備が済んだ、検索対象デッキの配列
 let searchDebounceTimer = null;
-
-function normalizeForSearch(s) {
-  if (!s) return '';
-  let t = String(s).normalize('NFKC').toLowerCase();
-  t = t.replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)); // カタカナ→ひらがな
-  t = t.replace(/[\s　]+/g, ''); // 半角・全角の空白を除去
-  return t;
-}
+// ★ normalizeForSearch() は「一覧で見る」内検索（Cardmaker-listview.js）とも共有するため
+//   Cardmaker.js側に移した（このファイル単体では定義していない）。
 
 async function openSearchScreen() {
   searchScopeFolderId = currentFolderId;
@@ -125,6 +119,11 @@ async function openSearchResult(deckId, cardId) {
   studyDeckId = deckId;
   listViewFilter = 'all';
   listViewReverse = false;
+  // ★ 追加：前回一覧を開いたときの一覧内検索キーワードを持ち越さない
+  //   （openListView()を経由しないため、ここでも同じリセットが必要）。
+  listViewSearchQuery = '';
+  const listViewSearchInput = document.getElementById('list-view-search-input');
+  if (listViewSearchInput) listViewSearchInput.value = '';
   document.getElementById('list-view-title').textContent = deck.name;
   pendingListViewScrollKey = cardKey(card);
   showScreen('list-view');

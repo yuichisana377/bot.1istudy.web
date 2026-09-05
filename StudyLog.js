@@ -1561,6 +1561,26 @@ async function timerApiStop() {
   } catch(e) { return null; }
 }
 
+// ★ 追加：CardMaker（別ページ、Cardmaker.jsのmaybeAutoStartStudyTimer参照）が
+//   「タイマーが止まっていたので自動的に開始した」場合、localStorageに控えて
+//   おいたメモを、このタイマーを停止したときの確認画面に引き継ぐ。
+//   1回読んだら（保存に至ったかどうかに関わらず）必ず消費し、次の無関係な
+//   タイマーには絶対に持ち越さない。あまりに古い（例：開始したまま何日も
+//   放置していた）記録も、誤って別の意図の記録に紛れ込まないよう無視する。
+function consumePendingTimerMemo() {
+  var KEY = "cm_pending_timer_memo";
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    localStorage.removeItem(KEY);
+    var data = JSON.parse(raw);
+    if (!data || !data.memo || !data.ts) return null;
+    var ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    if (Date.now() - data.ts > ONE_DAY_MS) return null;
+    return data.memo;
+  } catch (e) { return null; }
+}
+
 // 現在の実行中区間を含めた経過秒（表示用）
 function computeElapsedSec() {
   if (timerRunning && runStartClientEpoch != null) {
@@ -1802,6 +1822,12 @@ async function timerStop() {
   }
   startSyncPolling(); // ★ 確認画面を見ている間も、他端末での保存/破棄を検知できるようにする
 
+  // ★ 追加：CardMakerでのプレイ開始がこのタイマーを自動的に始めていた場合、
+  //   そのメモを引き継ぐ（consumePendingTimerMemo参照）。保存に至らず破棄
+  //   されるケースも含め、停止のたびに必ず1回だけ消費する（次回以降の
+  //   無関係なタイマーに古いメモが紛れ込まないようにするため）。
+  var pendingMemo = consumePendingTimerMemo();
+
   var mins = Math.floor(timerSec / 60);
   if (mins < 1) {
     await showAppAlert({ title: "1分未満のため記録できません" });
@@ -1812,6 +1838,7 @@ async function timerStop() {
   document.getElementById("timer-confirm").style.display = "block";
   document.getElementById("conf-time").textContent       = mins + "分 " + pad(timerSec % 60) + "秒";
   document.getElementById("conf-time").dataset.min       = mins;
+  if (pendingMemo) document.getElementById("conf-memo").value = pendingMemo;
 }
 
 async function saveTimer() {

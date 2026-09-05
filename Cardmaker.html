@@ -134,6 +134,14 @@
       </div>
     </div>
   </div>
+  <!-- ★ 追加：デッキ／フォルダをドラッグしてフォルダの中にいる間だけ表示する、
+       「上まで持ち上げるとフォルダの外（親フォルダ）へ戻せる」ための大きな受け皿。
+       以前はパンくずリストの周辺（狭い当たり判定）に重ねる必要があったが、
+       画面上部いっぱいの分かりやすいスペースに変更した（setupListDragReorder内、
+       checkHoverFolder/getExitZoneRect参照）。 -->
+  <div class="folder-exit-dropzone" id="folder-exit-dropzone" style="display:none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-4px;flex-shrink:0" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg> ここまで持ち上げてフォルダの外へ
+  </div>
   <!-- ★ 追加：クイズのデッキ選択モード（Quiz.html?から「デッキを選ぶ」で来た場合だけ表示） -->
   <div class="pick-mode-banner" id="pick-mode-banner" style="display:none">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#c2410c"><rect x="3" y="8" width="18" height="9" rx="4.5" fill="currentColor" fill-opacity=".16" stroke-width="1.8"/><path d="M7.4 11v4" stroke-width="1.9" stroke-linecap="round"/><path d="M5.4 13h4" stroke-width="1.9" stroke-linecap="round"/><circle cx="15" cy="11.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17.5" cy="14" r="1.2" fill="currentColor" stroke="none"/></svg> クイズに使うデッキ・フォルダを選んでください（複数選択できます。フォルダを選ぶと中のデッキを全部まとめて使います）
@@ -430,6 +438,8 @@
   </div>
   <div class="cm-scroll-body">
     <div class="inner">
+      <input type="text" class="modal-input" id="list-view-search-input" placeholder="この一覧の中を検索"
+             oninput="onListViewSearchInput()" style="margin-bottom:.6rem">
       <div class="list-view-tabs">
         <button class="list-view-tab active" id="list-view-tab-all" onclick="setListViewFilter('all')">すべて</button>
         <button class="list-view-tab" id="list-view-tab-unsure" onclick="setListViewFilter('unsure')">わからないだけ</button>

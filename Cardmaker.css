@@ -470,6 +470,19 @@ html, body {
    ★ 通常のデッキ一覧（screen-list）に checkbox 付きの選択UIを重ねて出す。
    フォルダ・デッキの構造や検索性はそのまま活かしつつ、複数選択・フォルダ
    まるごと選択ができるようにするための追加分。 */
+/* ★ 追加：フォルダ内でデッキ／フォルダをドラッグしている間だけ表示する、
+   「上まで持ち上げるとフォルダの外へ戻せる」ための大きな受け皿バー。
+   .topbarの直下・.cm-scroll-bodyの外（＝スクロールしても常に画面上部に留まる）
+   に置いてあるので、position:sticky等は不要。 */
+.folder-exit-dropzone {
+  box-sizing: border-box;
+  background: #eff6ff; color: #1d4ed8; font-size: 13px; font-weight: 700;
+  padding: .9rem 1rem; text-align: center; line-height: 1.4;
+  border-bottom: 2px dashed #93c5fd;
+}
+/* ★ 実際にここへドロップできる状態（applyHoverTarget/clearHoverFolderが
+   style.outlineを付け外しする、フォルダカードと共通の仕組み）の間だけ、
+   青い枠線が3px描かれる。 */
 .pick-mode-banner {
   box-sizing: border-box;
   background: #EFF4FF; color: #1d4ed8; font-size: 12.5px; font-weight: 600;

@@ -17,6 +17,7 @@
 // ============================================================
 let listViewFilter = 'all';   // 'all' | 'unsure'
 let listViewReverse = false;  // 問題と解答を逆にするか
+let listViewSearchQuery = ''; // ★ 追加：この一覧内で絞り込むキーワード（正規化済み、空文字なら絞り込み無し）
 // ★ 検索結果などから、この一覧を開いたら特定の問題までスクロールしたい場合に
 //   キー（cardKey）をセットしておく。renderListView() が描画後に1回だけ消費する。
 let pendingListViewScrollKey = null;
@@ -28,6 +29,9 @@ function openListView() {
   const relevantDeck = studyIsFolder ? null : decks.find(d => d.id === studyDeckId);
   listViewReverse = (relevantDeck && relevantDeck.choiceMode) ? false : document.getElementById('reverse-mode-checkbox').checked;
   listViewFilter = 'all';
+  listViewSearchQuery = ''; // ★ 追加：前回開いたときの検索キーワードを持ち越さない
+  const searchInput = document.getElementById('list-view-search-input');
+  if (searchInput) searchInput.value = '';
   closeModal('modal-play-mode');
 
   const titleEl = document.getElementById('list-view-title');
@@ -71,10 +75,30 @@ function toggleListViewReverse() {
   renderListView();
 }
 
+// ★ 追加：この一覧内検索の入力欄。デッキ・フォルダをまたいだ検索
+//   （Cardmaker-search.js「単語検索」）とは別に、今開いている一覧の中だけを
+//   その場で絞り込む。サーバー通信は発生しない（既に読み込み済みのcardsを
+//   フィルタするだけ）ため、単語検索のようなデバウンス・読み込み待ちは不要。
+function onListViewSearchInput() {
+  const raw = document.getElementById('list-view-search-input').value;
+  listViewSearchQuery = normalizeForSearch(raw);
+  renderListView();
+}
+
+// ★ 追加：問題文・解答（＋設定されていれば解説）のいずれかにキーワードを含むかどうか。
+//   normalizeForSearch()による表記ゆれ吸収は単語検索と共通。数式記法は
+//   mathToPlainText()で読みやすい文字列にしてから比較する（単語検索と同じ方針）。
+function listViewMatchesSearch(c) {
+  if (!listViewSearchQuery) return true;
+  const texts = [c.question, c.answer, c.explanation];
+  return texts.some(t => t && normalizeForSearch(mathToPlainText(t)).includes(listViewSearchQuery));
+}
+
 function renderListView() {
   const pool = getListViewPool();
   const unsureCount = pool.filter(listViewIsUnsure).length;
-  const cards = listViewFilter === 'unsure' ? pool.filter(listViewIsUnsure) : pool;
+  const filteredByTab = listViewFilter === 'unsure' ? pool.filter(listViewIsUnsure) : pool;
+  const cards = filteredByTab.filter(listViewMatchesSearch);
 
   document.getElementById('list-view-tab-all').textContent = `すべて (${pool.length})`;
   document.getElementById('list-view-tab-unsure').textContent = `わからないだけ (${unsureCount})`;
@@ -87,7 +111,10 @@ function renderListView() {
   if (!cards.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.innerHTML = `<div class="empty-icon">${Icons.cmHtml('emptyList', {size:40})}</div>${listViewFilter === 'unsure' ? 'わからないカードはありません' : 'カードがありません'}`;
+    const msg = listViewSearchQuery
+      ? '該当する問題は見つかりませんでした'
+      : (listViewFilter === 'unsure' ? 'わからないカードはありません' : 'カードがありません');
+    empty.innerHTML = `<div class="empty-icon">${Icons.cmHtml('emptyList', {size:40})}</div>${msg}`;
     wrap.appendChild(empty);
     return;
   }
