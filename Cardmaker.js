@@ -3028,6 +3028,7 @@ function renderCreatedList() {
   let hoverFolderEl = null;
   let hoverFolderTimer = null;
   let hoverClearTimer = null; // ★ 追加：上記の猶予時間用タイマー
+  let hoverBlockedEl = null; // ★ 追加：移動先として無効な対象に赤枠を出している間、その要素を覚えておく
   let hoverOpenInProgress = false; // ★ フォルダ自動オープンの処理中に二重発火しないようにする
   // ★ バグ修正：デッキ／フォルダを掴んだ位置がたまたま画面の上端／下端付近
   //   （例：スクロールしてすぐ見えている一番上の項目を掴んだ場合など）だと、
@@ -3161,10 +3162,17 @@ function renderCreatedList() {
   function checkHoverFolder(clientX, clientY) {
     if (!dragEl || hoverOpenInProgress) return;
 
-    // ① まず「パンくず付近まで持ち上げたら親フォルダへ戻る」ゾーンを判定する
+    // ① まず「一覧の上端まで持ち上げたら親フォルダへ戻る」ゾーンを判定する
     //   （フォルダの中にいる時だけ。ルート表示中は戻り先が無いので対象外）
+    //   ★ 修正：指の生の位置（clientY）ではなく、実際に見えているカード自身の
+    //   上端で判定するようにした。#folder-exit-dropzoneは.cm-scroll-bodyの外
+    //   （＝スクロール領域の外）にあるため、指の位置だけで判定すると、カードの
+    //   見た目はスクロール領域の上端でクリップされて先に見えなくなってしまい
+    //   （＝もう反応が無いように見える）、実際にはそこからさらに指を動かし
+    //   続けないと反応しない、という分かりにくい挙動になっていた。カード自身が
+    //   クリップされ始める（＝見えなくなる）のとほぼ同時に反応するようにする。
     const exitZone = getExitZoneRect();
-    if (exitZone && clientY <= exitZone.bottom) {
+    if (exitZone && dragEl.getBoundingClientRect().top <= exitZone.bottom) {
       const parentFolder = folders.find(f => f.id === currentFolderId);
       const parentId = parentFolder ? (parentFolder.parentId ?? null) : null;
       const dragKey = dragEl.dataset.key;
@@ -3177,8 +3185,12 @@ function renderCreatedList() {
       }
       if (ok) {
         applyHoverTarget(exitZone.el, parentId);
-        return;
+      } else {
+        // ★ 追加：フォルダの階層制限等で「今は出せない」場合も、何も起きない
+        //   （＝反応していないだけに見える）のではなく赤枠で理由があることを示す。
+        applyBlockedHoverTarget(exitZone.el);
       }
+      return;
     }
 
     // dragEl自身が指の真下にあるとelementFromPointがそれを拾ってしまうため、
@@ -3189,27 +3201,32 @@ function renderCreatedList() {
     dragEl.style.pointerEvents = prevPE;
 
     const folderCard = under ? under.closest('.folder-card') : null;
-    let targetFolderId = null;
 
     if (folderCard && folderCard.parentElement === grid && folderCard !== dragEl) {
       const fid = folderCard.dataset.key.slice('folder:'.length);
       const dragKey = dragEl.dataset.key;
       // 掴んでいるのがフォルダで、その移動先が自分自身／自分の子孫フォルダの場合は
       // 開けない（無限ループ・不正な階層構造の防止。canMoveFolderToで判定）
+      let allowed;
       if (dragKey.startsWith('folder:')) {
-        const draggedFolderId = dragKey.slice('folder:'.length);
-        if (canMoveFolderTo(draggedFolderId, fid)) targetFolderId = fid;
+        allowed = canMoveFolderTo(dragKey.slice('folder:'.length), fid);
       } else {
         const deckId = resolveDeckIdFromDragKey(dragKey);
-        if (!deckId || canMoveDeckTo(deckId, fid)) targetFolderId = fid;
+        allowed = !deckId || canMoveDeckTo(deckId, fid);
       }
+      if (allowed) {
+        applyHoverTarget(folderCard, fid);
+      } else {
+        // ★ 追加：例えばフォルダの階層が上限（3階層）に達していて移動できない場合など、
+        //   「フォルダに重ねているのに何も起きない」という分かりにくさを解消するため、
+        //   赤枠で「ここには移動できない」ことを示す（自動では開かない）。
+        applyBlockedHoverTarget(folderCard);
+      }
+      return;
     }
 
-    if (targetFolderId) {
-      applyHoverTarget(folderCard, targetFolderId);
-    } else {
-      scheduleClearHoverFolder(); // ★ 修正：即座に消さず、少し待ってから消す（上のコメント参照）
-    }
+    scheduleClearHoverFolder(); // ★ 修正：即座に消さず、少し待ってから消す（上のコメント参照）
+    clearBlockedHover();
   }
 
   // ★ 追加：ドラッグ中、フォルダの中にいる間だけ画面上部に「外へ出す」受け皿バーを
@@ -3233,6 +3250,7 @@ function renderCreatedList() {
   // ★ 追加：ホバー対象（フォルダカード or パンくず）が確定した際の共通処理。
   //   同じ対象に留まり続けている間だけタイマーを進め、離れたらリセットする。
   function applyHoverTarget(el, targetFolderId) {
+    clearBlockedHover(); // ★ 追加：直前まで赤枠（移動不可）だった場合はそれを消す
     // ★ 追加：猶予時間中に対象を再検出できた（同じ対象でも別の対象でも）ので、
     //   保留中の「消す」予約はキャンセルする（hoverFolderTimer自体はそのまま継続）。
     if (hoverClearTimer) { clearTimeout(hoverClearTimer); hoverClearTimer = null; }
@@ -3266,6 +3284,27 @@ function renderCreatedList() {
       hoverFolderEl.style.outline = '';
       hoverFolderEl.style.outlineOffset = '';
       hoverFolderEl = null;
+    }
+  }
+
+  // ★ 追加：移動先として無効な対象（フォルダの階層上限に達している等、
+  //   canMoveFolderTo/canMoveDeckToがfalseを返すケース）に重ねている間、
+  //   「反応していないだけ」に見えないよう赤枠で知らせる。自動では開かない
+  //   （hoverFolderTimer自体を持たない、開ける方のホバー状態とは別物）。
+  function applyBlockedHoverTarget(el) {
+    clearHoverFolder(); // 開ける方のホバー状態（青枠・タイマー）は解除しておく
+    if (hoverBlockedEl === el) return; // 既に同じ対象に赤枠を出している
+    clearBlockedHover();
+    hoverBlockedEl = el;
+    hoverBlockedEl.style.outline = '3px solid #ef4444';
+    hoverBlockedEl.style.outlineOffset = '-3px';
+  }
+
+  function clearBlockedHover() {
+    if (hoverBlockedEl) {
+      hoverBlockedEl.style.outline = '';
+      hoverBlockedEl.style.outlineOffset = '';
+      hoverBlockedEl = null;
     }
   }
 
@@ -3372,6 +3411,7 @@ function renderCreatedList() {
   function endDrag() {
     if (!dragEl) return;
     clearHoverFolder(); // ★ ドロップ時にフォルダのハイライト・自動オープン待ちタイマーを解除する
+    clearBlockedHover(); // ★ 追加：赤枠（移動不可）が出たままだった場合も解除する
     if (autoScrollRAF !== null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
     dragEl.classList.remove('dragging');
     dragEl.style.transform = '';
