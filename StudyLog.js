@@ -1563,10 +1563,13 @@ async function timerApiStop() {
 
 // ★ 追加：CardMaker（別ページ、Cardmaker.jsのmaybeAutoStartStudyTimer参照）が
 //   「タイマーが止まっていたので自動的に開始した」場合、localStorageに控えて
-//   おいたメモを、このタイマーを停止したときの確認画面に引き継ぐ。
+//   おいたメモ・科目を、このタイマーを停止したときの確認画面に引き継ぐ。
+//   （通常はCardMaker側のfinishAutoTimerIfPendingが自動で保存まで終えるため、
+//   ここに残ったまま＝科目が分からず自動保存できなかったケースが主に該当する）。
 //   1回読んだら（保存に至ったかどうかに関わらず）必ず消費し、次の無関係な
 //   タイマーには絶対に持ち越さない。あまりに古い（例：開始したまま何日も
 //   放置していた）記録も、誤って別の意図の記録に紛れ込まないよう無視する。
+//   戻り値：{ memo, subject } または null（subjectは分からなければnull）。
 function consumePendingTimerMemo() {
   var KEY = "cm_pending_timer_memo";
   try {
@@ -1577,7 +1580,7 @@ function consumePendingTimerMemo() {
     if (!data || !data.memo || !data.ts) return null;
     var ONE_DAY_MS = 24 * 60 * 60 * 1000;
     if (Date.now() - data.ts > ONE_DAY_MS) return null;
-    return data.memo;
+    return { memo: data.memo, subject: data.subject || null };
   } catch (e) { return null; }
 }
 
@@ -1823,10 +1826,10 @@ async function timerStop() {
   startSyncPolling(); // ★ 確認画面を見ている間も、他端末での保存/破棄を検知できるようにする
 
   // ★ 追加：CardMakerでのプレイ開始がこのタイマーを自動的に始めていた場合、
-  //   そのメモを引き継ぐ（consumePendingTimerMemo参照）。保存に至らず破棄
-  //   されるケースも含め、停止のたびに必ず1回だけ消費する（次回以降の
+  //   そのメモ・科目を引き継ぐ（consumePendingTimerMemo参照）。保存に至らず
+  //   破棄されるケースも含め、停止のたびに必ず1回だけ消費する（次回以降の
   //   無関係なタイマーに古いメモが紛れ込まないようにするため）。
-  var pendingMemo = consumePendingTimerMemo();
+  var pending = consumePendingTimerMemo();
 
   var mins = Math.floor(timerSec / 60);
   if (mins < 1) {
@@ -1838,7 +1841,16 @@ async function timerStop() {
   document.getElementById("timer-confirm").style.display = "block";
   document.getElementById("conf-time").textContent       = mins + "分 " + pad(timerSec % 60) + "秒";
   document.getElementById("conf-time").dataset.min       = mins;
-  if (pendingMemo) document.getElementById("conf-memo").value = pendingMemo;
+  if (pending) {
+    document.getElementById("conf-memo").value = pending.memo;
+    if (pending.subject) {
+      var subjSel = document.getElementById("conf-subject");
+      // ★ SUBJECTSに無い値（サーバーのチャンネル一覧に無い科目名）だと選択肢自体が
+      //   無いので、一致する<option>がある場合だけ選ぶ（無ければ既定のまま）。
+      var hasOption = subjSel && Array.prototype.some.call(subjSel.options, function (o) { return o.value === pending.subject; });
+      if (hasOption) subjSel.value = pending.subject;
+    }
+  }
 }
 
 async function saveTimer() {

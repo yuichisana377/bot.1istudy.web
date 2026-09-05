@@ -978,9 +978,14 @@ function showCmChoiceDialog({ title, desc = '', choices, cancelLabel = 'キャ�
 
 // ── ルーター ──────────────────────────
 function showScreen(id) {
+  // ★ 追加：学習画面（screen-study）を離れる瞬間（完走を待たずに途中で戻る場合）を検出する。
+  //   完走時（studyIdx>=studyCards.lengthでstudy-doneを表示する分岐）はscreen-study自体は
+  //   アクティブなままなのでここでは検出できず、renderStudyCard側で別途呼んでいる。
+  const wasStudying = id !== 'study' && document.getElementById('screen-study')?.classList.contains('active');
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + id).classList.add('active');
   window.scrollTo(0, 0);
+  if (wasStudying) finishAutoTimerIfPending(); // ★ 追加：途中で学習を終えたので、自動計測していれば止めて記録する
   if (id === 'list') {
     decks = loadDecks();
     folders = loadFoldersCache();
@@ -4350,7 +4355,7 @@ function updateUnderstandingBadgeForCurrentCard() {
 //     メモ欄へ自動入力する）。
 //   ・完全にベストエフォート：ログインしていない／通信に失敗した場合は
 //     何もせず、プレイ自体は止めない。
-async function maybeAutoStartStudyTimer(memo) {
+async function maybeAutoStartStudyTimer(memo, subject) {
   try {
     const session = getLoginSession();
     if (!session || !session.session_token || !GUILD_ID) return;
@@ -4369,8 +4374,89 @@ async function maybeAutoStartStudyTimer(memo) {
     });
     const started = await startRes.json();
     if (!started.ok) return;
-    localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, ts: Date.now() }));
+    // ★ このタイマーがCardMaker発（＝自分で片付ける責任がある）ことの目印として、
+    //   停止・保存されるまでlocalStorageに残しておく（finishAutoTimerIfPending参照）。
+    localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, subject: subject || null, ts: Date.now() }));
   } catch (e) {} // 通信失敗時は何もしない（プレイ自体は止めない）
+}
+
+// ★ 追加：CardMakerでの学習が終わったとき（最後まで完走 or 途中で画面を離れた）、
+//   このプレイがきっかけで自動開始したタイマー（cm_pending_timer_memoが目印）が
+//   まだ動いていれば、自動的に止めて勉強ログへ記録する。
+//   ・「途中終了だとカウントされ続けてしまう」という指摘を受けて追加。
+//   ・科目（deck.subject）が分からない場合、/add_study_logは科目必須のため
+//     自動保存できない。その場合はサーバー側を「一時停止」のままにしておき
+//     （記録は失わない）、次にStudyLogを開いたときに手動で保存できるように
+//     しておく（そこでもメモ・分かっていれば科目は自動入力される）。
+//   ・完全にベストエフォート：途中で失敗しても、サーバー側は「一時停止」の
+//     ままなのでデータは失われない（後でStudyLog側から手動で扱える）。
+async function finishAutoTimerIfPending() {
+  try {
+    const raw = localStorage.getItem('cm_pending_timer_memo');
+    if (!raw) return;
+    const pending = JSON.parse(raw);
+    if (!pending || !pending.memo) { localStorage.removeItem('cm_pending_timer_memo'); return; }
+
+    const session = getLoginSession();
+    if (!session || !session.session_token || !GUILD_ID) return;
+
+    const qs = new URLSearchParams({ guild_id: GUILD_ID });
+    const stateRes = await fetch(`${API_BASE}timer_state?${qs.toString()}`, {
+      cache: 'no-store', signal: AbortSignal.timeout(5000),
+      headers: { 'Authorization': 'Bearer ' + session.session_token },
+    });
+    const state = await stateRes.json();
+    if (!state.ok || state.state !== 'running') {
+      // 既に本人が別の画面（StudyLog等）で止めている等、このプレイ発の予約は
+      // もう役目を終えているので消す。
+      localStorage.removeItem('cm_pending_timer_memo');
+      return;
+    }
+
+    const pauseRes = await fetch(`${API_BASE}timer_pause`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const paused = await pauseRes.json();
+    if (!paused.ok) return; // 失敗時は何もしない（サーバー側はrunningのまま残る＝データは失われない）
+
+    const mins = Math.floor((paused.accumulated_sec || 0) / 60);
+    if (mins < 1) {
+      // 1分未満は記録の価値が無い（StudyLog側の既存ルールと同じ）ので破棄する
+      await fetch(`${API_BASE}timer_stop`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
+        signal: AbortSignal.timeout(5000),
+      });
+      localStorage.removeItem('cm_pending_timer_memo');
+      return;
+    }
+
+    if (!pending.subject) return; // 科目不明のため自動保存できない。休憩中のまま残す。
+
+    const saveRes = await fetch(`${API_BASE}add_study_log`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        guild_id: GUILD_ID, session_token: session.session_token,
+        date: new Date().toISOString().slice(0, 10),
+        subject: pending.subject, minutes: mins, memo: pending.memo,
+        student_id: session.id, nickname: session.nickname, method: 'timer',
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const saved = await saveRes.json();
+    if (saved.ok) {
+      await fetch(`${API_BASE}timer_stop`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
+        signal: AbortSignal.timeout(5000),
+      });
+      localStorage.removeItem('cm_pending_timer_memo');
+    }
+    // 保存に失敗した場合は何もしない：サーバー側は一時停止のまま残るので、
+    // 後でStudyLog側から手動保存／破棄できる（データは失われない）。
+  } catch (e) {} // ベストエフォート：失敗してもプレイの終了自体は止めない
 }
 
 // ★ 学習の続きから再開するための進捗保存・読込・削除
@@ -4797,7 +4883,9 @@ async function startStudyMode(mode) {
   document.getElementById('study-content').style.display = 'flex';
   renderStudyCard();
   loadUnderstandingBadge(); // ★ 追加：みんなの「わかる率」を右上に読み込む（非同期・表示はブロックしない）
-  maybeAutoStartStudyTimer(`CardMaker「${studyBaseTitle}」をプレイ`); // ★ 追加：勉強ログのタイマーが止まっていれば自動計測を始める（非同期・表示はブロックしない）
+  // ★ 追加：勉強ログのタイマーが止まっていれば自動計測を始める（非同期・表示はブロックしない）。
+  //   科目はプレイ中のデッキのもの（フォルダをまとめてプレイ中は科目が1つに定まらないため無し）を引き継ぐ。
+  maybeAutoStartStudyTimer(`CardMaker「${studyBaseTitle}」をプレイ`, studyIsFolder ? null : (quizDeck && quizDeck.subject));
 }
 
 // ============================================================
@@ -5241,6 +5329,7 @@ function renderStudyCard() {
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
   if (studyIdx >= studyCards.length) {
     updateUnderstandingBadgeForCurrentCard(); // ★ 追加：完了画面には「今のカード」が無いので隠す
+    finishAutoTimerIfPending(); // ★ 追加：最後まで完走したので、自動計測していれば止めて記録する
     document.getElementById('study-content').style.display = 'none';
     document.getElementById('study-done').style.display    = 'flex';
     document.getElementById('study-prog-fill').style.width  = '100%';
