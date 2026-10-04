@@ -416,13 +416,19 @@ async function loadPlans() {
   }
   document.getElementById('plan-loading').style.display = 'none';
   renderPlans();
-  scrollToToday();
 
   // ② 続けて、過去分を直近から1ページ分だけ自動で追加読み込みする
   //   （まだ多く残っている場合は「もっと読み込む」ボタンで手動追加）
   //   ★ ①が失敗した状態で②まで走らせても混乱するだけなので、①が
   //   成功したときだけ行う。
-  if (!plansLoadFailed) await loadMorePastPlans();
+  if (!plansLoadFailed) {
+    await loadMorePastPlans();
+    // 過去分の追加で一覧DOMが再描画されるため、その後に1回だけ今日へ移動する。
+    // これで「一瞬だけ今日へ移動 → 再描画で先頭へ戻る」を防ぐ。
+    requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
+  } else {
+    requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
+  }
 }
 
 async function fetchFutureSchedule() {

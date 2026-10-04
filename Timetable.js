@@ -1580,7 +1580,13 @@ async function submitAdd() {
   const note = document.getElementById('add-note').value.trim();
   const contentToSend = note ? `${content}${NOTE_SEP}${note}` : content;
 
-  const body = { guild_id: GUILD_ID, date, subject, category, content: contentToSend };
+  const session = requireLoginOrRedirect();
+  if (!session) return;
+  const body = {
+    guild_id: GUILD_ID,
+    session_token: session.session_token,
+    date, subject, category, content: contentToSend
+  };
 
   if (POINT_CATEGORIES.includes(category)) {
     const points = selectedPoints['add'];
@@ -1614,7 +1620,13 @@ async function submitAdd() {
 
 async function submitEdit() {
   if (!editTarget) { showErr('edit-err', '予定を選択してください'); return; }
-  const body = { guild_id: GUILD_ID, target: editTarget };
+  const session = requireLoginOrRedirect();
+  if (!session) return;
+  const body = {
+    guild_id: GUILD_ID,
+    session_token: session.session_token,
+    target: editTarget
+  };
   const d = calState['edit']?.selected; if (d) body.date = d;
   const s = document.getElementById('edit-subject').value;       if (s) body.subject = s;
   const c = getCatValue('edit');                                   if (c) body.category = c;
@@ -1649,11 +1661,17 @@ async function submitEdit() {
 
 async function submitDelete() {
   if (!delTarget) return;
+  const session = requireLoginOrRedirect();
+  if (!session) return;
   const btn = document.querySelector('#del-confirm .btn-danger');
   setLoading(btn, '削除中…', true);
   try {
     const res = await api('/delete_schedule', {
-      method: 'POST', body: JSON.stringify({ guild_id: GUILD_ID, target: delTarget })
+      method: 'POST', body: JSON.stringify({
+        guild_id: GUILD_ID,
+        session_token: session.session_token,
+        target: delTarget
+      })
     });
     resetLoading(btn, '削除する');
     if (res.ok) {
