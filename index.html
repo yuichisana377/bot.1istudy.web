@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>メンテナンス中 | 勉強会web</title>
+<style>
+  :root {
+    --bg: #eef1f3;
+    --ink: #1d2a33;
+    --sub: #55646f;
+    --line: #c9d2d8;
+    --tape: #f2b600;
+    --link: #0b5c8f;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141b20;
+      --ink: #e8eef2;
+      --sub: #9aa8b2;
+      --line: #2e3a42;
+      --link: #7cc4f0;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", Meiryo, sans-serif;
+    line-height: 1.8;
+  }
+
+  /* 工事テープ風の帯(この画面で唯一動く要素) */
+  .tape {
+    height: 28px;
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--tape) 0 20px,
+      #1d2a33 20px 40px
+    );
+    background-size: 56.57px 56.57px;
+    animation: slide 3s linear infinite;
+  }
+  @keyframes slide {
+    to { background-position: 56.57px 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tape { animation: none; }
+  }
+
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 12vh 1.5rem 3rem;
+  }
+
+  h1 {
+    margin: 0 0 1.25rem;
+    font-size: clamp(1.9rem, 6vw, 2.75rem);
+    font-weight: 800;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+  }
+
+  .lead {
+    margin: 0 0 2.5rem;
+    color: var(--sub);
+  }
+
+  dl {
+    margin: 0 0 2.5rem;
+    border-top: 1px solid var(--line);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: 1rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  dt { margin: 0; color: var(--sub); font-weight: 700; }
+  dd { margin: 0; }
+
+  .note { margin: 0 0 1rem; color: var(--sub); font-size: 0.9rem; }
+
+  a { color: var(--link); text-underline-offset: 0.2em; }
+  a:focus-visible { outline: 3px solid var(--tape); outline-offset: 3px; border-radius: 2px; }
+
+  footer {
+    padding: 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--sub);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+
+  @media (max-width: 480px) {
+    .row { grid-template-columns: 1fr; gap: 0.1rem; }
+  }
+</style>
+</head>
+<body>
+  <div class="tape" aria-hidden="true"></div>
+
+  <main>
+    <h1>ただいまメンテナンス中です</h1>
+    <p class="lead">
+      サービスの品質向上のため、システムの点検を行っています。
+      ご不便をおかけしますが、終了までしばらくお待ちください。
+    </p>
+
+    <dl>
+      <div class="row">
+        <dt>メンテナンス時間</dt>
+        <dd>2026年10月22日(木)17:00 〜 未定</dd>
+      </div>
+      <div class="row">
+        <dt>影響のある機能</dt>
+        <dd>ログイン、データの閲覧・更新など、すべての機能</dd>
+      </div>
+    </dl>
+
+    <p class="note">作業の都合により、終了時刻が前後する場合があります。</p>
+    <p class="note">
+      できるだけ急ぎます。
+    </p>
+  </main>
+
+  <footer>&copy; 2026 chiro377</footer>
+</body>
+</html>
