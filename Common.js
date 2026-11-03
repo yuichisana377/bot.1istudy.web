@@ -1,0 +1,136 @@
+// ============================================================
+//  Common.js — 複数ページで同一だった共通関数（ログインセッション・ドロワー等）
+//  ★ 関数宣言のみ。SESSION_KEY / LOGIN_PATH / prefetchOtherPages は
+//    各ページのJS側で定義されたものを呼び出し時に参照する。
+//    const/let の新規宣言は、各ページと名前が衝突するのでここには置かないこと。
+//    ページ固有の版（StudyLog.js・TanCheck.js の openDrawer 等、Cardmaker.js・
+//    StudyLog.js・TanCheck.js の renderDrawerAccount）は各ページに残してある。
+// ============================================================
+function getLoginSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
+async function digestMessage(message) {
+  const msgUint8 = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function openDrawer() {
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+  prefetchOtherPages(); // ★ 追加：メニューを開いた瞬間に他ページを裏で先読み
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+
+function requireLoginOrRedirect() {
+  const s = getLoginSession();
+  if (!s || !s.session_token) {
+    sessionStorage.setItem('post_login_redirect', location.href);
+    location.href = LOGIN_PATH;
+    return null;
+  }
+  return s;
+}
+
+function renderDrawerAccount() {
+  const el = document.getElementById('drawer-account');
+  if (!el) return;
+  el.innerHTML = '';
+  el.classList.remove('is-open');
+  const s = getLoginSession();
+  if (!(s && s.session_token && s.nickname)) {
+    const link = document.createElement('a');
+    link.className = 'drawer-account-login-link';
+    link.href = LOGIN_PATH;
+    link.textContent = 'ログインしていません';
+    el.appendChild(link);
+    return;
+  }
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'drawer-account-btn';
+
+  const avatar = document.createElement('span');
+  avatar.className = 'drawer-account-avatar';
+  avatar.textContent = s.nickname.slice(0, 2).toUpperCase();
+  if (s.color) avatar.style.background = s.color;
+  if (s.text_color) avatar.style.color = s.text_color;
+  btn.appendChild(avatar);
+
+  const names = document.createElement('span');
+  names.className = 'drawer-account-names';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'drawer-account-name';
+  nameEl.textContent = s.nickname;
+  names.appendChild(nameEl);
+  if (s.student_id) {
+    const idEl = document.createElement('span');
+    idEl.className = 'drawer-account-id';
+    idEl.textContent = s.student_id;
+    names.appendChild(idEl);
+  }
+  btn.appendChild(names);
+
+  const chevron = document.createElement('span');
+  chevron.className = 'drawer-account-chevron';
+  chevron.textContent = '›';
+  btn.appendChild(chevron);
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    el.classList.toggle('is-open');
+  });
+
+  const menu = document.createElement('div');
+  menu.className = 'drawer-account-menu';
+
+  // ★ アカウント設定（Discord連携・パスワード変更）は勉強ログページに
+  //   実装があるので、そちらを開く（?openAccount=1 を見て自動でモーダルを開く）。
+  const settingsLink = document.createElement('a');
+  settingsLink.className = 'drawer-account-menu-item';
+  settingsLink.href = '/StudyLog.html?openAccount=1';
+  settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
+  menu.appendChild(settingsLink);
+
+  // ★ 複数サーバー対応：別のDiscordサーバーへ切り替える（ログアウトしてから
+  //   再度ログインしてもらう＝どのサーバーへ行くかはログイン時にサーバー側が
+  //   自動判定する。Login.js参照）。
+  // ★ 修正：以前は「複数サーバーに参加している人だけに表示」していたが、
+  //   その判定（multi_guild）は前回ログイン時点のスナップショットのため、
+  //   ログイン後に別のサーバーへBotを追加しても反映されず、切り替える
+  //   手段そのものが無くなってしまう不具合があった。常に表示する方式に変更。
+  const switchBtn = document.createElement('button');
+  switchBtn.type = 'button';
+  switchBtn.className = 'drawer-account-menu-item';
+  switchBtn.innerHTML = Icons.html('refresh', {size:16}) + ' サーバーを切り替える';
+  switchBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem('current_guild');
+    location.href = LOGIN_PATH;
+  });
+  menu.appendChild(switchBtn);
+
+  const logoutBtn = document.createElement('button');
+  logoutBtn.type = 'button';
+  logoutBtn.className = 'drawer-account-menu-item is-danger';
+  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
+  logoutBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
+    if (!ok) return;
+    localStorage.removeItem(SESSION_KEY);
+    location.href = LOGIN_PATH;
+  });
+  menu.appendChild(logoutBtn);
+
+  el.appendChild(btn);
+  el.appendChild(menu);
+}

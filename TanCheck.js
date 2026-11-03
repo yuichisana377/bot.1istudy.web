@@ -486,9 +486,6 @@ renderAllSubjects();
 //  ドロワー・ログイン中表示（他ページと共通の挙動）
 //  ★ このページ自体はログイン不要（入力はlocalStorageのみで完結する）。
 // ============================================================
-function getLoginSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
 function renderDrawerAccount() {
   const el = document.getElementById('drawer-account');
   if (!el) return;
@@ -592,10 +589,6 @@ renderDrawerAccount();
 function openDrawer() {
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('open');
-}
-function closeDrawer() {
-  document.getElementById('drawer').classList.remove('open');
-  document.getElementById('drawer-overlay').classList.remove('open');
 }
 document.querySelectorAll('.drawer-item[href]').forEach(a => {
   a.addEventListener('click', (e) => {

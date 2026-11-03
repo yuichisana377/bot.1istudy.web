@@ -21,9 +21,6 @@ if (!GUILD_ID) {
 const LOGIN_PATH = '/Login.html';
 const SESSION_KEY = 'sl_session';
 
-function getLoginSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
 
 // ── 未ログインならログイン画面へ（Cardmaker.js と同じ考え方） ──
 (function () {

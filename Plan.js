@@ -47,121 +47,13 @@ if (!GUILD_ID) {
 //   Notice.js/Cardmaker.js と同じ sl_session キーからセッションを読む。
 const SESSION_KEY = 'sl_session';
 const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.jsのREDIRECT_PATHと同じ基準）
-function getLoginSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
 // ★ 追加：変更系の操作（追加・編集・削除）を行う直前に呼ぶ。未ログインなら
 //   ログイン画面へ誘導し、falseを返す（呼び出し側はそのまま処理を中断する）。
 //   ログイン後にこのページへ戻ってこられるよう、遷移先をsessionStorageに記憶しておく
 //  （Login.js側の getRedirectTarget() が post_login_redirect を見て使う）。
-function requireLoginOrRedirect() {
-  const s = getLoginSession();
-  if (!s || !s.session_token) {
-    sessionStorage.setItem('post_login_redirect', location.href);
-    location.href = LOGIN_PATH;
-    return null;
-  }
-  return s;
-}
 // ★ 追加：ドロワー下部に「だれとしてログインしているか」を表示する（2026/08/19）
 //   StudyLog.jsのヘッダーアバターと同じ見た目（色付き丸アバター＋ニックネーム）。
 //   タップでミニメニュー（アカウント設定／ログアウト）を開閉する。
-function renderDrawerAccount() {
-  const el = document.getElementById('drawer-account');
-  if (!el) return;
-  el.innerHTML = '';
-  el.classList.remove('is-open');
-  const s = getLoginSession();
-  if (!(s && s.session_token && s.nickname)) {
-    const link = document.createElement('a');
-    link.className = 'drawer-account-login-link';
-    link.href = LOGIN_PATH;
-    link.textContent = 'ログインしていません';
-    el.appendChild(link);
-    return;
-  }
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'drawer-account-btn';
-
-  const avatar = document.createElement('span');
-  avatar.className = 'drawer-account-avatar';
-  avatar.textContent = s.nickname.slice(0, 2).toUpperCase();
-  if (s.color) avatar.style.background = s.color;
-  if (s.text_color) avatar.style.color = s.text_color;
-  btn.appendChild(avatar);
-
-  const names = document.createElement('span');
-  names.className = 'drawer-account-names';
-  const nameEl = document.createElement('span');
-  nameEl.className = 'drawer-account-name';
-  nameEl.textContent = s.nickname;
-  names.appendChild(nameEl);
-  if (s.student_id) {
-    const idEl = document.createElement('span');
-    idEl.className = 'drawer-account-id';
-    idEl.textContent = s.student_id;
-    names.appendChild(idEl);
-  }
-  btn.appendChild(names);
-
-  const chevron = document.createElement('span');
-  chevron.className = 'drawer-account-chevron';
-  chevron.textContent = '›';
-  btn.appendChild(chevron);
-
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    el.classList.toggle('is-open');
-  });
-
-  const menu = document.createElement('div');
-  menu.className = 'drawer-account-menu';
-
-  // ★ アカウント設定（Discord連携・パスワード変更）は勉強ログページに
-  //   実装があるので、そちらを開く（?openAccount=1 を見て自動でモーダルを開く）。
-  const settingsLink = document.createElement('a');
-  settingsLink.className = 'drawer-account-menu-item';
-  settingsLink.href = '/StudyLog.html?openAccount=1';
-  settingsLink.innerHTML = Icons.html('settings', {size:16}) + ' アカウント設定（Discord連携・パスワード変更）';
-  menu.appendChild(settingsLink);
-
-  // ★ 複数サーバー対応：別のDiscordサーバーへ切り替える（ログアウトしてから
-  //   再度ログインしてもらう＝どのサーバーへ行くかはログイン時にサーバー側が
-  //   自動判定する。Login.js参照）。
-  // ★ 修正：以前は「複数サーバーに参加している人だけに表示」していたが、
-  //   その判定（multi_guild）は前回ログイン時点のスナップショットのため、
-  //   ログイン後に別のサーバーへBotを追加しても反映されず、切り替える
-  //   手段そのものが無くなってしまう不具合があった。常に表示する方式に変更。
-  const switchBtn = document.createElement('button');
-  switchBtn.type = 'button';
-  switchBtn.className = 'drawer-account-menu-item';
-  switchBtn.innerHTML = Icons.html('refresh', {size:16}) + ' サーバーを切り替える';
-  switchBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem('current_guild');
-    location.href = LOGIN_PATH;
-  });
-  menu.appendChild(switchBtn);
-
-  const logoutBtn = document.createElement('button');
-  logoutBtn.type = 'button';
-  logoutBtn.className = 'drawer-account-menu-item is-danger';
-  logoutBtn.innerHTML = Icons.html('logout', {size:16}) + ' ログアウト';
-  logoutBtn.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const ok = await showAppConfirm({ title: 'ログアウトしますか？', okLabel: 'ログアウト', danger: true });
-    if (!ok) return;
-    localStorage.removeItem(SESSION_KEY);
-    location.href = LOGIN_PATH;
-  });
-  menu.appendChild(logoutBtn);
-
-  el.appendChild(btn);
-  el.appendChild(menu);
-}
 document.addEventListener('click', (e) => {
   const el = document.getElementById('drawer-account');
   if (el && !el.contains(e.target)) el.classList.remove('is-open');
@@ -199,7 +91,6 @@ const NOTE_SEP = '\n📝備考：';
 // ============================================================
 let plans    = [];
 let channels = [];
-let calState = {};
 let editTarget = null;
 let delTarget  = null;
 let detailTarget = null; // ★ 詳細モーダルで表示中の予定のlabel
@@ -1144,92 +1035,11 @@ function onCatSel(prefix) {
 // ============================================================
 //  カスタムカレンダー
 // ============================================================
-const CAL_D = ['日','月','火','水','木','金','土'];
 
-function initCal(id, allowPast) {
-  const now = new Date();
-  calState[id] = { year: now.getFullYear(), month: now.getMonth(), selected: null, allowPast };
-  renderCal(id);
-}
-function resetCal(id, placeholder) {
-  if (calState[id]) { calState[id].selected = null; renderCal(id); }
-  const el = document.getElementById(id + '-date-text');
-  if (el) { el.textContent = placeholder; el.style.color = 'var(--text-tertiary)'; }
-}
-function renderCal(id) {
-  const s = calState[id]; if (!s) return;
-  const el = document.getElementById('cal-' + id); if (!el) return;
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const firstDay = new Date(s.year, s.month, 1).getDay();
-  const dim = new Date(s.year, s.month+1, 0).getDate();
-  const CAL_M = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-
-  let html = `<div class="cal-head">
-    <button class="cal-nav-btn" onclick="moveCal(event,'${id}',-1)">‹</button>
-    <span>${s.year}年 ${CAL_M[s.month]}</span>
-    <button class="cal-nav-btn" onclick="moveCal(event,'${id}',1)">›</button>
-  </div><div class="cal-grid">`;
-  CAL_D.forEach(d => { html += `<div class="cal-dow">${d}</div>`; });
-  for (let i = 0; i < firstDay; i++) html += `<div class="cal-day emp"></div>`;
-  for (let d = 1; d <= dim; d++) {
-    const ds = `${s.year}-${String(s.month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isPast = !s.allowPast && ds < todayStr;
-    let cls = 'cal-day';
-    if (isPast) cls += ' dis';
-    if (ds === todayStr && ds !== s.selected) cls += ' tod';
-    if (ds === s.selected) cls += ' sel';
-    const click = isPast ? '' : `onclick="pickDate(event,'${id}','${ds}')"`;
-    html += `<div class="${cls}" ${click}>${d}</div>`;
-  }
-  el.innerHTML = html + '</div>';
-}
-function moveCal(e, id, dir) {
-  e.stopPropagation();
-  const s = calState[id];
-  s.month += dir;
-  if (s.month < 0)  { s.month = 11; s.year--; }
-  if (s.month > 11) { s.month = 0;  s.year++; }
-  renderCal(id);
-}
-function pickDate(e, id, ds) {
-  e.stopPropagation();
-  calState[id].selected = ds;
-  const [y, m, d] = ds.split('-');
-  const el = document.getElementById(id + '-date-text');
-  el.textContent = `${y}年${parseInt(m)}月${parseInt(d)}日`;
-  el.style.color = 'var(--text)';
-  document.getElementById('cal-' + id).classList.remove('open');
-  renderCal(id);
-}
-function toggleCal(e, id) {
-  e.stopPropagation();
-  const el = document.getElementById('cal-' + id);
-  const wasOpen = el.classList.contains('open');
-  document.querySelectorAll('.cal-pop').forEach(p => p.classList.remove('open'));
-  if (!wasOpen) {
-    el.classList.add('open');
-    setTimeout(() => {
-      const rect  = el.getBoundingClientRect();
-      const modal = el.closest('.modal');
-      if (modal && rect.bottom > window.innerHeight - 20) {
-        modal.scrollBy({ top: rect.bottom - window.innerHeight + 30, behavior: 'smooth' });
-      }
-    }, 30);
-  }
-}
-document.addEventListener('click', e => {
-  if (!e.target.closest('.date-wrap')) document.querySelectorAll('.cal-pop').forEach(p => p.classList.remove('open'));
-});
 
 // ============================================================
 //  ドロワー
 // ============================================================
-function openDrawer() {
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-  prefetchOtherPages(); // ★ 追加：メニューを開いた瞬間に他ページを裏で先読み
-}
 // ★ 追加：ドロワーを開いた時点（＝まだどのページに行くか決める前）で、
 //   他ページのJS/CSSをバックグラウンドで先読み（prefetch）しておく。
 //   実際にメニューをタップしたときには既にブラウザキャッシュに入っている
@@ -1250,10 +1060,6 @@ function prefetchOtherPages() {
     link.href = href;
     document.head.appendChild(link);
   });
-}
-function closeDrawer() {
-  document.getElementById('drawer').classList.remove('open');
-  document.getElementById('drawer-overlay').classList.remove('open');
 }
 
 // ★ 追加：ドロワーのメニューをタップした瞬間に、読み込み中であることが
@@ -1295,12 +1101,6 @@ function toggleFilterBar() {
 let lastScheduleHash = null;
 
 // SHA-256 ハッシュ計算
-async function digestMessage(message) {
-  const msgUint8 = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-}
 
 // 予定JSONの変更チェック
 // ★ 変更点：location.reload() をやめ、データだけ更新してその場で再描画する。

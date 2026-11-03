@@ -40,9 +40,6 @@ const LOGIN_PATH = '/Login.html'; // ★ ログインページのパス（Login.
 
 // ── ログインセッション（Login.js と共通） ──────
 const SESSION_KEY = 'sl_session';
-function getLoginSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
 
 // ★ StudyLog.jsと同様、開いた瞬間に未ログイン（またはsession_tokenの無い
 //   パスワード未対応の古い形式のセッション）ならログイン画面へ誘導する。
@@ -5713,11 +5710,6 @@ function closeImgLightbox() {
 }
 
 // ── ドロワー ──────────────────────────
-function openDrawer() {
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-  prefetchOtherPages(); // ★ 追加：メニューを開いた瞬間に他ページを裏で先読み
-}
 // ★ 追加：ドロワーを開いた時点（＝まだどのページに行くか決める前）で、
 //   他ページのJS/CSSをバックグラウンドで先読み（prefetch）しておく。
 //   実際にメニューをタップしたときには既にブラウザキャッシュに入っている
@@ -5738,10 +5730,6 @@ function prefetchOtherPages() {
     link.href = href;
     document.head.appendChild(link);
   });
-}
-function closeDrawer() {
-  document.getElementById('drawer').classList.remove('open');
-  document.getElementById('drawer-overlay').classList.remove('open');
 }
 
 // ★ 追加：ドロワーのメニューをタップした瞬間に、読み込み中であることが
@@ -6357,12 +6345,6 @@ startRealtimeUpdates();
 let lastCardsHash = null;
 
 // SHA-256 ハッシュ計算
-async function digestMessage(message) {
-  const msgUint8 = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-}
 
 // 公開デッキJSONの変更チェック
 // ★ 変更点：location.reload() をやめ、画面を邪魔しない更新に変更。
