@@ -359,11 +359,17 @@ function getTimetableForDate(dateStr) {
 // ============================================================
 //  週ナビ
 // ============================================================
+// ★ 指定日を含む週の月曜日（日曜は直前の月曜）を返す
+function getMonday(date) {
+  const mon = new Date(date);
+  mon.setHours(0, 0, 0, 0);
+  const day = mon.getDay();
+  mon.setDate(mon.getDate() - (day === 0 ? 6 : day - 1));
+  return mon;
+}
 function getWeekDates() {
-  const now = new Date();
-  const day = now.getDay();
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + weekOffset * 7);
+  const mon = getMonday(new Date());
+  mon.setDate(mon.getDate() + weekOffset * 7);
   return DAY_KEYS.map((_, i) => {
     const d = new Date(mon);
     d.setDate(mon.getDate() + i);
@@ -567,7 +573,7 @@ function buildMonthCalendarHtml() {
   for (let i = 0; i < firstDow; i++) cells += `<div class="mc-day mc-empty"></div>`;
 
   for (let d = 1; d <= daysInMon; d++) {
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dateStr = getDateStr(new Date(year, month, d));
     const dow     = new Date(year, month, d).getDay();
     const holidayOv = ttOverrides[`holiday:${dateStr}`];
     const hasItems  = getDatePlanItems(dateStr).length > 0;
@@ -678,15 +684,8 @@ function jumpToDayFromMonth() {
   const dayKey = dateToDayKey(monthDetailTarget);
   if (!dayKey) return;
 
-  const now = new Date();
-  const day = now.getDay();
-  const thisMon = new Date(now);
-  thisMon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-
-  const target = new Date(monthDetailTarget + 'T00:00:00');
-  const tDow = target.getDay();
-  const targetMon = new Date(target);
-  targetMon.setDate(target.getDate() - (tDow === 0 ? 6 : tDow - 1));
+  const thisMon   = getMonday(new Date());
+  const targetMon = getMonday(new Date(monthDetailTarget + 'T00:00:00'));
 
   weekOffset  = Math.round((targetMon - thisMon) / (1000*60*60*24*7));
   ttActiveDay = DAY_KEYS.indexOf(dayKey);
@@ -1743,7 +1742,7 @@ function renderCal(id) {
   const s = calState[id]; if (!s) return;
   const el = document.getElementById('cal-' + id); if (!el) return;
   const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const todayStr = getDateStr(now);
   const firstDay = new Date(s.year, s.month, 1).getDay();
   const dim = new Date(s.year, s.month+1, 0).getDate();
 
@@ -1755,7 +1754,7 @@ function renderCal(id) {
   CAL_D.forEach(d => { html += `<div class="cal-dow">${d}</div>`; });
   for (let i = 0; i < firstDay; i++) html += `<div class="cal-day emp"></div>`;
   for (let d = 1; d <= dim; d++) {
-    const ds = `${s.year}-${String(s.month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const ds = getDateStr(new Date(s.year, s.month, d));
     const isPast = !s.allowPast && ds < todayStr;
     let cls = 'cal-day';
     if (isPast) cls += ' dis';
