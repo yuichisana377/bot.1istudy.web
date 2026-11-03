@@ -1614,9 +1614,9 @@ function onCatSel(prefix) {
 }
 
 // ============================================================
-//  カスタムカレンダー（本体は Calendar.js）
+//  カスタムカレンダー（本体は CalendarPicker.js）
 // ============================================================
-// ★ Calendar.js の pickDate から呼ばれる：曜日変更モードで日付を選んだら、
+// ★ CalendarPicker.js の pickDate から呼ばれる：曜日変更モードで日付を選んだら、
 //   入れ替えプレビューを更新（開始日・終了日どちらを変更してもプレビューは開始日ベース）
 function onCalDatePicked(id) {
   if ((id === 'tt-edit' || id === 'tt-edit-end') && ttEditMode === 'day-change') {
