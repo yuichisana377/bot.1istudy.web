@@ -622,6 +622,13 @@ function monthGoToday() {
 function onMonthDayClick(dateStr) {
   monthDetailTarget = dateStr;
 
+  // ★ 平日なら、詳細モーダルを出さず上の時間割をその日へ直接ジャンプさせる。
+  //   土日（時間割が無い日）だけ従来通り詳細モーダルで予定・休みを表示する。
+  if (dateToDayKey(dateStr)) {
+    jumpToDayFromMonth();
+    return;
+  }
+
   const d = new Date(dateStr + 'T00:00:00');
   const dowLabel  = ['日','月','火','水','木','金','土'][d.getDay()];
   const holidayOv = ttOverrides[`holiday:${dateStr}`];
