@@ -3,9 +3,13 @@
 //  ★ 日付を選んだ後にページ固有の処理をしたい場合は、ページ側で
 //    onCalDatePicked(id, dateStr) を定義すればここから呼ばれる。
 // ============================================================
-const CAL_D = ['日','月','火','水','木','金','土'];
-const CAL_M = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-let calState = {};
+// ★ 重要：トップレベルの const/let は使わない。ブラウザに古い版の Plan.js /
+//   Timetable.js（同名の const CAL_D / let calState を持つ）がキャッシュされていると、
+//   二重宣言エラーでそのページのJSが丸ごと止まるため（2026/11/04 に実際に発生）。
+//   定数は別名にし、calState は window のプロパティとして持たせる。
+const _CAL_DOW = ['日','月','火','水','木','金','土'];
+const _CAL_MON = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+window.calState = window.calState || {};
 
 function calDateStr(y, m, d) {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -30,10 +34,10 @@ function renderCal(id) {
 
   let html = `<div class="cal-head">
     <button class="cal-nav-btn" onclick="moveCal(event,'${id}',-1)">‹</button>
-    <span>${s.year}年 ${CAL_M[s.month]}</span>
+    <span>${s.year}年 ${_CAL_MON[s.month]}</span>
     <button class="cal-nav-btn" onclick="moveCal(event,'${id}',1)">›</button>
   </div><div class="cal-grid">`;
-  CAL_D.forEach(d => { html += `<div class="cal-dow">${d}</div>`; });
+  _CAL_DOW.forEach(d => { html += `<div class="cal-dow">${d}</div>`; });
   for (let i = 0; i < firstDay; i++) html += `<div class="cal-day emp"></div>`;
   for (let d = 1; d <= dim; d++) {
     const ds = calDateStr(s.year, s.month, d);
