@@ -1784,7 +1784,16 @@ async function fetchAndMergeDecks() {
     //   そのデッキが（本当は正常なのに）永久に開けなくなってしまう。
     //   減っていた場合は未読み込み扱いに戻し、次に開いたときに必ずサーバーから
     //   最新を取り直させることで、この「詰み」を防ぐ。
-    const cachedIsStale = existing && existing.cardsLoaded
+    // ★ 追加：まだサーバーへ反映できていない手元の追加分（CSV一括読み込み直後など）が
+    //   ある間、または今まさにそのデッキを編集中の間は、「サーバーの枚数が少ない」
+    //   ことを“古いキャッシュ”と誤判定してカードを空に戻さない。
+    //   （戻してしまうと、そのまま「保存」した時に空の内容でサーバーを上書きして
+    //   取り込んだカードが消える）
+    const hasUnsyncedLocal = !!existing && (
+      deckSyncDirty.has(existing.id)
+      || (existing.id === currentDeckId
+          && document.querySelector('.screen.active')?.id === 'screen-edit'));
+    const cachedIsStale = existing && existing.cardsLoaded && !hasUnsyncedLocal
       && typeof s.count === 'number' && s.count < existing.cards.length;
     const keepLoadedCards = existing && existing.cardsLoaded && !cachedIsStale;
     return {
@@ -2910,6 +2919,7 @@ async function publishDeck(deckId, isComplete = true) {
       target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
       target.published_by = session ? session.nickname : '匿名';
       target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持（サーバーにも保存済み）
+      deckSyncDirty.delete(deckId); // 公開して保存でサーバーと一致したので未反映の目印を外す
       target.notYetPublished = false; // ★ 追加：「公開して保存」を実際に経たので、以降は未完成／公開済みで判定する
       saveDecks(decks);
     }
@@ -4024,9 +4034,15 @@ async function saveRename() {
 //   これを防ぐため、同期を開始するときは必ず queueSyncDeckToServer() を通し、
 //   強制リロードの直前で waitForPendingSync() を使ってその完了を待ち合わせる。
 const deckSyncPromises = new Map(); // deckId -> 直近の同期処理のPromise
+// ★ 追加：サーバーへ反映できていない（反映中、または失敗した）デッキのid。
+//   fetchAndMergeDecks() がこのデッキのカードを「古いキャッシュ」と誤判定して
+//   空に戻さないための目印。反映が成功した時点で外す。
+const deckSyncDirty = new Set();
 function queueSyncDeckToServer(deck) {
+  deckSyncDirty.add(deck.id);
   const prev = deckSyncPromises.get(deck.id) || Promise.resolve();
-  const next = prev.then(() => syncDeckToServer(deck)).catch(() => false);
+  const next = prev.then(() => syncDeckToServer(deck)).catch(() => false)
+    .then(ok => { if (ok && deckSyncPromises.get(deck.id) === next) deckSyncDirty.delete(deck.id); return ok; });
   deckSyncPromises.set(deck.id, next);
   return next;
 }
@@ -4066,6 +4082,7 @@ async function syncDeckToServer(deck) {
     saveDecks(decks);
     return true;
   } catch (e) {
+    console.warn('[cardmaker] syncDeckToServer failed:', e && e.message ? e.message : e); // 失敗理由の切り分け用
     return false;
   }
 }

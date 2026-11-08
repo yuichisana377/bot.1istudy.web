@@ -130,7 +130,12 @@ async function handleCsvImport(event) {
     renderCreatedList();
     // ★ saveCard() と同様、サーバー登録済みのデッキは追加のたびに反映しておく
     //   （そうしないと次に強制リロードしたときにこの分が消えてしまう）。
-    if (deck.filename) queueSyncDeckToServer(deck);
+    if (deck.filename) {
+      // ★ 反映に失敗した場合は黙って終わらせず知らせる（大量取り込みは10秒の制限に掛かりうる）
+      queueSyncDeckToServer(deck).then(ok => {
+        if (!ok) showBanner('サーバーへの反映に失敗しました（この端末には保存済み）。通信状況を確認し、もう一度「公開して保存」を押してください', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+      });
+    }
   }
 
   const parts = [`${added}枚を追加しました`];
@@ -233,7 +238,12 @@ async function handleChoiceCsvImport(event) {
     document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
     renderCreatedList();
     // ★ handleCsvImport() と同様、サーバー登録済みのデッキは追加のたびに反映しておく
-    if (deck.filename) queueSyncDeckToServer(deck);
+    if (deck.filename) {
+      // ★ 反映に失敗した場合は黙って終わらせず知らせる（大量取り込みは10秒の制限に掛かりうる）
+      queueSyncDeckToServer(deck).then(ok => {
+        if (!ok) showBanner('サーバーへの反映に失敗しました（この端末には保存済み）。通信状況を確認し、もう一度「公開して保存」を押してください', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+      });
+    }
   }
 
   const parts = [`${added}枚を追加しました`];
