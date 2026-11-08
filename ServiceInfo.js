@@ -1,4 +1,4 @@
-// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["ServiceInfo.js"]="3024603234";/*@end*/// ============================================================
 //  サービス情報ページ
 //  → 現状は静的なアップデート履歴を表示するだけなので、
 //    ドロワー（他ページと共通の挙動）の開閉のみ実装
@@ -58,7 +58,7 @@ function prefetchOtherPages() {
   ].forEach(href => {
     const link = document.createElement('link');
     link.rel = 'prefetch';
-    link.href = href;
+    link.href = href + (window.APP_VERSION ? '?v=' + encodeURIComponent(window.APP_VERSION) : '');   // 版付きURLでないと実際の読み込みと一致せず先読みが無駄になる
     document.head.appendChild(link);
   });
 }

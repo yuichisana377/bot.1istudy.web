@@ -1,4 +1,4 @@
-// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="3024603234";/*@end*/// ============================================================
 //  timetable.js — 時間割ページ用スクリプト
 //  timetable.html から読み込む
 // ============================================================
@@ -1646,7 +1646,7 @@ function prefetchOtherPages() {
   ].forEach(href => {
     const link = document.createElement('link');
     link.rel = 'prefetch';
-    link.href = href;
+    link.href = href + (window.APP_VERSION ? '?v=' + encodeURIComponent(window.APP_VERSION) : '');   // 版付きURLでないと実際の読み込みと一致せず先読みが無駄になる
     document.head.appendChild(link);
   });
 }

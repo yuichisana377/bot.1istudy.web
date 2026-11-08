@@ -1,4 +1,4 @@
-// ============================================================ 754
+/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="3024603234";/*@end*/// ============================================================ 754
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
 //  → 累計ポイントはヘッダーバッジに表示
@@ -1998,7 +1998,7 @@ function prefetchOtherPages() {
   ].forEach(href => {
     const link = document.createElement("link");
     link.rel = "prefetch";
-    link.href = href;
+    link.href = href + (window.APP_VERSION ? '?v=' + encodeURIComponent(window.APP_VERSION) : '');   // 版付きURLでないと実際の読み込みと一致せず先読みが無駄になる
     document.head.appendChild(link);
   });
 }

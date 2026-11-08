@@ -2,13 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="app-version" content="3024603234">
+<script src="/Version.js?v=3024603234"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>サービス情報 — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css">
+<link rel="stylesheet" href="/Style.css?v=3024603234">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -164,6 +166,10 @@ window.addEventListener('error', function (e) {
           <ul class="service-update-list">
             <li class="service-update-item">
               <span class="service-update-date">2026/11/08</span>
+              <span class="service-update-text">古い画面データが残っていて修正が反映されない問題への対策を入れました。ページを開いたときやアプリに戻ってきたときに最新版かどうかを自動で確かめ、古ければ自動で読み込み直します（ログイン状態は保たれます）。</span>
+            </li>
+            <li class="service-update-item">
+              <span class="service-update-date">2026/11/08</span>
               <span class="service-update-text">予定の追加・編集・削除に失敗したとき、「エラーが発生しました」だけでなく原因が分かる文言を表示するようにしました。あわせて、予定管理で想定外のエラーが起きると管理者へ自動で通知される仕組みを追加しました。</span>
             </li>
             <li class="service-update-item">
@@ -302,13 +308,13 @@ window.addEventListener('error', function (e) {
 
 </div>
 
-<script src="/Icons.js"></script>
-<script src="/SwipeGuard.js"></script>
-<script src="/Dialog.js"></script>
-<script src="/Common.js"></script>
-<script src="/ServiceInfo.js"></script>
-<script src="/PendingDeleteCheck.js"></script>
-<script src="/PendingShareCheck.js"></script>
-<script src="/QuizRoomNotify.js"></script>
+<script src="/Icons.js?v=3024603234"></script>
+<script src="/SwipeGuard.js?v=3024603234"></script>
+<script src="/Dialog.js?v=3024603234"></script>
+<script src="/Common.js?v=3024603234"></script>
+<script src="/ServiceInfo.js?v=3024603234"></script>
+<script src="/PendingDeleteCheck.js?v=3024603234"></script>
+<script src="/PendingShareCheck.js?v=3024603234"></script>
+<script src="/QuizRoomNotify.js?v=3024603234"></script>
 </body>
 </html>

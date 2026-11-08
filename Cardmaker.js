@@ -1,4 +1,4 @@
-// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="3024603234";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5744,7 +5744,7 @@ function prefetchOtherPages() {
   ].forEach(href => {
     const link = document.createElement('link');
     link.rel = 'prefetch';
-    link.href = href;
+    link.href = href + (window.APP_VERSION ? '?v=' + encodeURIComponent(window.APP_VERSION) : '');   // 版付きURLでないと実際の読み込みと一致せず先読みが無駄になる
     document.head.appendChild(link);
   });
 }
@@ -5800,8 +5800,12 @@ function loadChunk(name, src) {
   if (_chunkPromises[name]) return _chunkPromises[name];
   _chunkPromises[name] = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src;
-    s.onload = () => { _chunkDone.add(name); resolve(); };
+    // ★ キャッシュ対策：画面の版（Version.js が window.APP_VERSION に入れる）を付けて、版が変われば必ず取り直す
+    s.src = src + (window.APP_VERSION ? '?v=' + encodeURIComponent(window.APP_VERSION) : '');
+    s.onload = () => {
+      _chunkDone.add(name); resolve();
+      if (window.__verifyJs) window.__verifyJs();   // 後から読んだJSの版がHTMLと違えば自動リセット
+    };
     s.onerror = () => reject(new Error('chunk load failed: ' + src));
     document.head.appendChild(s);
   });
