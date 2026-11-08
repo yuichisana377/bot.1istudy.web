@@ -261,10 +261,8 @@ async function api(path, opts = {}) {
     reportApiError(path, 'bad_response', res.status, String(e));
     throw e;
   }
-  // 制限付きアカウント（サーバー未参加）の閲覧失敗は仕様どおりなので通知しない（編集系POSTの失敗は通知する）
-  if (data && data.ok === false && !(data.error === 'guild_membership_required' && opts.method !== 'POST')) {
-    reportApiError(path, data.error || 'unknown', res.status, '');
-  }
+  // ★ {ok:false} の失敗は、送られた内容・原因メモ付きでサーバー側が自動通知する（bot.py の
+  //   _auto_report_failed_api）ので、画面側からは報告しない（二重通知を避ける）。
   return data;
 }
 
