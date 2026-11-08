@@ -247,8 +247,25 @@ async function api(path, opts = {}) {
   // ★ 追加：Cardmaker.js等と同じ理由（ブラウザ・中間プロキシのGETキャッシュ対策）。
   //   サーバー側もNO_CACHE_PATHSでCache-Control: no-storeを返すようにしたが、
   //   fetch側でも明示しておくことで二重に確実にする。
-  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { cache: 'no-store', ...opts, headers });
-  return res.json();
+  let res;
+  try {
+    res = await fetch(API_BASE + path.replace(/^\/+/, ''), { cache: 'no-store', ...opts, headers });
+  } catch (e) {
+    reportApiError(path, 'network_error', 0, String(e));   // ★ 管理者へ自動通知（Common.js）
+    throw e;
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    reportApiError(path, 'bad_response', res.status, String(e));
+    throw e;
+  }
+  // 制限付きアカウント（サーバー未参加）の閲覧失敗は仕様どおりなので通知しない（編集系POSTの失敗は通知する）
+  if (data && data.ok === false && !(data.error === 'guild_membership_required' && opts.method !== 'POST')) {
+    reportApiError(path, data.error || 'unknown', res.status, '');
+  }
+  return data;
 }
 
 // ============================================================
@@ -880,6 +897,24 @@ function pickPoints(prefix, val) {
 // ============================================================
 //  API 送信
 // ============================================================
+// サーバーのエラー応答（{ok:false, error:"..."}）を利用者向けの文言にする。
+// 以前は res.message しか見ておらず、原因が全て「エラーが発生しました」に化けていた。
+function apiErrText(res) {
+  if (res && res.message) return res.message;
+  const e = res && res.error;
+  if (!e) return 'エラーが発生しました';
+  const map = {
+    'plan not found': '対象の予定が見つかりません（他の人が先に変更・削除した可能性があります。画面を再読み込みしてください）',
+    'not_logged_in': 'ログインの有効期限が切れています。再ログインしてください',
+    'invalid date': '日付の形式が正しくありません',
+    'invalid points': 'ポイントの値が正しくありません',
+    'guild_membership_required': 'このサーバーのメンバーではないため、編集はできません',
+    'backend_unreachable': 'サーバーに接続できません。しばらくしてからお試しください',
+    'server_error': 'サーバーでエラーが発生しました（管理者に自動で通知しました）',
+  };
+  return map[e] || ('エラーが発生しました（' + e + '）');
+}
+
 async function submitAdd() {
   const session = requireLoginOrRedirect();
   if (!session) return;
@@ -920,7 +955,7 @@ async function submitAdd() {
       resetCal('add', '日付を選択');
       await loadPlans();
     } else {
-      showErr('add-err', res.message || 'エラーが発生しました');
+      showErr('add-err', apiErrText(res));
     }
   } catch(e) {
     resetLoading(btn, '追加する');
@@ -961,7 +996,7 @@ async function submitEdit() {
       await loadPlans();
       renderSelectList('edit-list', 'edit');
     } else {
-      showErr('edit-err', res.message || 'エラーが発生しました');
+      showErr('edit-err', apiErrText(res));
     }
   } catch(e) {
     resetLoading(btn, '保存する');
@@ -987,7 +1022,7 @@ async function submitDelete() {
       await loadPlans();
       renderSelectList('del-list', 'delete');
     } else {
-      showErr('del-err', res.message || 'エラーが発生しました');
+      showErr('del-err', apiErrText(res));
     }
   } catch(e) {
     resetLoading(btn, '削除する');

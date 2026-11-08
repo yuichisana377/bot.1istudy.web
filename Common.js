@@ -134,3 +134,57 @@ function renderDrawerAccount() {
   el.appendChild(btn);
   el.appendChild(menu);
 }
+
+// ============================================================
+//  エラーの自動通知（管理者へ）— 2026/11/08 追加
+//  ─────────────────────────────────────────────
+//  APIの失敗（通信不能・JSONでない応答・{ok:false,error:…}）を検知したら、
+//  /api/report_error へ「どのページの・どのAPIが・どのエラーコードで」失敗したかと、
+//  直近のJSエラー・直近の失敗履歴を送る。サーバー側が連番を振って保存し、
+//  管理者のDiscord DMへ通知する（同じ失敗の連打は同一番号にまとめられる）。
+//  ・session_token／Cookie／入力内容は送らない（Authorizationヘッダは「誰か」を
+//    サーバーが引くためだけに付け、保存はされない）。
+//  ・この関数自体の失敗は握りつぶす（報告のせいで画面が壊れてはいけない）。
+//  ・関数宣言／var のみ（各ページの const と名前が衝突しないように）。
+// ============================================================
+var __rptSeen = {};
+var __rptRecent = [];
+var __rptFirstJsErr = '';
+window.addEventListener('error', function (e) {
+  if (__rptFirstJsErr) return;
+  var t = (e.target && e.target.src) ? ('読込失敗: ' + e.target.src)
+        : ((e.message || '') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0));
+  __rptFirstJsErr = t.slice(0, 200);
+}, true);
+
+function reportApiError(path, errorCode, status, extra) {
+  try {
+    var p = String(path || '').replace(/^\/+/, '').split('?')[0];
+    if (!p || p === 'report_error' || errorCode === 'not_logged_in') return;
+    __rptRecent.push(p + ':' + errorCode);
+    if (__rptRecent.length > 5) __rptRecent.shift();
+    var key = p + '|' + errorCode;
+    if (__rptSeen[key]) return;            // 同じページ表示中の同じ失敗は1回だけ
+    __rptSeen[key] = 1;
+    var gid = null;
+    try { gid = (typeof GUILD_ID !== 'undefined') ? GUILD_ID : null; } catch (e) {}
+    if (!gid) return;
+    var headers = { 'Content-Type': 'application/json' };
+    var s = null;
+    try { s = getLoginSession(); } catch (e) {}
+    if (s && s.session_token) headers['Authorization'] = 'Bearer ' + s.session_token;
+    var diag = [];
+    if (__rptFirstJsErr) diag.push('最初のJSエラー: ' + __rptFirstJsErr);
+    if (extra) diag.push(String(extra).slice(0, 200));
+    diag.push('直近の失敗: ' + __rptRecent.join(', '));
+    fetch('/api/report_error', {
+      method: 'POST', headers: headers, keepalive: true,
+      body: JSON.stringify({
+        guild_id: gid,
+        page: (location.pathname || '/').slice(0, 40),
+        api: p, error: String(errorCode || 'unknown'), status: status || 0,
+        diag: diag.join(' / ').slice(0, 900),
+      }),
+    }).catch(function () {});
+  } catch (e) { /* 報告の失敗は無視 */ }
+}
