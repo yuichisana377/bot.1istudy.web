@@ -955,3 +955,6 @@ html, body {
 /* ★ 追加：デッキカード／フォルダカードにも押した瞬間の反応を付ける（タップ時に少し縮む） */
 .deck-card:active { transform: scale(.97); }
 .deck-card:not(.folder-card):active { background: var(--bg); }
+
+/* 下付き文字キー（b c y z）：小さく下げた文字として見せる */
+.math-sub-letter { font-size: 0.75em; position: relative; top: 0.3em; }

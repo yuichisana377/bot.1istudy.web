@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="3024603234";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="045bdb9afd";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6100,7 +6100,7 @@ function setMathText(el, raw) {
 // ★ 新形式（√(4)など）は既にそのまま読みやすい形なので無変換で素通しし、
 //   旧形式（\(\sqrt{4}\)など）だけをここで読みやすい形へ変換する。
 const MATH_SUP_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','n':'ⁿ'};
-const MATH_SUB_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋'};
+const MATH_SUB_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋','a':'ₐ','x':'ₓ'};
 function mathToPlainText(raw) {
   if (raw == null) return '';
   let s = String(raw);
@@ -6140,9 +6140,21 @@ function setSimpleMathText(el, raw) {
 
 const MATH_PAD_HTML = (function(){
   const supKeys = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹','⁺','⁻','⁽','⁾','ⁿ'];
+  // ★ 追加：下付きの文字 a b c x y z。Unicodeに下付きの無い b c y z は表示できないため、
+  //   a・x だけ Unicode（ₐ ₓ）、b c y z は \(_{b}\) の形（KaTeXで下付き描画）で挿入する。
+  //   ボタンの見た目は b₍…₎ ではなく「下付きの文字そのもの」に見えるよう label を別に持つ。
+  const subLetterKeys = [
+    { ch: 'ₐ', label: 'ₐ' },
+    { ch: '\\(_{b}\\)', label: '<span class="math-sub-letter">b</span>' },
+    { ch: '\\(_{c}\\)', label: '<span class="math-sub-letter">c</span>' },
+    { ch: 'ₓ', label: 'ₓ' },
+    { ch: '\\(_{y}\\)', label: '<span class="math-sub-letter">y</span>' },
+    { ch: '\\(_{z}\\)', label: '<span class="math-sub-letter">z</span>' },
+  ];
   const subKeys = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉','₊','₋','₍','₎'];
   const symKeys = ['±','∓','×','÷','≤','≥','≠','≈','∞','π','θ','°','∑','∫'];
   const keyBtn = c => `<button type="button" class="math-key" data-ch="${c}">${c}</button>`;
+  const letterKeyBtn = k => `<button type="button" class="math-key" data-ch="${k.ch.replace(/"/g, '&quot;')}">${k.label}</button>`;
   return `
     <div class="math-pad-header">
       <span class="math-pad-title">${Icons.cmHtml('tally', {size:15})} 理数モード</span>
@@ -6164,6 +6176,7 @@ const MATH_PAD_HTML = (function(){
       <div class="math-row math-row-sub">
         <span class="math-row-label">下付き文字（添字など）</span>
         ${subKeys.map(keyBtn).join('')}
+        ${subLetterKeys.map(letterKeyBtn).join('')}
       </div>
       <div class="math-row math-row-sym">
         <span class="math-row-label">記号</span>
@@ -6308,19 +6321,49 @@ prefetchOtherPages(); // ★ 追加：メニューを開くのを待たず、初
 //     （まだ取得前だと該当デッキが見つからず何もできないため）。
 //   ・一度処理したら history.replaceState で ?deck= をURLから消しておき、
 //     その後リロードしたり通知を再度開いたりしても毎回飛ばないようにする。
-async function jumpToDeckFromUrl() {
+// ★ 修正：以前は ?deck= を読んだ瞬間にURLから消していたため、その時点で一覧の取得が
+//   間に合っていない／失敗していると、二度とそのデッキへ飛べなくなっていた。
+//   ・飛び先は localStorage（15分だけ有効）にも控え、見つかって飛べるまで消さない。
+//   ・ログイン画面を経由してURLの ?deck= が失われた場合も、控えから復元できる。
+//   ・デッキ一覧を取得し直すたび（checkCardsUpdate）にも再挑戦する。
+const DECK_LINK_KEY = 'cm_pending_deck_link';
+const DECK_LINK_TTL = 15 * 60 * 1000;
+function readPendingDeckLink() {
   const params = new URLSearchParams(location.search);
-  const targetFilename = params.get('deck');
+  const fromUrl = params.get('deck');
+  if (fromUrl) {
+    try { localStorage.setItem(DECK_LINK_KEY, JSON.stringify({ f: fromUrl, t: Date.now() })); } catch (e) {}
+    history.replaceState(null, '', location.pathname + location.hash);
+    return fromUrl;
+  }
+  try {
+    const v = JSON.parse(localStorage.getItem(DECK_LINK_KEY));
+    if (v && v.f && Date.now() - v.t < DECK_LINK_TTL) return v.f;
+    localStorage.removeItem(DECK_LINK_KEY);
+  } catch (e) {}
+  return null;
+}
+// ★ ログイン画面へ飛ばされる前に、?deck= を控えておく（Login側で失われても復元できるように）
+(function stashDeckLinkEarly() {
+  try {
+    const f = new URLSearchParams(location.search).get('deck');
+    if (f) localStorage.setItem(DECK_LINK_KEY, JSON.stringify({ f, t: Date.now() }));
+  } catch (e) {}
+})();
+
+async function jumpToDeckFromUrl() {
+  const targetFilename = readPendingDeckLink();
   if (!targetFilename) return;
 
-  // URLをきれいな状態に戻しておく（ブックマーク・再読み込み時に毎回飛ばされないように）
-  history.replaceState(null, '', location.pathname + location.hash);
-
   const deck = decks.find(d => d.filename === targetFilename);
-  if (!deck) return; // 見つからなければ何もしない（削除された・未同期などのケース）
+  if (!deck) return; // まだ見つからない：控えは残すので、次の一覧取得時に再挑戦する
+
+  try { localStorage.removeItem(DECK_LINK_KEY); } catch (e) {}
 
   // デッキが入っているフォルダ（ルートなら null）まで画面を移動する
-  openFolder(deck.folderId || null);
+  // （openFolder() は並び替え直後のタップ除けで無視されることがあるため、直接切り替える）
+  currentFolderId = deck.folderId || null;
+  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
 
   // renderDeckListUI() によるDOM再構築を待ってから、該当デッキまでスクロール＆ハイライトする
   requestAnimationFrame(() => {
@@ -6412,6 +6455,8 @@ async function checkCardsUpdate() {
 
 // ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
 setInterval(checkCardsUpdate, 10000);
+// ★ 通知リンクの飛び先がまだ見つかっていなければ再挑戦（控えが無ければ何もしない軽い処理）
+setInterval(jumpToDeckFromUrl, 3000);
 
 // ===== ページ復帰時の強制リフレッシュ（Chromeのbfcache / バックグラウンド対策） =====
 //   ・ドロワーで他のページに移動して「戻る」で復帰したとき、Chromeなどは
