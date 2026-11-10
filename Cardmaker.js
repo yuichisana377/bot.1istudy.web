@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="045bdb9afd";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="edbd832233";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5988,8 +5988,10 @@ async function warnIfBugChars(str, fieldId) {
 //  ・既に「\(\sqrt{...}\)」のような旧形式（生LaTeX）で保存済みの既存カードも、
 //    simpleMathToLatexではパターンが一致しないためそのまま素通りし、
 //    今まで通りKaTeXで正しく描画される（後方互換）。
-//  ・上付き・下付き文字や±などの記号は、単独でも問題なく表示できるよう
+//  ・上付き文字・数字の下付き文字や±などの記号は、単独でも問題なく表示できるよう
 //    従来どおりUnicode文字をそのまま挿入する方式のままにしている。
+//  ・下付きの英字（a b c x y z）はUnicodeに無い文字（b c y z）があるため、
+//    簡易記法「_(b)」で保存し、描画時に simpleMathToLatex が KaTeX の下付きに変換する。
 // ============================================================
 
 // 文字列 s の位置 openIdx にある '(' に対応する ')' の位置を返す（ネスト対応）。見つからなければ -1。
@@ -6000,6 +6002,17 @@ function findMatchingParen(s, openIdx) {
     else if (s[i] === ')') { depth--; if (depth === 0) return i; }
   }
   return -1;
+}
+
+// 位置 i から始まる下付き記法「_(英数字や+-)」にマッチすれば { inner, end } を返す。
+// 「snake_case(x)」のような普通の文章を誤変換しないよう、中身は英数字・+・-のみに限る。
+function matchSubscriptAt(s, i) {
+  if (s[i] !== '_' || s[i+1] !== '(') return null;
+  const close = s.indexOf(')', i + 2);
+  if (close === -1) return null;
+  const inner = s.slice(i + 2, close);
+  if (!/^[A-Za-z0-9+\-]+$/.test(inner)) return null;
+  return { inner, end: close + 1 };
 }
 
 // simpleMathToLatexの内部再帰用：\( \) を付けない「素の」LaTeXへの変換。
@@ -6032,6 +6045,9 @@ function simpleMathToLatexRaw(s) {
         }
       }
     }
+    // 下付き _(b)
+    const subM = matchSubscriptAt(s, i);
+    if (subM) { out += `_{${subM.inner}}`; i = subM.end; continue; }
     out += s[i];
     i++;
   }
@@ -6073,6 +6089,9 @@ function simpleMathToLatex(raw) {
       }
 
     }
+    // 下付き _(b)
+    const subM = matchSubscriptAt(s, i);
+    if (subM) { out += `\\(_{${subM.inner}}\\)`; i = subM.end; continue; }
     out += s[i];
     i++;
   }
@@ -6100,7 +6119,7 @@ function setMathText(el, raw) {
 // ★ 新形式（√(4)など）は既にそのまま読みやすい形なので無変換で素通しし、
 //   旧形式（\(\sqrt{4}\)など）だけをここで読みやすい形へ変換する。
 const MATH_SUP_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','n':'ⁿ'};
-const MATH_SUB_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋','a':'ₐ','x':'ₓ'};
+const MATH_SUB_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋'};
 function mathToPlainText(raw) {
   if (raw == null) return '';
   let s = String(raw);
@@ -6141,16 +6160,12 @@ function setSimpleMathText(el, raw) {
 const MATH_PAD_HTML = (function(){
   const supKeys = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹','⁺','⁻','⁽','⁾','ⁿ'];
   // ★ 追加：下付きの文字 a b c x y z。Unicodeに下付きの無い b c y z は表示できないため、
-  //   a・x だけ Unicode（ₐ ₓ）、b c y z は \(_{b}\) の形（KaTeXで下付き描画）で挿入する。
-  //   ボタンの見た目は b₍…₎ ではなく「下付きの文字そのもの」に見えるよう label を別に持つ。
-  const subLetterKeys = [
-    { ch: 'ₐ', label: 'ₐ' },
-    { ch: '\\(_{b}\\)', label: '<span class="math-sub-letter">b</span>' },
-    { ch: '\\(_{c}\\)', label: '<span class="math-sub-letter">c</span>' },
-    { ch: 'ₓ', label: 'ₓ' },
-    { ch: '\\(_{y}\\)', label: '<span class="math-sub-letter">y</span>' },
-    { ch: '\\(_{z}\\)', label: '<span class="math-sub-letter">z</span>' },
-  ];
+  //   Unicodeには b c y z の下付き文字が無いため、分数・√と同じ簡易記法「_(b)」で挿入する
+  //   （保存データは簡易記法のまま。プレイ画面などでは simpleMathToLatex が
+  //   KaTeX の下付きに変換して描画する）。
+  const subLetterKeys = ['a', 'b', 'c', 'x', 'y', 'z'].map(l => ({
+    ch: `_(${l})`, label: `<span class="math-sub-letter">${l}</span>`,
+  }));
   const subKeys = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉','₊','₋','₍','₎'];
   const symKeys = ['±','∓','×','÷','≤','≥','≠','≈','∞','π','θ','°','∑','∫'];
   const keyBtn = c => `<button type="button" class="math-key" data-ch="${c}">${c}</button>`;
@@ -6357,13 +6372,18 @@ async function jumpToDeckFromUrl() {
 
   const deck = decks.find(d => d.filename === targetFilename);
   if (!deck) return; // まだ見つからない：控えは残すので、次の一覧取得時に再挑戦する
+  // フォルダ内のデッキは、フォルダ一覧も読み込めてからでないと移動できない
+  // （renderDeckListUI が未知のフォルダを「無くなった」とみなしてルートへ戻してしまうため）
+  if (deck.folderId && !folders.some(f => f.id === deck.folderId)) return;
+  // 一覧画面を見ている時だけ試す（編集中・プレイ中の画面は邪魔しない。控えは残す）
+  if (document.querySelector('.screen.active')?.id !== 'screen-list') return;
 
   try { localStorage.removeItem(DECK_LINK_KEY); } catch (e) {}
 
   // デッキが入っているフォルダ（ルートなら null）まで画面を移動する
   // （openFolder() は並び替え直後のタップ除けで無視されることがあるため、直接切り替える）
   currentFolderId = deck.folderId || null;
-  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  renderDeckListUI();
 
   // renderDeckListUI() によるDOM再構築を待ってから、該当デッキまでスクロール＆ハイライトする
   requestAnimationFrame(() => {
