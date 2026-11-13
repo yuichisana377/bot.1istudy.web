@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["DeckShare.js"]="edbd832233";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["DeckShare.js"]="b22fbbb795";/*@end*/// ============================================================
 //  DeckShare.js — 共有リンク専用の閲覧ビューア（DeckShare.html）用スクリプト
 //  ─────────────────────────────
 //  CardMakerのデッキ作成者が発行した「共有リンク」（?token=...）を開いた、
@@ -86,6 +86,24 @@ function findMatchingParen(s, openIdx) {
   }
   return -1;
 }
+// 下付き記法「_(b)」（中身は英数字・+・-のみ）
+function matchSubscriptAt(s, i) {
+  if (s[i] !== '_' || s[i+1] !== '(') return null;
+  const close = s.indexOf(')', i + 2);
+  if (close === -1) return null;
+  const inner = s.slice(i + 2, close);
+  if (!/^[A-Za-z0-9+\-]+$/.test(inner)) return null;
+  return { inner, end: close + 1 };
+}
+// ベクトル記法「→(a)」「→(AB)」（中身は英数字・'・下付き記法 _(1) のみ）
+function matchVectorAt(s, i) {
+  if (s[i] !== '→' || s[i+1] !== '(') return null;
+  const close = findMatchingParen(s, i + 1);
+  if (close === -1) return null;
+  const inner = s.slice(i + 2, close);
+  if (!/^(?:[A-Za-z0-9']|_\([A-Za-z0-9+\-]+\))+$/.test(inner)) return null;
+  return { inner, end: close + 1 };
+}
 function simpleMathToLatexRaw(s) {
   let out = '';
   let i = 0;
@@ -113,6 +131,10 @@ function simpleMathToLatexRaw(s) {
         }
       }
     }
+    const vecM = matchVectorAt(s, i);
+    if (vecM) { out += `\\overrightarrow{${simpleMathToLatexRaw(vecM.inner)}}`; i = vecM.end; continue; }
+    const subM = matchSubscriptAt(s, i);
+    if (subM) { out += `_{${subM.inner}}`; i = subM.end; continue; }
     out += s[i];
     i++;
   }
@@ -147,6 +169,10 @@ function simpleMathToLatex(raw) {
         }
       }
     }
+    const vecM = matchVectorAt(s, i);
+    if (vecM) { out += `\\(\\overrightarrow{${simpleMathToLatexRaw(vecM.inner)}}\\)`; i = vecM.end; continue; }
+    const subM = matchSubscriptAt(s, i);
+    if (subM) { out += `\\(_{${subM.inner}}\\)`; i = subM.end; continue; }
     out += s[i];
     i++;
   }

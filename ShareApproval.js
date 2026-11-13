@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["ShareApproval.js"]="edbd832233";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["ShareApproval.js"]="b22fbbb795";/*@end*/// ============================================================
 //  ShareApproval.js — 共有リンク発行の確認ページ用スクリプト
 //  ShareApproval.html から読み込む。DeleteApproval.jsとほぼ同じ構造。
 //  Discordの共有依頼DMに載っているリンク（?token=...）を開いた作成者本人が、

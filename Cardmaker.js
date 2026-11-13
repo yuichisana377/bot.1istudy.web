@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="edbd832233";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="b22fbbb795";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5992,6 +5992,8 @@ async function warnIfBugChars(str, fieldId) {
 //    従来どおりUnicode文字をそのまま挿入する方式のままにしている。
 //  ・下付きの英字（a b c x y z）はUnicodeに無い文字（b c y z）があるため、
 //    簡易記法「_(b)」で保存し、描画時に simpleMathToLatex が KaTeX の下付きに変換する。
+//  ・ベクトルは簡易記法「→(a)」「→(AB)」で保存し、描画時に KaTeX の
+//    \overrightarrow（中身の幅に合わせて伸びる矢印）に変換する。
 // ============================================================
 
 // 文字列 s の位置 openIdx にある '(' に対応する ')' の位置を返す（ネスト対応）。見つからなければ -1。
@@ -6012,6 +6014,18 @@ function matchSubscriptAt(s, i) {
   if (close === -1) return null;
   const inner = s.slice(i + 2, close);
   if (!/^[A-Za-z0-9+\-]+$/.test(inner)) return null;
+  return { inner, end: close + 1 };
+}
+
+// 位置 i から始まるベクトル記法「→(英数字)」にマッチすれば { inner, end } を返す。
+// 「反応→(加熱)」のような普通の文章を誤変換しないよう、中身は英数字・'（プライム）と
+// 下付き記法 _(1) だけに限る（→(a_(1)) のような添字付きベクトルは使える）。
+function matchVectorAt(s, i) {
+  if (s[i] !== '→' || s[i+1] !== '(') return null;
+  const close = findMatchingParen(s, i + 1);
+  if (close === -1) return null;
+  const inner = s.slice(i + 2, close);
+  if (!/^(?:[A-Za-z0-9']|_\([A-Za-z0-9+\-]+\))+$/.test(inner)) return null;
   return { inner, end: close + 1 };
 }
 
@@ -6045,6 +6059,9 @@ function simpleMathToLatexRaw(s) {
         }
       }
     }
+    // ベクトル →(a)
+    const vecM = matchVectorAt(s, i);
+    if (vecM) { out += `\\overrightarrow{${simpleMathToLatexRaw(vecM.inner)}}`; i = vecM.end; continue; }
     // 下付き _(b)
     const subM = matchSubscriptAt(s, i);
     if (subM) { out += `_{${subM.inner}}`; i = subM.end; continue; }
@@ -6089,6 +6106,9 @@ function simpleMathToLatex(raw) {
       }
 
     }
+    // ベクトル →(a)
+    const vecM = matchVectorAt(s, i);
+    if (vecM) { out += `\\(\\overrightarrow{${simpleMathToLatexRaw(vecM.inner)}}\\)`; i = vecM.end; continue; }
     // 下付き _(b)
     const subM = matchSubscriptAt(s, i);
     if (subM) { out += `\\(_{${subM.inner}}\\)`; i = subM.end; continue; }
@@ -6179,10 +6199,11 @@ const MATH_PAD_HTML = (function(){
       <div class="math-preview-label">プレビュー</div>
       <div class="math-preview"></div>
       <div class="math-row math-row-struct">
-        <span class="math-row-label">分数・ルート（教科書と同じ見た目で表示されます）</span>
+        <span class="math-row-label">分数・ルート・ベクトル（教科書と同じ見た目で表示されます）</span>
         <button type="button" class="math-key math-key-wide" data-action="frac">分数<span class="math-key-hint">(a)/(b)</span></button>
         <button type="button" class="math-key" data-action="sqrt">√</button>
         <button type="button" class="math-key" data-action="cbrt">∛</button>
+        <button type="button" class="math-key math-key-wide" data-action="vec">ベクトル<span class="math-key-hint">→(a)</span></button>
       </div>
       <div class="math-row math-row-sup">
         <span class="math-row-label">上付き文字（乗数など）</span>
@@ -6197,7 +6218,7 @@ const MATH_PAD_HTML = (function(){
         <span class="math-row-label">記号</span>
         ${symKeys.map(keyBtn).join('')}
       </div>
-      <div class="math-pad-tip">${Icons.html('hint', {size:16})} 分数・ルートは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
+      <div class="math-pad-tip">${Icons.html('hint', {size:16})} 分数・ルート・ベクトルは、数字や文字を選択してからボタンを押すとその部分が中に入ります。</div>
     </div>`;
 })();
 
@@ -6308,6 +6329,7 @@ document.addEventListener('click', function(e) {
     case 'frac': mathInsertFraction(target); break;
     case 'sqrt': mathInsertWrap(target, '√(', ')'); break;
     case 'cbrt': mathInsertWrap(target, '∛(', ')'); break;
+    case 'vec':  mathInsertWrap(target, '→(', ')'); break;
     default:     mathInsertChar(target, btn.dataset.ch || '');
   }
 });
