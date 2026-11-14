@@ -2,15 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="b22fbbb795">
-<script src="/Version.js?v=b22fbbb795"></script>
+<meta name="app-version" content="00024dcf51">
+<script src="/Version.js?v=00024dcf51"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>サービス情報 — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=b22fbbb795">
+<link rel="stylesheet" href="/Style.css?v=00024dcf51">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -138,6 +138,10 @@ window.addEventListener('error', function (e) {
           </div>
           <ul class="service-update-list">
             <li class="service-update-item">
+              <span class="service-update-date">2026/11/14</span>
+              <span class="service-update-text">勉強タイマーが3時間たって自動で休憩に切り替わったことをDMで知らせるとき、Botが約10秒間コマンドに反応しなくなることがあった問題を直しました。</span>
+            </li>
+            <li class="service-update-item">
               <span class="service-update-date">2026/08/17</span>
               <span class="service-update-text">「みんなでクイズ」に開始カウントダウンと「第N問」の出題演出を追加。結果をSSEでリアルタイム通知するようにし、参加者にも自分の正誤が見えるようにしました。</span>
             </li>
@@ -164,6 +168,10 @@ window.addEventListener('error', function (e) {
             <span class="service-card-title">Webサイト アップデート</span>
           </div>
           <ul class="service-update-list">
+            <li class="service-update-item">
+              <span class="service-update-date">2026/11/14</span>
+              <span class="service-update-text">サイトの通信を軽くしました。これまでは各ページが10秒ごとに全データを取り直していましたが、変更があった瞬間に届く通知を主に使い、定期的な取り直しは1分に1回に減らしました（通知が届かない状況では今まで通り10秒ごとです）。ページを開いていない間は取り直しを止め、戻ってきた瞬間に最新の状態にします。表示が更新される速さは今までと変わりません。</span>
+            </li>
             <li class="service-update-item">
               <span class="service-update-date">2026/11/13</span>
               <span class="service-update-text">CardMakerの理数モードに「ベクトル」ボタンを追加しました。文字を選んで押すと、a や AB の上に教科書と同じ矢印が付きます。あわせて、デッキ共有リンクのページでも下付き文字（a・b・c・x・y・z）が正しく表示されるようにしました。</span>
@@ -316,13 +324,13 @@ window.addEventListener('error', function (e) {
 
 </div>
 
-<script src="/Icons.js?v=b22fbbb795"></script>
-<script src="/SwipeGuard.js?v=b22fbbb795"></script>
-<script src="/Dialog.js?v=b22fbbb795"></script>
-<script src="/Common.js?v=b22fbbb795"></script>
-<script src="/ServiceInfo.js?v=b22fbbb795"></script>
-<script src="/PendingDeleteCheck.js?v=b22fbbb795"></script>
-<script src="/PendingShareCheck.js?v=b22fbbb795"></script>
-<script src="/QuizRoomNotify.js?v=b22fbbb795"></script>
+<script src="/Icons.js?v=00024dcf51"></script>
+<script src="/SwipeGuard.js?v=00024dcf51"></script>
+<script src="/Dialog.js?v=00024dcf51"></script>
+<script src="/Common.js?v=00024dcf51"></script>
+<script src="/ServiceInfo.js?v=00024dcf51"></script>
+<script src="/PendingDeleteCheck.js?v=00024dcf51"></script>
+<script src="/PendingShareCheck.js?v=00024dcf51"></script>
+<script src="/QuizRoomNotify.js?v=00024dcf51"></script>
 </body>
 </html>

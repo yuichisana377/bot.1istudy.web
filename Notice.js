@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="b22fbbb795";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="00024dcf51";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -719,16 +719,16 @@ async function checkNoticesUpdate() {
 }
 
 function startRealtimeUpdates() {
-  try {
-    const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
-    es.onmessage = () => { checkNoticesUpdate(); };
-  } catch (e) {
-    // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
-  }
+  // ★ SSE接続・保険のポーリング・非表示中の停止は Common.js の startLiveUpdates() に
+  //   まとめた（SSEがつながっている間のポーリングは60秒に1回、切れている間は10秒に1回。
+  //   タブが見えていない間は取得せず、見える状態に戻った瞬間に1回チェックする）。
+  startLiveUpdates(checkNoticesUpdate);
+  // （以前はここで EventSource を直接作り、下で10秒ごとの setInterval を回していた。
+  //   取得の中身＝各チェック関数は変えていない）
 }
 
-// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
-setInterval(checkNoticesUpdate, 10000);
+// ★ 通常はSSEで即時反映される。接続が切れた場合の保険のポーリングも
+//   startLiveUpdates() の中で行う（以前はここで10秒ごとの setInterval を回していた）。
 
 // ============================================================
 //  ドロワー（他ページと共通の挙動）

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="b22fbbb795";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="00024dcf51";/*@end*/// ============================================================
 //  timetable.js — 時間割ページ用スクリプト
 //  timetable.html から読み込む
 // ============================================================
@@ -1746,15 +1746,15 @@ async function checkForUpdates() {
 //   ので、変更があった瞬間にpushしてもらい即座に反映する（Server-Sent Events）。
 //   接続が切れた場合に備え、10秒間隔のフォールバックポーリングも残す。
 function startRealtimeUpdates() {
-  try {
-    const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
-    es.onmessage = () => { checkForUpdates(); };
-  } catch (e) {
-    // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
-  }
+  // ★ SSE接続・保険のポーリング・非表示中の停止は Common.js の startLiveUpdates() に
+  //   まとめた（SSEがつながっている間のポーリングは60秒に1回、切れている間は10秒に1回。
+  //   タブが見えていない間は取得せず、見える状態に戻った瞬間に1回チェックする）。
+  startLiveUpdates(checkForUpdates);
+  // （以前はここで EventSource を直接作り、下で10秒ごとの setInterval を回していた。
+  //   取得の中身＝各チェック関数は変えていない）
 }
 startRealtimeUpdates();
-setInterval(checkForUpdates, 10000);
+// （10秒ごとの setInterval は startLiveUpdates() の中へ移した）
 
 // ★ ここまでエラーなく実行できた＝JSが生きている合図として、<body>先頭の
 //   「読み込み中…」代替表示（js-fail-fallback、Icons.js参照）を消す。

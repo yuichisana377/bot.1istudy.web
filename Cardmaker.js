@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="b22fbbb795";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="00024dcf51";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6433,17 +6433,17 @@ async function jumpToDeckFromUrl() {
 //   ・接続が切れていた場合に備え、10秒間隔のフォールバックポーリングも残す
 //     （EventSourceは自動再接続するが、万一に備えた保険）。
 function startRealtimeUpdates() {
-  try {
-    const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
-    es.onmessage = () => {
-      checkCardsUpdate();
-      checkFoldersUpdate();
-      checkOrderUpdate();
-    };
-    // onerrorは特に何もしない（EventSourceが自動的に再接続を試みる）
-  } catch (e) {
-    // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
-  }
+  // ★ SSE接続・保険のポーリング・非表示中の停止は Common.js の startLiveUpdates() に
+  //   まとめた（SSEがつながっている間のポーリングは60秒に1回、切れている間は10秒に1回。
+  //   タブが見えていない間は取得しない）。見える状態に戻った時の取り直しは、下の
+  //   forceRefreshOnReturn() が全データをまとめて行うので、ここでは重ねて行わない。
+  startLiveUpdates(function () {
+    return Promise.all([checkCardsUpdate(), checkFoldersUpdate(), checkOrderUpdate()]);
+  }, { refreshOnVisible: false });
+  // （以前はここで EventSource を直接作り、3つのチェックそれぞれが
+  //   10秒ごとの setInterval を持っていた。取得の中身＝各チェック関数は変えていない。
+  //   3つをまとめて1回の実行として扱うので、合図が連続しても同じ取得が
+  //   何本も並行して走らない）
 }
 startRealtimeUpdates();
 
@@ -6495,8 +6495,8 @@ async function checkCardsUpdate() {
   } catch(e) {}
 }
 
-// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
-setInterval(checkCardsUpdate, 10000);
+// ★ 通常はSSEで即時反映される。接続が切れた場合の保険のポーリングは
+//   startLiveUpdates()（上の startRealtimeUpdates 参照）がまとめて行う。
 // ★ 通知リンクの飛び先がまだ見つかっていなければ再挑戦（控えが無ければ何もしない軽い処理）
 setInterval(jumpToDeckFromUrl, 3000);
 
@@ -6568,8 +6568,8 @@ async function checkFoldersUpdate() {
   } catch(e) {}
 }
 
-// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
-setInterval(checkFoldersUpdate, 10000);
+// ★ 通常はSSEで即時反映される。接続が切れた場合の保険のポーリングは
+//   startLiveUpdates()（startRealtimeUpdates 参照）がまとめて行う。
 
 // ===== JSON変更監視（共有の並び順 list_order.json） =====
 let lastOrderHash = null;
@@ -6600,8 +6600,8 @@ async function checkOrderUpdate() {
   } catch(e) {}
 }
 
-// ★ 通常はSSEで即時反映される。これは接続が切れた場合の保険（10秒間隔）
-setInterval(checkOrderUpdate, 10000);
+// ★ 通常はSSEで即時反映される。接続が切れた場合の保険のポーリングは
+//   startLiveUpdates()（startRealtimeUpdates 参照）がまとめて行う。
 
 // ===== わからないマーク／続きから／完了記録（study_data）の他端末での変更を反映 =====
 //   ★ list_order等と違って全ユーザー共通の1ファイルではなく生徒ごとのデータなので、
@@ -6609,7 +6609,7 @@ setInterval(checkOrderUpdate, 10000);
 //     （他端末でわからないマークを付けた／続きから再開した直後にも反映されるように）。
 async function checkStudyDataUpdate() {
   const activeScreen = document.querySelector('.screen.active')?.id;
-  if (activeScreen !== 'screen-list') return; // 一覧画面を見ているときだけでよい
+  if (document.hidden || activeScreen !== 'screen-list') return; // 一覧画面を「見ている」ときだけでよい
   try {
     const changed = await fetchAndMergeStudyData();
     if (changed && document.querySelector('.screen.active')?.id === 'screen-list') {

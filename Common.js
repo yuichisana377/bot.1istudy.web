@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="b22fbbb795";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="00024dcf51";/*@end*/// ============================================================
 //  Common.js — 複数ページで同一だった共通関数（ログインセッション・ドロワー等）
 //  ★ 関数宣言のみ。SESSION_KEY / LOGIN_PATH / prefetchOtherPages は
 //    各ページのJS側で定義されたものを呼び出し時に参照する。
@@ -187,4 +187,60 @@ function reportApiError(path, errorCode, status, extra) {
       }),
     }).catch(function () {});
   } catch (e) { /* 報告の失敗は無視 */ }
+}
+
+// ============================================================
+//  更新チェックの共通化（SSE＋保険のポーリング）— 2026/11/14 追加
+//  ─────────────────────────────────────────────
+//  以前は各ページがそれぞれ「SSE接続を張る＋10秒ごとに全データを取り直して
+//  ハッシュを比べる」を持っていた。SSEが正常につながっていれば変更は即座に
+//  届くので、10秒ごとの取り直しはほぼ全部が無駄な通信になっていた
+//  （タブを開きっぱなしにするだけで1日数万回。裏に回したタブでも動き続ける）。
+//  ここにまとめ、次のように動かす。
+//  ・SSEの合図が来たらすぐチェックする（今まで通り）。
+//  ・保険のポーリングは、SSEがつながっている間は60秒に1回、切れている間は10秒に1回。
+//  ・タブが見えていない間は取得しない。見える状態に戻った瞬間に1回チェックする。
+//  ・チェックの実行中に次の合図が来ても重ねて走らせず、終わってからもう1回だけ行う
+//    （クイズ中など合図が連続する場面で、同じ取得が何本も並行するのを防ぐ）。
+//  ・SSE接続は1ページにつき1本を共有する（QuizRoomNotify.js も同じ接続を使う）。
+//  ・関数宣言／var のみ（各ページの const と名前が衝突しないように）。
+// ============================================================
+var __liveEs = {};
+function liveEventSource(guildId) {
+  var key = String(guildId);
+  if (!__liveEs[key]) {
+    try { __liveEs[key] = new EventSource('/api/events?guild_id=' + encodeURIComponent(key)); }
+    catch (e) { return null; }          // EventSource非対応でもポーリングだけで動く
+  }
+  return __liveEs[key];
+}
+
+function startLiveUpdates(checkFn, opts) {
+  opts = opts || {};
+  var running = false, again = false, missed = false, lastRun = 0, runId = 0;
+  function run() {
+    if (document.hidden) { missed = true; return; }
+    // 実行中なら重ねない。ただし30秒たっても返ってこない（通信が固まった）場合は見切って次を始める
+    if (running && Date.now() - lastRun < 30000) { again = true; return; }
+    running = true;
+    lastRun = Date.now();
+    var id = ++runId;
+    Promise.resolve().then(checkFn).catch(function () {}).then(function () {
+      if (id !== runId) return;         // 見切られた古い実行の後始末はしない
+      running = false;
+      if (again) { again = false; run(); }
+    });
+  }
+  var es = liveEventSource(GUILD_ID);
+  if (es) es.addEventListener('message', run);
+  setInterval(function () {
+    var sseOpen = !!es && es.readyState === 1;
+    if (!sseOpen || Date.now() - lastRun >= 60000) run();
+  }, 10000);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    // 戻ってきた時：見えない間に合図を取りこぼした／しばらくチェックしていない場合だけ行う
+    if (opts.refreshOnVisible !== false && (missed || Date.now() - lastRun >= 10000)) run();
+    missed = false;
+  });
 }

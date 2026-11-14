@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["QuizRoomNotify.js"]="b22fbbb795";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["QuizRoomNotify.js"]="00024dcf51";/*@end*/// ============================================================
 //  QuizRoomNotify.js — 「みんなでクイズ」の開催中ルーム通知
 //  ─────────────────────────────
 //  ページを開いた時点で、参加できるクイズ部屋（待機中＝lobby、または
@@ -197,8 +197,8 @@
     const guildId = qrnGetGuildId();
     if (!session || !session.session_token || !guildId) return;
     try {
-      const es = new EventSource(`${QRN_API_BASE}events?guild_id=${guildId}`);
-      es.onmessage = () => { qrnCheck(); };
+      const es = (typeof liveEventSource === 'function' && liveEventSource(guildId)) || new EventSource(`${QRN_API_BASE}events?guild_id=${guildId}`);
+      es.addEventListener('message', () => { qrnCheck(); });  // ★ ページ本体とSSE接続を共有する（1ページ2本→1本）
       // onerrorは特に何もしない（EventSourceが自動的に再接続を試みる）
     } catch (e) {
       // EventSource非対応環境でも、ページを開いた瞬間のqrnCheck()だけで最低限は機能する

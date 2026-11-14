@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="b22fbbb795";/*@end*/// ============================================================ 754
+/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="00024dcf51";/*@end*/// ============================================================ 754
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
 //  → 累計ポイントはヘッダーバッジに表示
@@ -2151,18 +2151,18 @@ async function checkForUpdates() {
 //   進行中の記録を表示している）ときだけ syncTimerFromServer() を呼ぶことで、
 //   従来のstartSyncPolling()と同じ「タイマーに関係あるときだけ同期する」条件を保つ。
 function startRealtimeUpdates() {
-  try {
-    const es = new EventSource(`${API_BASE}events?guild_id=${GUILD_ID}`);
-    es.onmessage = () => {
-      checkForUpdates();
-      if (timerSyncInterval) syncTimerFromServer();
-    };
-  } catch (e) {
-    // EventSource非対応環境などでも、下のフォールバックポーリングだけで動作を継続できる
-  }
+  // ★ SSE接続・保険のポーリング・非表示中の停止は Common.js の startLiveUpdates() に
+  //   まとめた（SSEがつながっている間のポーリングは60秒に1回、切れている間は10秒に1回。
+  //   タブが見えていない間は取得せず、見える状態に戻った瞬間に1回チェックする）。
+  startLiveUpdates(function () {
+    if (timerSyncInterval) syncTimerFromServer();
+    return checkForUpdates();
+  });
+  // （以前はここで EventSource を直接作り、下で10秒ごとの setInterval を回していた。
+  //   取得の中身＝各チェック関数は変えていない）
 }
 startRealtimeUpdates();
-setInterval(checkForUpdates, 10000);
+// （10秒ごとの setInterval は startLiveUpdates() の中へ移した）
 
 // ★ ここまでエラーなく実行できた＝JSが生きている合図として、<body>先頭の
 //   「読み込み中…」代替表示（js-fail-fallback、Icons.js参照）を消す。
