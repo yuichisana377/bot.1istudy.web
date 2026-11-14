@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="00024dcf51";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="ddc112bb3c";/*@end*/// ============================================================
 //  Common.js — 複数ページで同一だった共通関数（ログインセッション・ドロワー等）
 //  ★ 関数宣言のみ。SESSION_KEY / LOGIN_PATH / prefetchOtherPages は
 //    各ページのJS側で定義されたものを呼び出し時に参照する。
@@ -219,7 +219,7 @@ function startLiveUpdates(checkFn, opts) {
   opts = opts || {};
   var running = false, again = false, missed = false, lastRun = 0, runId = 0;
   function run() {
-    if (document.hidden) { missed = true; return; }
+    if (document.hidden && lastRun !== 0) { missed = true; return; }  // 最初の1回（比較の基準を取る回）だけは非表示でも行う
     // 実行中なら重ねない。ただし30秒たっても返ってこない（通信が固まった）場合は見切って次を始める
     if (running && Date.now() - lastRun < 30000) { again = true; return; }
     running = true;
