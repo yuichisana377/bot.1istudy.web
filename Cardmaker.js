@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="481715d1a1";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="6fecfeddd0";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2073,6 +2073,14 @@ async function syncDeckListData() {
     if (authErr && !_authNoticeShown) {
       _authNoticeShown = true;
       const noMember = /guild_membership_required/.test(String(authErr.reason.message));
+      if (!noMember) {
+        // ★ ログイン期限切れ（30日）や無効なセッションのまま古い表示を続けても直らないので、
+        //   セッションを消してログイン画面へ誘導する（PWAなどブラウザと別に保存されている端末で起きやすい）。
+        try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+        await showCmAlert({ title: 'ログインが切れています', desc: 'ログイン期限が切れているため、最新のデッキ・フォルダ・時間割を取得できません。Discordでログインし直してください。', okLabel: 'ログイン画面へ' });
+        location.replace(LOGIN_PATH);
+        return;
+      }
       showCmAlert({
         title: noMember ? 'Discordとの連携が確認できません' : 'ログインが切れています',
         desc: (noMember
