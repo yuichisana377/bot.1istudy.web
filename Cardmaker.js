@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="ae185dae1a";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7a0349e9bd";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -1757,9 +1757,13 @@ async function selectMoveTarget(targetId) {
 //   folder_id/published_by/incomplete など）だけを返すので、一覧表示はすぐに終わる。
 //   カード本体は、デッキを実際に開く（プレイ／編集）ときに
 //   ensureDeckCardsLoaded() で個別に取得する。
+// ★ 一覧（list_cards）を一度でも取得・反映できたか。失敗したままハッシュ比較の
+//   「初回は保存だけ」に進むと、サーバー側が変わるまで二度と取り直されなくなるため、
+//   このフラグが false の間は更新チェック側が必ず取り直す。
+let decksSynced = false;
 async function fetchAndMergeDecks() {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), 15000); // 5秒→15秒（遅い回線で失敗し続けないよう延長）
   // ★ cache: 'no-store' を追加：これが無いと、Chromeなどのブラウザが
   //   list_cards のレスポンスをキャッシュしてしまい、新規作成・公開した
   //   カードが自分の端末の一覧にすぐ反映されないことがあるため。
@@ -1771,7 +1775,7 @@ async function fetchAndMergeDecks() {
   clearTimeout(timer);
   const txt = await res.text();
   const data = JSON.parse(txt);
-  if (!data.ok) return { changed: false, txt };
+  if (!data.ok) throw new Error(data.error || 'list_cards failed'); // 失敗は呼び出し側で再試行できるよう例外にする
   const fetched = data.sets.map(s => {
     const existing = decks.find(d => d.filename === s.filename);
     // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
@@ -1839,6 +1843,7 @@ async function fetchAndMergeDecks() {
     .map(d => ({ ...d, cardsLoaded: true }));
   decks = [...localOnly, ...fetched];
   saveDecks(decks);
+  decksSynced = true;
   return { changed: true, txt };
 }
 
@@ -2015,11 +2020,32 @@ async function renderDeckList() {
   decks = loadDecks();
   folders = loadFoldersCache();
   renderDeckListUI();
-  try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
-    renderDeckListUI();
-    preloadUnsureBadges();
-  } catch(e) {}
+  // ★ 1つでも失敗すると全体が捨てられていたので allSettled にし、成功分は反映する。
+  //   失敗が残っている間は、間隔を延ばしながら自動で取り直し続ける（永久に諦めない）。
+  const rs = await Promise.allSettled([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
+  renderDeckListUI();
+  preloadUnsureBadges();
+  if (rs.some(r => r.status === 'rejected')) {
+    const delay = Math.min(30000, 2000 * Math.pow(2, renderDeckList._retry = (renderDeckList._retry || 0) + 1));
+    setTimeout(renderDeckListRetry, delay);
+  } else {
+    renderDeckList._retry = 0;
+  }
+}
+// 再試行（画面が一覧のときだけ。ローカルの表示は上書きせず取得・反映のみ）
+async function renderDeckListRetry() {
+  if (document.hidden || document.querySelector('.screen.active')?.id !== 'screen-list') {
+    setTimeout(renderDeckListRetry, 5000); return;
+  }
+  const rs = await Promise.allSettled([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
+  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  preloadUnsureBadges();
+  if (rs.some(r => r.status === 'rejected')) {
+    const delay = Math.min(30000, 2000 * Math.pow(2, renderDeckList._retry = (renderDeckList._retry || 0) + 1));
+    setTimeout(renderDeckListRetry, delay);
+  } else {
+    renderDeckList._retry = 0;
+  }
 }
 
 // ★ 追加：一覧の「わからない」バッジ（🔖）は、そのデッキのカード本体が
@@ -5806,7 +5832,11 @@ function loadChunk(name, src) {
       _chunkDone.add(name); resolve();
       if (window.__verifyJs) window.__verifyJs();   // 後から読んだJSの版がHTMLと違えば自動リセット
     };
-    s.onerror = () => reject(new Error('chunk load failed: ' + src));
+    s.onerror = () => {
+      // ★ 失敗したPromiseをキャッシュしたままだと二度と読み直されないので破棄する
+      delete _chunkPromises[name]; s.remove();
+      reject(new Error('chunk load failed: ' + src));
+    };
     document.head.appendChild(s);
   });
   return _chunkPromises[name];
@@ -6474,14 +6504,14 @@ async function checkCardsUpdate() {
     const txt = await res.text();
     const hash = await digestMessage(txt);
 
-    // 初回は保存だけ
-    if (lastCardsHash === null) {
+    // 初回は保存だけ（ただし一覧の取得がまだ一度も成功していないなら、そのまま取り直す）
+    if (lastCardsHash === null && decksSynced) {
       lastCardsHash = hash;
       return;
     }
 
-    // ハッシュが変わっていなければ何もしない
-    if (hash === lastCardsHash) return;
+    // ハッシュが変わっておらず、取得済みなら何もしない
+    if (decksSynced && hash === lastCardsHash) return;
     lastCardsHash = hash;
 
     // データをバックグラウンドでマージ（プレイ中・編集中の画面はそのまま）
@@ -6514,7 +6544,7 @@ async function forceRefreshOnReturn() {
   if (isForceRefreshing) return;
   isForceRefreshing = true;
   try {
-    await Promise.all([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
+    await Promise.allSettled([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
     if (document.querySelector('.screen.active')?.id === 'screen-list') {
       renderDeckListUI();
     }
