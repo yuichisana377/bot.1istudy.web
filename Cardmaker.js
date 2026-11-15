@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="6fecfeddd0";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="4089a16dce";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -246,7 +246,7 @@ function saveDecks(d) {
   try {
     let dirty; try { dirty = deckSyncDirty; } catch (e) { dirty = new Set(); } // 宣言より前に呼ばれても落ちないように
     const slim = d.map(x => (x.filename && !dirty.has(x.id) && x.id !== currentDeckId)
-      ? { ...x, cards: [], cardsLoaded: false, bodyRev: null } : x);
+      ? { ...x, cards: [], cardsLoaded: false } : x);
     localStorage.setItem(STORE_KEY, JSON.stringify(slim));
   } catch (e) { console.warn('[cardmaker] デッキ一覧をこの端末に保存できませんでした', e); }
 }
@@ -1817,12 +1817,7 @@ async function fetchAndMergeDecks() {
           && document.querySelector('.screen.active')?.id === 'screen-edit'));
     const cachedIsStale = existing && existing.cardsLoaded && !hasUnsyncedLocal
       && typeof s.count === 'number' && s.count < existing.cards.length;
-    // ★ 本文の版（rev）が変わっていたら、枚数が同じでも他の人が内容を編集したということ。
-    //   以前は枚数が減ったときしか古いキャッシュとみなさず、誤字修正など枚数が変わらない
-    //   編集は、この端末の読み込み済みデッキに永遠に反映されなかった。
-    const revChanged = existing && existing.cardsLoaded && !hasUnsyncedLocal
-      && !!s.rev && existing.bodyRev !== s.rev;
-    const keepLoadedCards = existing && existing.cardsLoaded && !cachedIsStale && !revChanged;
+    const keepLoadedCards = existing && existing.cardsLoaded && !cachedIsStale;
     return {
       id: existing ? existing.id : genId(),
       name: s.name,
@@ -1830,8 +1825,6 @@ async function fetchAndMergeDecks() {
       cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
-      rev: s.rev || null,
-      bodyRev: keepLoadedCards ? (existing.bodyRev || null) : null,
       choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（旧データの互換のため "single"/"multi" 文字列も truthy として扱う）
       // ★ 追加（2026/08/21）：クイズ過去問デッキかどうか。以前はフォルダの位置
       //   （isDeckInFolderScope）だけで判定していたが、外のフォルダへ移動できる
@@ -1975,7 +1968,6 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     deck.cards = fetchedCards;
     deck.cardsLoaded = true;
     deck.count = deck.cards.length;
-    deck.bodyRev = data.rev || deck.rev || null;
     // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
     if ('incomplete' in data) deck.incomplete = !!data.incomplete;
     saveDecks(decks);

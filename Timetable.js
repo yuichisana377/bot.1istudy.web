@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="6fecfeddd0";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="4089a16dce";/*@end*/// ============================================================
 //  timetable.js — 時間割ページ用スクリプト
 //  timetable.html から読み込む
 // ============================================================
@@ -208,7 +208,17 @@ async function api(path, opts = {}) {
     opts.headers || {}
   );
   const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { cache: 'no-store', ...opts, headers });
-  return res.json();
+  const json = await res.json();
+  // ★ ログイン状態が無効（期限切れ等）なのに古い表示のまま使い続けないよう、ログイン画面へ誘導する。
+  //   （セッションを持っていない人は従来どおり何もしない。StudyLog.jsのforceReLoginと同じ流れ）
+  if (json && json.error === 'not_logged_in' && session && session.session_token && !window.__ttReLoginStarted) {
+    window.__ttReLoginStarted = true;
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    Promise.resolve(typeof showAppAlert === 'function'
+      ? showAppAlert({ title: 'ログインが切れました', desc: 'もう一度Discordでログインしてください。' }) : null)
+      .finally(() => location.replace('/Login.html'));
+  }
+  return json;
 }
 
 // ============================================================
