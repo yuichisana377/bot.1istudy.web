@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="766d6eed79";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="b98c2819fb";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -1551,7 +1551,7 @@ async function saveFolderName() {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
-    await fetchAndMergeFolders();
+    await fetchAndMergeFolders().catch(() => {}); // 保存自体は成功済み。再取得の失敗で「保存失敗」と誤表示しない
     closeModal('modal-folder-name');
     renderDeckListUI();
   } catch(e) {
@@ -1655,7 +1655,7 @@ async function folderMenuDelete() {
   }
 
   if (allFolderIds.includes(currentFolderId)) currentFolderId = folder.parentId || null;
-  await fetchAndMergeFolders();
+  await fetchAndMergeFolders().catch(() => {});
   renderDeckListUI();
 }
 
@@ -1748,7 +1748,7 @@ async function selectMoveTarget(targetId) {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
-    await fetchAndMergeFolders();
+    await fetchAndMergeFolders().catch(() => {});
     renderDeckListUI();
   } catch(e) {
     await showCmAlert({ title: 'フォルダの移動に失敗しました', desc: e.message });
@@ -1805,7 +1805,12 @@ async function fetchAndMergeDecks() {
           && document.querySelector('.screen.active')?.id === 'screen-edit'));
     const cachedIsStale = existing && existing.cardsLoaded && !hasUnsyncedLocal
       && typeof s.count === 'number' && s.count < existing.cards.length;
-    const keepLoadedCards = existing && existing.cardsLoaded && !cachedIsStale;
+    // ★ 本文の版（rev）が変わっていたら、枚数が同じでも他の人が内容を編集したということ。
+    //   以前は枚数が減ったときしか古いキャッシュとみなさず、誤字修正など枚数が変わらない
+    //   編集は、この端末の読み込み済みデッキに永遠に反映されなかった。
+    const revChanged = existing && existing.cardsLoaded && !hasUnsyncedLocal
+      && !!s.rev && existing.bodyRev !== s.rev;
+    const keepLoadedCards = existing && existing.cardsLoaded && !cachedIsStale && !revChanged;
     return {
       id: existing ? existing.id : genId(),
       name: s.name,
@@ -1813,6 +1818,8 @@ async function fetchAndMergeDecks() {
       cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
+      rev: s.rev || null,
+      bodyRev: keepLoadedCards ? (existing.bodyRev || null) : null,
       choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（旧データの互換のため "single"/"multi" 文字列も truthy として扱う）
       // ★ 追加（2026/08/21）：クイズ過去問デッキかどうか。以前はフォルダの位置
       //   （isDeckInFolderScope）だけで判定していたが、外のフォルダへ移動できる
@@ -1956,6 +1963,7 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     deck.cards = fetchedCards;
     deck.cardsLoaded = true;
     deck.count = deck.cards.length;
+    deck.bodyRev = data.rev || deck.rev || null;
     // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
     if ('incomplete' in data) deck.incomplete = !!data.incomplete;
     saveDecks(decks);
@@ -3381,7 +3389,7 @@ function renderCreatedList() {
           signal: AbortSignal.timeout(8000),
         }).then(res => res.json()).then(data => {
           if (!data.ok) showBanner('フォルダ移動のサーバー反映に失敗しました', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
-          else fetchAndMergeFolders();
+          else fetchAndMergeFolders().catch(() => {});
         }).catch(() => showBanner('フォルダ移動のサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15})));
       } else {
         const d = key.startsWith('deck:')
@@ -6630,8 +6638,7 @@ async function checkOrderUpdate() {
     if (lastOrderHash === null && orderSynced) { lastOrderHash = hash; return; }
     if (orderSynced && hash === lastOrderHash) return;
 
-    await fetchAndMergeOrder();
-    if (orderSynced) lastOrderHash = hash; // 取り込みに成功してから更新
+    if (await fetchAndMergeOrder()) lastOrderHash = hash; // 実際に取り込めたときだけ更新
 
     const activeScreen = document.querySelector('.screen.active')?.id;
     if (activeScreen === 'screen-list') {
