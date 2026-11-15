@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="e266d80b31";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="ae185dae1a";/*@end*/// ============================================================
 //  timetable.js — 時間割ページ用スクリプト
 //  timetable.html から読み込む
 // ============================================================
@@ -207,7 +207,7 @@ async function api(path, opts = {}) {
     (session && session.session_token) ? { "Authorization": "Bearer " + session.session_token } : {},
     opts.headers || {}
   );
-  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { ...opts, headers });
+  const res = await fetch(API_BASE + path.replace(/^\/+/, ''), { cache: 'no-store', ...opts, headers });
   return res.json();
 }
 
@@ -1704,7 +1704,7 @@ window.addEventListener('pageshow', () => {
 
 // 指定URLのレスポンス本文からハッシュを計算
 async function hashOfUrl(url, headers) {
-  const res = await fetch(url, headers ? { headers } : undefined);
+  const res = await fetch(url, headers ? { headers, cache: 'no-store' } : { cache: 'no-store' });
   const txt = await res.text();
   return digestMessage(txt);
 }

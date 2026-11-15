@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="e266d80b31";/*@end*/// ============================================================ 754
+/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="ae185dae1a";/*@end*/// ============================================================ 754
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
 //  → 累計ポイントはヘッダーバッジに表示
@@ -791,7 +791,7 @@ async function api(path, opts) {
     SESSION_TOKEN ? { "Authorization": "Bearer " + SESSION_TOKEN } : {},
     opts.headers || {}
   );
-  var res = await fetch(API_BASE + path.replace(/^\/+/, ''), Object.assign({}, opts, { headers: headers }));
+  var res = await fetch(API_BASE + path.replace(/^\/+/, ''), Object.assign({ cache: 'no-store' }, opts, { headers: headers }));
   return res.json();
 }
 
@@ -2072,7 +2072,7 @@ function escAttr(s) {
 //   では常にAuthorizationヘッダを付けて呼ぶ（他の監視対象APIには無害）。
 async function hashOfEndpoint(path) {
   const res = await fetch(API_BASE + path.replace(/^\/+/, ''), {
-    headers: SESSION_TOKEN ? { "Authorization": "Bearer " + SESSION_TOKEN } : {},
+    cache: 'no-store', headers: SESSION_TOKEN ? { "Authorization": "Bearer " + SESSION_TOKEN } : {},
   });
   const txt = await res.text();
   return digestMessage(txt);

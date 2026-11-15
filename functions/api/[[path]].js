@@ -64,9 +64,19 @@ export async function onRequest(context) {
   }
 
   // ★ SSE（/events）を含め、レスポンスはそのまま（ストリーミングのまま）返す。
+  // ★ 追加：GETのAPI応答は常にキャッシュさせない。bot.py側のNO_CACHE_PATHSは
+  //   個別列挙のため載せ漏れがあると、ログイン前の失敗応答や古いデータが
+  //   ブラウザ・中間プロキシに残って「古いデータが出る」原因になる。
+  //   SSE（text/event-stream）にも付けて問題ない（ストリーミングには影響しない）。
+  const outHeaders = new Headers(backendRes.headers);
+  if (request.method === 'GET' || request.method === 'HEAD') {
+    outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    outHeaders.set('Pragma', 'no-cache');
+    outHeaders.set('Expires', '0');
+  }
   return new Response(backendRes.body, {
     status: backendRes.status,
     statusText: backendRes.statusText,
-    headers: backendRes.headers,
+    headers: outHeaders,
   });
 }
