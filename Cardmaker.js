@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="fcbf57afaa";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="481715d1a1";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -245,7 +245,7 @@ function saveDecks(d) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); return; } catch (e) {}
   try {
     let dirty; try { dirty = deckSyncDirty; } catch (e) { dirty = new Set(); } // 宣言より前に呼ばれても落ちないように
-    const slim = d.map(x => (x.filename && !dirty.has(x.id))
+    const slim = d.map(x => (x.filename && !dirty.has(x.id) && x.id !== currentDeckId)
       ? { ...x, cards: [], cardsLoaded: false, bodyRev: null } : x);
     localStorage.setItem(STORE_KEY, JSON.stringify(slim));
   } catch (e) { console.warn('[cardmaker] デッキ一覧をこの端末に保存できませんでした', e); }
@@ -2952,6 +2952,13 @@ async function publishDeck(deckId, isComplete = true) {
   //   他の同期経路と同じ cardToServerPayload を使う。以前はここだけ独自に
   //   固定6フィールドへ詰め替えていたため、多肢選択デッキを初めて
   //   「公開して保存」した瞬間に選択肢データが失われてしまっていた。
+  // ★ 安全策：カード本体を外して保存された（cardsLoaded===false）公開済みデッキの空のcardsを
+  //   そのまま送ると、サーバー上のデッキが0枚で上書きされてしまう。送信を中止する。
+  if (deck.filename && deck.cardsLoaded === false) {
+    showBanner('カードを読み込み中のため保存できませんでした。もう一度お試しください', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+    ensureDeckCardsLoaded(deck.id, true).catch(() => {});
+    return;
+  }
   const cards = deck.cards.map(cardToServerPayload);
   // ★ 追加：サーバー側の is_update（＝filenameが既に存在するか）だけでは、
   //   「作成中（作成時にannounceNewDeckToServerで登録済み）」のデッキが
@@ -4135,6 +4142,7 @@ async function waitForPendingSync(deckId) {
 // ★ 公開済みデッキの内容をサーバーに反映する共通処理（通知なし）
 async function syncDeckToServer(deck) {
   try {
+    if (deck.filename && deck.cardsLoaded === false) return false; // 本体を外した状態では送らない（0枚上書き防止）
     const cards = deck.cards.map(cardToServerPayload); // ★ choices/correct_indicesも含めて画像も同期する
     const session = getLoginSession();
     const res = await fetch(`${API_BASE}save_cards`, {
