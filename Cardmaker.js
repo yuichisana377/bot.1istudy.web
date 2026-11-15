@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="1e9a2c48a4";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="6b425f4a5b";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2049,13 +2049,30 @@ let deckListRetryCount = 0;
 function isAuthFetchError(r) {
   return r.status === 'rejected' && /not_logged_in|guild_membership_required/.test(String(r.reason && r.reason.message));
 }
+let _authNoticeShown = false;
 async function syncDeckListData() {
   const rs = await Promise.allSettled([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
   preloadUnsureBadges();
   clearTimeout(deckListRetryTimer); deckListRetryTimer = null;
   if (rs.some(isAuthFetchError) || !rs.some(r => r.status === 'rejected')) {
-    deckListRetryCount = 0; return;
+    deckListRetryCount = 0;
+    // ★ 追加：ログイン切れ・Discord未連携（サーバーのメンバー確認に通らない）だと、一覧・フォルダ・
+    //   時間割などが全部サーバーから取れず、この端末に残った古い内容だけが静かに表示され続けていた。
+    //   原因が分かるよう、1回だけはっきり知らせる。
+    const authErr = rs.find(isAuthFetchError);
+    if (authErr && !_authNoticeShown) {
+      _authNoticeShown = true;
+      const noMember = /guild_membership_required/.test(String(authErr.reason.message));
+      showCmAlert({
+        title: noMember ? 'Discordとの連携が確認できません' : 'ログインが切れています',
+        desc: (noMember
+          ? 'このアカウントはDiscordサーバーのメンバーとして確認できないため、最新のデッキ・フォルダ・時間割を取得できず、この端末に残っている古い内容を表示しています。'
+          : 'ログインが切れているため、最新のデッキ・フォルダを取得できず、この端末に残っている古い内容を表示しています。')
+          + 'ログイン画面からDiscordでログインし直してください。',
+      });
+    }
+    return;
   }
   deckListRetryCount++;
   const delay = Math.min(30000, 2000 * Math.pow(2, deckListRetryCount));
