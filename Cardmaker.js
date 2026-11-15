@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7a0349e9bd";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="24815325f7";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2016,36 +2016,38 @@ async function loadDeckCardsWithRecovery(deckId) {
   }
 }
 
+// ★ 再試行は常に1本のチェーンだけにする（一覧へ戻るたびに増えないよう、予約は必ず取り消してから）。
+//   ログイン切れ・サーバー未参加のエラーは待っても直らないので再試行しない。
+let deckListRetryTimer = null;
+let deckListRetryCount = 0;
+function isAuthFetchError(r) {
+  return r.status === 'rejected' && /not_logged_in|guild_membership_required/.test(String(r.reason && r.reason.message));
+}
+async function syncDeckListData() {
+  const rs = await Promise.allSettled([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
+  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  preloadUnsureBadges();
+  clearTimeout(deckListRetryTimer); deckListRetryTimer = null;
+  if (rs.some(isAuthFetchError) || !rs.some(r => r.status === 'rejected')) {
+    deckListRetryCount = 0; return;
+  }
+  deckListRetryCount++;
+  const delay = Math.min(30000, 2000 * Math.pow(2, deckListRetryCount));
+  deckListRetryTimer = setTimeout(deckListRetryTick, delay);
+}
+async function deckListRetryTick() {
+  deckListRetryTimer = null;
+  if (document.hidden || document.querySelector('.screen.active')?.id !== 'screen-list') {
+    deckListRetryTimer = setTimeout(deckListRetryTick, 5000); return;
+  }
+  await syncDeckListData();
+}
 async function renderDeckList() {
   decks = loadDecks();
   folders = loadFoldersCache();
   renderDeckListUI();
-  // ★ 1つでも失敗すると全体が捨てられていたので allSettled にし、成功分は反映する。
-  //   失敗が残っている間は、間隔を延ばしながら自動で取り直し続ける（永久に諦めない）。
-  const rs = await Promise.allSettled([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
-  renderDeckListUI();
-  preloadUnsureBadges();
-  if (rs.some(r => r.status === 'rejected')) {
-    const delay = Math.min(30000, 2000 * Math.pow(2, renderDeckList._retry = (renderDeckList._retry || 0) + 1));
-    setTimeout(renderDeckListRetry, delay);
-  } else {
-    renderDeckList._retry = 0;
-  }
-}
-// 再試行（画面が一覧のときだけ。ローカルの表示は上書きせず取得・反映のみ）
-async function renderDeckListRetry() {
-  if (document.hidden || document.querySelector('.screen.active')?.id !== 'screen-list') {
-    setTimeout(renderDeckListRetry, 5000); return;
-  }
-  const rs = await Promise.allSettled([fetchAndMergeDecks(), fetchAndMergeFolders(), fetchAndMergeOrder(), fetchAndMergeStudyData()]);
-  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
-  preloadUnsureBadges();
-  if (rs.some(r => r.status === 'rejected')) {
-    const delay = Math.min(30000, 2000 * Math.pow(2, renderDeckList._retry = (renderDeckList._retry || 0) + 1));
-    setTimeout(renderDeckListRetry, delay);
-  } else {
-    renderDeckList._retry = 0;
-  }
+  clearTimeout(deckListRetryTimer); deckListRetryTimer = null;
+  await syncDeckListData();
 }
 
 // ★ 追加：一覧の「わからない」バッジ（🔖）は、そのデッキのカード本体が
@@ -2061,6 +2063,7 @@ async function renderDeckListRetry() {
 function preloadUnsureBadges() {
   const targets = decks.filter(d =>
     d.filename && d.cardsLoaded === false && (studyDataCache.unsure[d.filename] || []).length > 0
+    && !loadingDeckIds.has(d.id)
   );
   targets.forEach(d => ensureDeckCardsLoaded(d.id));
 }
@@ -6492,7 +6495,7 @@ let lastCardsHash = null;
 async function checkCardsUpdate() {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 15000);
     // ★ cache: 'no-store' を追加：これが無いと、ハッシュ比較のための取得自体が
     //   キャッシュされたレスポンスを見てしまい、更新検知が機能しないことがあるため。
     const session = getLoginSession();
@@ -6512,10 +6515,11 @@ async function checkCardsUpdate() {
 
     // ハッシュが変わっておらず、取得済みなら何もしない
     if (decksSynced && hash === lastCardsHash) return;
-    lastCardsHash = hash;
 
     // データをバックグラウンドでマージ（プレイ中・編集中の画面はそのまま）
+    // ★ ハッシュは取り込みが成功してから更新する（失敗したら次回また取り直す）
     await fetchAndMergeDecks();
+    lastCardsHash = hash;
 
     // 一覧画面を見ている時だけ、その場で再描画する
     const activeScreen = document.querySelector('.screen.active')?.id;
