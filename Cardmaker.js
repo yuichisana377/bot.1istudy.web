@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="4089a16dce";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="f88ed1beb5";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2038,6 +2038,7 @@ async function loadDeckCardsWithRecovery(deckId) {
 //   ログイン切れ・サーバー未参加のエラーは待っても直らないので再試行しない。
 let deckListRetryTimer = null;
 let deckListRetryCount = 0;
+let membershipRetryCount = 0; // メンバー確認の一時エラー用（通信エラーのバックオフ回数と分けて数える）
 function isAuthFetchError(r) {
   return r.status === 'rejected' && /not_logged_in|guild_membership_required/.test(String(r.reason && r.reason.message));
 }
@@ -2051,13 +2052,14 @@ async function syncDeckListData() {
   //   数回は再試行し、それでも続くときだけ「連携できていない」と扱う。
   const onlyMembership = rs.some(isAuthFetchError)
     && !rs.some(r => isAuthFetchError(r) && !/guild_membership_required/.test(String(r.reason.message)));
-  if (onlyMembership && deckListRetryCount < 4) {
-    deckListRetryCount++;
-    deckListRetryTimer = setTimeout(deckListRetryTick, 3000 * deckListRetryCount);
+  if (onlyMembership && membershipRetryCount < 4) {
+    membershipRetryCount++;
+    deckListRetryTimer = setTimeout(deckListRetryTick, 3000 * membershipRetryCount);
     return;
   }
   if (rs.some(isAuthFetchError) || !rs.some(r => r.status === 'rejected')) {
     deckListRetryCount = 0;
+    membershipRetryCount = 0;
     // ★ 追加：ログイン切れ・Discord未連携（サーバーのメンバー確認に通らない）だと、一覧・フォルダ・
     //   時間割などが全部サーバーから取れず、この端末に残った古い内容だけが静かに表示され続けていた。
     //   原因が分かるよう、1回だけはっきり知らせる。
@@ -2070,6 +2072,7 @@ async function syncDeckListData() {
         //   セッションを消してログイン画面へ誘導する（PWAなどブラウザと別に保存されている端末で起きやすい）。
         try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
         await showCmAlert({ title: 'ログインが切れています', desc: 'ログイン期限が切れているため、最新のデッキ・フォルダ・時間割を取得できません。Discordでログインし直してください。', okLabel: 'ログイン画面へ' });
+        try { sessionStorage.setItem('post_login_redirect', location.href); } catch (e) {}
         location.replace(LOGIN_PATH);
         return;
       }
@@ -3003,8 +3006,11 @@ async function publishDeck(deckId, isComplete = true) {
     const target = decks.find(d => d.id === deckId);
     if (target) {
       target.filename = data.filename;
-      target.count = target.cards.length;
-      target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
+      // 容量対策で本体が外れた保存を読み直した場合（cardsLoaded===false）は、0枚・読み込み済みと誤記録しない
+      if (target.cardsLoaded !== false) {
+        target.count = target.cards.length;
+        target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
+      }
       target.published_by = session ? session.nickname : '匿名';
       target.incomplete = !isComplete; // ★ 一覧の未完成バッジ表示用に保持（サーバーにも保存済み）
       deckSyncDirty.delete(deckId); // 公開して保存でサーバーと一致したので未反映の目印を外す
