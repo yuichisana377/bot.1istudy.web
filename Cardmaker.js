@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="f88ed1beb5";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="fa18c767c8";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2064,9 +2064,12 @@ async function syncDeckListData() {
     //   時間割などが全部サーバーから取れず、この端末に残った古い内容だけが静かに表示され続けていた。
     //   原因が分かるよう、1回だけはっきり知らせる。
     const authErr = rs.find(isAuthFetchError);
-    if (authErr && !_authNoticeShown) {
+    const _onListScreen = document.querySelector('.screen.active')?.id === 'screen-list';
+    const _isNoMember = authErr && /guild_membership_required/.test(String(authErr.reason.message));
+    // 編集中などに画面遷移で入力を失わないよう、ログイン画面への誘導は一覧画面にいるときだけ行う（次に一覧へ戻ったとき再判定）
+    if (authErr && !_authNoticeShown && (_isNoMember || _onListScreen)) {
       _authNoticeShown = true;
-      const noMember = /guild_membership_required/.test(String(authErr.reason.message));
+      const noMember = _isNoMember;
       if (!noMember) {
         // ★ ログイン期限切れ（30日）や無効なセッションのまま古い表示を続けても直らないので、
         //   セッションを消してログイン画面へ誘導する（PWAなどブラウザと別に保存されている端末で起きやすい）。
@@ -3007,8 +3010,8 @@ async function publishDeck(deckId, isComplete = true) {
     if (target) {
       target.filename = data.filename;
       // 容量対策で本体が外れた保存を読み直した場合（cardsLoaded===false）は、0枚・読み込み済みと誤記録しない
+      target.count = cards.length;
       if (target.cardsLoaded !== false) {
-        target.count = target.cards.length;
         target.cardsLoaded = true; // ★ 今まさに公開したデッキなのでカード本体は既にこの端末にある
       }
       target.published_by = session ? session.nickname : '匿名';

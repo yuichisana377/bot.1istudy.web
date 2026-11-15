@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="f88ed1beb5";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="fa18c767c8";/*@end*/// ============================================================
 //  timetable.js — 時間割ページ用スクリプト
 //  timetable.html から読み込む
 // ============================================================
@@ -214,6 +214,7 @@ async function api(path, opts = {}) {
   if (json && json.error === 'not_logged_in' && session && session.session_token && !window.__ttReLoginStarted) {
     window.__ttReLoginStarted = true;
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    try { sessionStorage.setItem('post_login_redirect', location.href); } catch (e) {}
     Promise.resolve(typeof showAppAlert === 'function'
       ? showAppAlert({ title: 'ログインが切れました', desc: 'もう一度Discordでログインしてください。' }) : null)
       .finally(() => location.replace('/Login.html'));
