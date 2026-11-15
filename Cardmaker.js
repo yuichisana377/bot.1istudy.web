@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="b98c2819fb";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="1e9a2c48a4";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -237,7 +237,19 @@ function migrateGuildScopedLocalKey(oldKey, newKey) {
 const STORE_KEY = `cardmaker_decks_v1_${GUILD_ID}`;
 migrateGuildScopedLocalKey('cardmaker_decks_v1', STORE_KEY);
 function loadDecks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
-function saveDecks(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
+// ★ 修正：localStorage の容量（約5MB）を超えると setItem が例外を投げる。以前はここで
+//   例外のまま落ちていたため、サーバーから取れた最新の一覧が保存されず、一覧を開き直すたびに
+//   loadDecks() が「容量が溢れる前の古い一覧」を読み戻して、新しいデッキが出なくなっていた。
+//   公開済みデッキのカード本体はサーバーから取り直せるので、溢れたら本体を外して保存し直す。
+function saveDecks(d) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); return; } catch (e) {}
+  try {
+    let dirty; try { dirty = deckSyncDirty; } catch (e) { dirty = new Set(); } // 宣言より前に呼ばれても落ちないように
+    const slim = d.map(x => (x.filename && !dirty.has(x.id))
+      ? { ...x, cards: [], cardsLoaded: false, bodyRev: null } : x);
+    localStorage.setItem(STORE_KEY, JSON.stringify(slim));
+  } catch (e) { console.warn('[cardmaker] デッキ一覧をこの端末に保存できませんでした', e); }
+}
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
 // ── フォルダ（最大3階層・みんなで共有） ──
@@ -246,7 +258,7 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 const FOLDER_CACHE_KEY = `cardmaker_folders_cache_v1_${GUILD_ID}`;
 migrateGuildScopedLocalKey('cardmaker_folders_cache_v1', FOLDER_CACHE_KEY);
 function loadFoldersCache() { try { return JSON.parse(localStorage.getItem(FOLDER_CACHE_KEY)) || []; } catch { return []; } }
-function saveFoldersCache(f) { localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(f)); }
+function saveFoldersCache(f) { try { localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(f)); } catch (e) {} }
 const MAX_FOLDER_DEPTH = 3;
 
 // ★ 「クイズ過去問」フォルダ（クイズ由来の4択アーカイブ用・システムフォルダ）。
@@ -278,7 +290,7 @@ migrateGuildScopedLocalKey('cardmaker_shared_order_cache_v1', SHARED_ORDER_CACHE
 function loadListOrderMap() { try { return JSON.parse(localStorage.getItem(LIST_ORDER_KEY)) || {}; } catch { return {}; } }
 function saveListOrderMap(m) { localStorage.setItem(LIST_ORDER_KEY, JSON.stringify(m)); }
 function loadSharedOrderCache() { try { return JSON.parse(localStorage.getItem(SHARED_ORDER_CACHE_KEY)) || {}; } catch { return {}; } }
-function saveSharedOrderCache(m) { localStorage.setItem(SHARED_ORDER_CACHE_KEY, JSON.stringify(m)); }
+function saveSharedOrderCache(m) { try { localStorage.setItem(SHARED_ORDER_CACHE_KEY, JSON.stringify(m)); } catch (e) {} }
 function orderScopeKey(folderId) { return folderId || '__root__'; }
 
 let sharedOrderCache = loadSharedOrderCache(); // { [scope]: [key, ...] } ← サーバーから取得したもの
