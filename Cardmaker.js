@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="24815325f7";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="766d6eed79";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -360,6 +360,9 @@ let cmListDragActive = false;
 let _pendingOrderPushes = [];
 
 // ★ サーバーから「みんなの並び順」を取得してキャッシュに反映する
+// ★ 取得・反映に一度でも成功したか。失敗したまま更新チェックの「初回はハッシュを控えるだけ」に
+//   進むと、サーバー側が変わるまで古いキャッシュが表示され続けるため、false の間は必ず取り直す。
+let orderSynced = false;
 async function fetchAndMergeOrder() {
   if (_pendingOrderPushes.length) {
     await Promise.allSettled(_pendingOrderPushes);
@@ -373,12 +376,13 @@ async function fetchAndMergeOrder() {
   });
   clearTimeout(timer);
   const data = await res.json();
-  if (!data.ok) return false;
+  if (!data.ok) throw new Error(data.error || 'list_order failed');
   // ★ 追加：通信中に新しい並び替えが始まっていたら、この応答は古いかもしれない
   //   ので上書きせずに諦める（fetchAndMergeStudyDataと同じ考え方）。
   if (_pendingOrderPushes.length) return false;
   sharedOrderCache = data.order || {};
   saveSharedOrderCache(sharedOrderCache);
+  orderSynced = true;
   return true;
 }
 
@@ -434,6 +438,7 @@ async function _pushSharedOrderToServerImpl(folderId, keys) {
 }
 
 // ★ サーバーからフォルダ一覧を取得してキャッシュに反映する
+let foldersSynced = false; // orderSynced と同じ理由
 async function fetchAndMergeFolders() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
@@ -447,9 +452,10 @@ async function fetchAndMergeFolders() {
   });
   clearTimeout(timer);
   const data = await res.json();
-  if (!data.ok) return false;
+  if (!data.ok) throw new Error(data.error || 'list_folders failed');
   folders = (data.folders || []).map(f => ({ id: f.id, name: f.name, parentId: f.parent_id ?? null, description: f.description || null }));
   saveFoldersCache(folders);
+  foldersSynced = true;
   return true;
 }
 
@@ -6589,11 +6595,11 @@ async function checkFoldersUpdate() {
     const txt = await res.text();
     const hash = await digestMessage(txt);
 
-    if (lastFoldersHash === null) { lastFoldersHash = hash; return; }
-    if (hash === lastFoldersHash) return;
-    lastFoldersHash = hash;
+    if (lastFoldersHash === null && foldersSynced) { lastFoldersHash = hash; return; }
+    if (foldersSynced && hash === lastFoldersHash) return;
 
     await fetchAndMergeFolders();
+    lastFoldersHash = hash; // 取り込みに成功してから更新（失敗したら次回また取り直す）
 
     const activeScreen = document.querySelector('.screen.active')?.id;
     if (activeScreen === 'screen-list') {
@@ -6621,11 +6627,11 @@ async function checkOrderUpdate() {
     const txt = await res.text();
     const hash = await digestMessage(txt);
 
-    if (lastOrderHash === null) { lastOrderHash = hash; return; }
-    if (hash === lastOrderHash) return;
-    lastOrderHash = hash;
+    if (lastOrderHash === null && orderSynced) { lastOrderHash = hash; return; }
+    if (orderSynced && hash === lastOrderHash) return;
 
     await fetchAndMergeOrder();
+    if (orderSynced) lastOrderHash = hash; // 取り込みに成功してから更新
 
     const activeScreen = document.querySelector('.screen.active')?.id;
     if (activeScreen === 'screen-list') {
