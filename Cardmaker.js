@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="6b425f4a5b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="fcbf57afaa";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -288,7 +288,7 @@ const SHARED_ORDER_CACHE_KEY = `cardmaker_shared_order_cache_v1_${GUILD_ID}`; //
 migrateGuildScopedLocalKey('cardmaker_list_order_v1', LIST_ORDER_KEY);
 migrateGuildScopedLocalKey('cardmaker_shared_order_cache_v1', SHARED_ORDER_CACHE_KEY);
 function loadListOrderMap() { try { return JSON.parse(localStorage.getItem(LIST_ORDER_KEY)) || {}; } catch { return {}; } }
-function saveListOrderMap(m) { localStorage.setItem(LIST_ORDER_KEY, JSON.stringify(m)); }
+function saveListOrderMap(m) { try { localStorage.setItem(LIST_ORDER_KEY, JSON.stringify(m)); } catch (e) {} }
 function loadSharedOrderCache() { try { return JSON.parse(localStorage.getItem(SHARED_ORDER_CACHE_KEY)) || {}; } catch { return {}; } }
 function saveSharedOrderCache(m) { try { localStorage.setItem(SHARED_ORDER_CACHE_KEY, JSON.stringify(m)); } catch (e) {} }
 function orderScopeKey(folderId) { return folderId || '__root__'; }
@@ -2055,6 +2055,15 @@ async function syncDeckListData() {
   if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
   preloadUnsureBadges();
   clearTimeout(deckListRetryTimer); deckListRetryTimer = null;
+  // ★ guild_membership_required は、Bot再起動直後（Discord接続前）にも一時的に返る。
+  //   数回は再試行し、それでも続くときだけ「連携できていない」と扱う。
+  const onlyMembership = rs.some(isAuthFetchError)
+    && !rs.some(r => isAuthFetchError(r) && !/guild_membership_required/.test(String(r.reason.message)));
+  if (onlyMembership && deckListRetryCount < 4) {
+    deckListRetryCount++;
+    deckListRetryTimer = setTimeout(deckListRetryTick, 3000 * deckListRetryCount);
+    return;
+  }
   if (rs.some(isAuthFetchError) || !rs.some(r => r.status === 'rejected')) {
     deckListRetryCount = 0;
     // ★ 追加：ログイン切れ・Discord未連携（サーバーのメンバー確認に通らない）だと、一覧・フォルダ・

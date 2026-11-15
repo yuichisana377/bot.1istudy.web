@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="6b425f4a5b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="fcbf57afaa";/*@end*/// ============================================================
 //  Common.js — 複数ページで同一だった共通関数（ログインセッション・ドロワー等）
 //  ★ 関数宣言のみ。SESSION_KEY / LOGIN_PATH / prefetchOtherPages は
 //    各ページのJS側で定義されたものを呼び出し時に参照する。

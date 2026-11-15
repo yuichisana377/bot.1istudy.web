@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="6b425f4a5b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="fcbf57afaa";/*@end*/// ============================================================
 //  timetable.js — 時間割ページ用スクリプト
 //  timetable.html から読み込む
 // ============================================================
@@ -653,7 +653,9 @@ async function loadTTOverrides() {
   renderTimetable();
 }
 function saveTTOverrideLocal() {
-  localStorage.setItem('tt_overrides_' + GUILD_ID, JSON.stringify(ttOverrides));
+  // ★ 修正：容量超過で例外になると、呼び出し元のtryに拾われて「サーバー取得失敗」扱いになり、
+  //   古いローカル内容で時間割を描画してしまっていた。保存の失敗は無視して描画を続ける。
+  try { localStorage.setItem('tt_overrides_' + GUILD_ID, JSON.stringify(ttOverrides)); } catch (e) {}
 }
 
 // ============================================================
