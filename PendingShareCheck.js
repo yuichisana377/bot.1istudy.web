@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["PendingShareCheck.js"]="ddc112bb3c";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["PendingShareCheck.js"]="e266d80b31";/*@end*/// ============================================================
 //  PendingShareCheck.js — 共有リンク発行依頼のWeb確認（Discord未連携の受け皿）
 //  ─────────────────────────────
 //  CardMakerのデッキ作成者本人以外が「共有リンクを作りたい」と依頼すると、

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="ddc112bb3c";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Timetable.js"]="e266d80b31";/*@end*/// ============================================================
 //  timetable.js — 時間割ページ用スクリプト
 //  timetable.html から読み込む
 // ============================================================
@@ -227,13 +227,30 @@ async function loadTTHomeworks() {
 // ============================================================
 //  学期（前期・後期など）の基本時間割
 // ============================================================
+// ★ 学期データの取得が一度でも成功したか（false の間は DEFAULT_TIMETABLE を出さない）
+let termsLoaded = false;
+const TERMS_CACHE_KEY = 'tt_terms_cache_' + GUILD_ID;
+
+// 端末に控えておいた前回の学期データがあれば、サーバー応答を待たずに使う
+(function restoreTermsCache() {
+  try {
+    const raw = localStorage.getItem(TERMS_CACHE_KEY);
+    const arr = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(arr) && arr.length) { terms = arr; termsLoaded = true; }
+  } catch(_) {}
+})();
+
 async function loadTerms() {
   try {
-    const res  = await api(`${TERM_API.LIST}?guild_id=${GUILD_ID}`);
-    terms = (res.ok && Array.isArray(res.terms)) ? res.terms : [];
-  } catch(e) {
-    terms = [];
-  }
+    const res = await api(`${TERM_API.LIST}?guild_id=${GUILD_ID}`);
+    // ★ 成功と判断できたときだけ置き換える。失敗（通信エラー・{ok:false}）で
+    //   terms を空に戻すと、編集前の DEFAULT_TIMETABLE が一瞬/定期的に出てしまう。
+    if (res && res.ok && Array.isArray(res.terms)) {
+      terms = res.terms;
+      termsLoaded = true;
+      try { localStorage.setItem(TERMS_CACHE_KEY, JSON.stringify(terms)); } catch(_) {}
+    }
+  } catch(e) { /* 直前のデータを保持 */ }
   renderTimetable();
 }
 
@@ -244,7 +261,9 @@ async function loadTerms() {
 //     最初に一致したものを使えばよい。
 function getTimetableForDate(dateStr) {
   const term = terms.find(t => t.start_date <= dateStr && dateStr <= t.end_date);
-  return (term && term.timetable) ? term.timetable : DEFAULT_TIMETABLE;
+  if (term && term.timetable) return term.timetable;
+  // ★ 学期データがまだ一度も取れていない間は、編集前の既定時間割を出さず空にする
+  return termsLoaded ? DEFAULT_TIMETABLE : {};
 }
 
 // ============================================================
