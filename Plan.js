@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="bfd50813a6";/*@end*/
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="cdb56272e4";/*@end*/
 // ============================================================
 //  plan.js — 予定管理ページ用スクリプト
 //  index.html から読み込む
@@ -247,9 +247,21 @@ async function api(path, opts = {}) {
   // ★ 追加：Cardmaker.js等と同じ理由（ブラウザ・中間プロキシのGETキャッシュ対策）。
   //   サーバー側もNO_CACHE_PATHSでCache-Control: no-storeを返すようにしたが、
   //   fetch側でも明示しておくことで二重に確実にする。
+  // ★ 追加：iPhone等で回線の切り替わり・バックグラウンド復帰直後などに起きる一瞬の通信失敗
+  //   （Safariでは "Load failed"）を、管理者への自動通知にしないための対策。
+  //   GET（読み取り）に限り、少し待って1回だけ自動で再試行し、それでも失敗した場合だけ通知する。
+  //   POST等（書き込み）は二重実行の恐れがあるので再試行しない。
+  const url = API_BASE + path.replace(/^\/+/, '');
+  const isGet = !opts.method || String(opts.method).toUpperCase() === 'GET';
   let res;
   try {
-    res = await fetch(API_BASE + path.replace(/^\/+/, ''), { cache: 'no-store', ...opts, headers });
+    try {
+      res = await fetch(url, { cache: 'no-store', ...opts, headers });
+    } catch (e1) {
+      if (!isGet) throw e1;
+      await new Promise(r => setTimeout(r, 1200));
+      res = await fetch(url, { cache: 'no-store', ...opts, headers });
+    }
   } catch (e) {
     reportApiError(path, 'network_error', 0, String(e));   // ★ 管理者へ自動通知（Common.js）
     throw e;

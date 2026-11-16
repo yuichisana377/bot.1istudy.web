@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="bfd50813a6";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Common.js"]="cdb56272e4";/*@end*/// ============================================================
 //  Common.js — 複数ページで同一だった共通関数（ログインセッション・ドロワー等）
 //  ★ 関数宣言のみ。SESSION_KEY / LOGIN_PATH / prefetchOtherPages は
 //    各ページのJS側で定義されたものを呼び出し時に参照する。
@@ -152,6 +152,9 @@ var __rptRecent = [];
 var __rptFirstJsErr = '';
 window.addEventListener('error', function (e) {
   if (__rptFirstJsErr) return;
+  // ★ Cloudflareが自動で差し込む解析ビーコン等の読込失敗（広告ブロッカー・回線不調で起きる）は
+  //   サイトの不具合ではなく、本当の原因の手がかりを隠してしまうため記録しない
+  if (e.target && e.target.src && /cloudflareinsights\.com/.test(e.target.src)) return;
   var t = (e.target && e.target.src) ? ('読込失敗: ' + e.target.src)
         : ((e.message || '') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0));
   __rptFirstJsErr = t.slice(0, 200);
