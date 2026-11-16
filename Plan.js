@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="cdb56272e4";/*@end*/
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="a48ba48cde";/*@end*/
 // ============================================================
 //  plan.js — 予定管理ページ用スクリプト
 //  index.html から読み込む
@@ -258,7 +258,7 @@ async function api(path, opts = {}) {
     try {
       res = await fetch(url, { cache: 'no-store', ...opts, headers });
     } catch (e1) {
-      if (!isGet) throw e1;
+      if (!isGet || (e1 && e1.name === 'AbortError')) throw e1;
       await new Promise(r => setTimeout(r, 1200));
       res = await fetch(url, { cache: 'no-store', ...opts, headers });
     }
@@ -309,7 +309,8 @@ async function loadPlans() {
   //   「読み込みに失敗しました」を出す（＝本当に0件のときは従来通り
   //   「予定はありません」のまま）。
   let data = await fetchFutureSchedule();
-  if (!data.ok) data = await fetchFutureSchedule();
+  // ★ 通信失敗(__clientError)は api() 内で既に待って再試行済みなので、ここでの再試行はサーバーが {ok:false} を返した場合だけにする（二重再試行・通知の取りこぼし防止）
+  if (!data.ok && !data.__clientError) data = await fetchFutureSchedule();
   if (data.ok) {
     plans = dedupePlans(data.plans);
   } else if (data.error === 'not_logged_in') {

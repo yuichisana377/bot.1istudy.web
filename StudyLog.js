@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="cdb56272e4";/*@end*/// ============================================================ 754
+/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="a48ba48cde";/*@end*/// ============================================================ 754
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
 //  → 累計ポイントはヘッダーバッジに表示
