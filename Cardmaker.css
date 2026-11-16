@@ -84,11 +84,11 @@ html, body {
 }
 .btn:active { transform: scale(.97); opacity: .85; }
 .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-.btn-blue    { background: #2563EB; color: #fff; }
-.btn-outline { background: var(--surface); color: #2563EB; border: 1.5px solid #2563EB; }
+.btn-blue    { background: var(--accent); color: #fff; }
+.btn-outline { background: var(--surface); color: var(--accent); border: 1.5px solid var(--accent); }
 .btn-ghost   { background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); }
-.btn-danger  { background: #FEF2F2; color: #EF4444; border: 1.5px solid #fecaca; width: auto; margin-top: 0; }
-.btn-sm      { height: 36px; padding: 0 .9rem; font-size: 13px; border-radius: 6px; }
+.btn-danger  { background: var(--danger-soft); color: var(--danger); border: 1.5px solid var(--danger-line); width: auto; margin-top: 0; }
+.btn-sm      { height: 36px; padding: 0 .9rem; font-size: 13px; border-radius: 2px; }
 
 /* ★ 追加：編集画面上部、デッキの説明（設定されている場合だけ表示。編集は「デッキを編集」から） */
 .edit-deck-desc {
@@ -103,9 +103,9 @@ html, body {
   box-shadow: var(--shadow); margin-bottom: 1rem;
   border-left: 4px solid transparent; transition: border-color .2s; overflow: hidden;
 }
-.card-block:focus-within { border-left-color: #2563EB; }
+.card-block:focus-within { border-left-color: var(--accent); }
 .block-header { display: flex; align-items: center; padding: .75rem 1rem .5rem; }
-.block-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #2563EB; }
+.block-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 .block-label-sub { font-size: 11px; color: var(--text-secondary); font-weight: 400; }
 .auto-textarea {
   width: 100%; border: none; outline: none; resize: none; background: transparent;
@@ -120,15 +120,15 @@ html, body {
 }
 .block-action-btn {
   display: inline-flex; align-items: center; gap: .35rem;
-  padding: .4rem .8rem; border-radius: 20px; font-size: 13px; font-weight: 600;
-  cursor: pointer; background: #EFF4FF; color: #2563EB; border: none;
+  padding: .4rem .8rem; border-radius: 2px; font-size: 13px; font-weight: 600;
+  cursor: pointer; background: var(--accent-soft); color: var(--accent); border: none;
 }
-.block-action-btn:active { background: #dbeafe; }
+.block-action-btn:active { background: var(--accent-soft); }
 .csv-import-hint { padding: 0 1rem .9rem; font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; }
 .img-strip { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0 1rem .75rem; }
 .img-thumb {
   position: relative; width: 72px; height: 72px;
-  border-radius: 8px; overflow: hidden; border: 1px solid var(--border);
+  border-radius: 2px; overflow: hidden; border: 1px solid var(--border);
 }
 .img-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
 .img-thumb-del {
@@ -157,7 +157,7 @@ html, body {
   font-family: inherit; font-size: 16px; color: var(--text);
   background: var(--surface); outline: none; transition: border-color .15s; margin-bottom: 1rem;
 }
-.set-name-input:focus { border-color: #2563EB; }
+.set-name-input:focus { border-color: var(--accent); }
 
 /* ── 編集画面下部バー ── */
 .editor-counter { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
@@ -173,7 +173,7 @@ html, body {
 .math-pad {
   margin-top: .6rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 2px;
   background: var(--bg);
 }
 .math-pad-header {
@@ -204,7 +204,7 @@ html, body {
   min-height: 20px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 2px;
   padding: .5rem .65rem;
   margin-bottom: .6rem;
   font-size: 16px;
@@ -233,7 +233,7 @@ html, body {
 
 .math-key {
   min-width: 36px; height: 36px; padding: 0 9px;
-  border: 1px solid var(--border); border-radius: 8px;
+  border: 1px solid var(--border); border-radius: 2px;
   background: var(--surface);
   font-size: 15px; font-weight: 600; font-family: inherit; color: var(--text);
   line-height: 1;
@@ -244,17 +244,17 @@ html, body {
 .math-key:active { background: var(--bg); }
 
 /* 分数・ルートボタンは「数式を組み立てる」特別なボタンとして少しだけ強調 */
-.math-key[data-action] { font-weight: 700; color: #2563EB; border-color: #DBEAFE; }
+.math-key[data-action] { font-weight: 700; color: var(--accent); border-color: var(--accent-soft); }
 .math-key-wide { flex-direction: column; min-width: 52px; height: 40px; gap: 1px; padding: 0 8px; }
-.math-key-hint { font-size: 9.5px; font-weight: 600; color: #60A5FA; line-height: 1; }
+.math-key-hint { font-size: 9.5px; font-weight: 600; color: var(--accent-line); line-height: 1; }
 
 .math-pad-tip {
   font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: .4rem;
 }
 
 /* パレットが開いている間、切り替えボタン自体もひと目でわかるようハイライト */
-.block-action-btn.math-btn-active { background: #2563EB; color: #fff; }
-.block-action-btn.math-btn-active:active { background: #1D4ED8; }
+.block-action-btn.math-btn-active { background: var(--accent); color: #fff; }
+.block-action-btn.math-btn-active:active { background: var(--accent); }
 
 /* ── みんなでクイズへの導線（ホーム上部） ── */
 .quiz-banner {
@@ -262,7 +262,7 @@ html, body {
   background: var(--surface); border-radius: var(--r-lg);
   box-shadow: var(--shadow); padding: .9rem 1rem;
   margin-bottom: 1.1rem; text-decoration: none; color: inherit;
-  border-left: 4px solid #2563EB;
+  border-left: 4px solid var(--accent);
 }
 .quiz-banner:active { background: var(--bg); }
 .quiz-banner-icon { font-size: 26px; flex-shrink: 0; }
@@ -286,7 +286,7 @@ html, body {
   flex: 0 0 auto; width: 190px; background: var(--surface);
   border-radius: var(--r-lg); box-shadow: var(--shadow);
   padding: .9rem .95rem; cursor: pointer;
-  border-left: 4px solid #2563EB;
+  border-left: 4px solid var(--accent);
 }
 .inprogress-card:active { background: var(--bg); }
 .inprogress-subject {
@@ -302,9 +302,9 @@ html, body {
   height: 5px; border-radius: 3px; background: var(--border);
   overflow: hidden; margin-bottom: .6rem;
 }
-.inprogress-bar-fill { height: 100%; background: #2563EB; }
+.inprogress-bar-fill { height: 100%; background: var(--accent); }
 .inprogress-resume-btn {
-  font-size: 12px; font-weight: 700; color: #2563EB;
+  font-size: 12px; font-weight: 700; color: var(--accent);
   display: flex; align-items: center; gap: 4px;
 }
 
@@ -323,7 +323,7 @@ html, body {
   flex: 0 0 auto; width: 190px; background: var(--surface);
   border-radius: var(--r-lg); box-shadow: var(--shadow);
   padding: .9rem .95rem; cursor: pointer;
-  border-left: 4px solid #16a34a;
+  border-left: 4px solid var(--ok);
 }
 .completed-card:active { background: var(--bg); }
 .completed-subject {
@@ -336,7 +336,7 @@ html, body {
 }
 .completed-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: .6rem; }
 .completed-replay-btn {
-  font-size: 12px; font-weight: 700; color: #16a34a;
+  font-size: 12px; font-weight: 700; color: var(--ok);
   display: flex; align-items: center; gap: 4px;
 }
 
@@ -400,17 +400,17 @@ html, body {
 .pub-badge {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 11px; font-weight: 700; padding: 2px 8px;
-  border-radius: 20px; white-space: nowrap;
+  border-radius: 2px; white-space: nowrap;
 }
-.pub-badge.published  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.pub-badge.published  { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line); }
 /* ★ 非公開＝赤系に変更（ユーザー指定） */
-.pub-badge.local      { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-.pub-badge.draft      { background: #fefce8; color: #a16207; border: 1px solid #fde68a; }
+.pub-badge.local      { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line); }
+.pub-badge.draft      { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
 /* ★ 追加：公開予定だがまだ公開されていない（作成中）デッキ用バッジ */
-.pub-badge.inprogress { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.pub-badge.inprogress { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
 /* ★ 「クイズ過去問」フォルダ内（一人用4択モードでプレイする）デッキ用バッジ、および
    選択式デッキ用バッジ。どちらも黒（灰色）系に変更（ユーザー指定） */
-.pub-badge.archive    { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+.pub-badge.archive    { background: var(--neutral-soft); color: var(--text); border: 1px solid var(--border); }
 
 /* ★ 追加：デッキ一覧の各カードにつける、自分のプレイ進捗の表示（バッジではなく
    ホーム画面の「プレイ中のデッキ」カードと同じ、左端の色付きライン）。
@@ -420,20 +420,20 @@ html, body {
    下の方にある「学習画面の完走演出」用の`.study-done`（centerレイアウト・大きい文字）と
    名前が衝突し、デッキ一覧の完了済みデッキカードがその見た目（中央寄せ・特大表示）に
    化けてしまっていた。他の既存クラスと衝突しない専用名（deck-status-*）に変更した。 */
-.deck-card.deck-status-doing { border-left: 4px solid #2563eb; }
-.deck-card.deck-status-done  { border-left: 4px solid #16a34a; }
+.deck-card.deck-status-doing { border-left: 4px solid var(--accent); }
+.deck-card.deck-status-done  { border-left: 4px solid var(--ok); }
 
 /* ── カード編集/作成フォームの選択式入力欄（choice-mode） ── */
 /* ★ 正解は常にチェックボックスで選ぶ（チェック数で択一/複数回答が自動的に決まる） */
 .modal-choice-row { display: flex; align-items: center; gap: 8px; margin-bottom: .5rem; }
-.modal-choice-row input[type=checkbox] { accent-color: #16a34a; width: 18px; height: 18px; flex-shrink: 0; }
+.modal-choice-row input[type=checkbox] { accent-color: var(--ok); width: 18px; height: 18px; flex-shrink: 0; }
 /* ★ 追加：選択肢の削除ボタン（2択以上を維持するため、選択肢が3つ以上あるときだけ表示） */
 .choice-remove-btn {
   flex-shrink: 0; width: 28px; height: 28px; border-radius: 999px; border: none;
-  background: var(--bg-alt, #f1f5f9); color: var(--text-secondary); font-size: 14px;
+  background: var(--bg-alt, var(--neutral-soft)); color: var(--text-secondary); font-size: 14px;
   cursor: pointer; line-height: 1;
 }
-.choice-remove-btn:hover { background: #fee2e2; color: #991b1b; }
+.choice-remove-btn:hover { background: var(--danger-soft); color: var(--danger); }
 
 /* ── 選択式クイズの選択肢ボタン（qp-choice-btn）
    ★ 2026/08/27：以前は専用画面（screen-quiz-play）用だったが、通常の学習画面
@@ -447,16 +447,16 @@ html, body {
 }
 .qp-choice-btn:active:not(:disabled) { opacity: .85; }
 .qp-choice-btn:disabled { cursor: not-allowed; }
-.qp-choice-btn.qp-correct  { background: #dcfce7; border-color: #16a34a; color: #166534; }
-.qp-choice-btn.qp-wrong    { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
+.qp-choice-btn.qp-correct  { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.qp-choice-btn.qp-wrong    { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 .qp-choice-btn.qp-dim      { opacity: .45; }
 /* ★ 追加：複数正解モードで、まだ回答確定前に選んでいる選択肢の見た目 */
-.qp-choice-btn.qp-selected { background: #EFF4FF; border-color: #2563EB; color: #1d4ed8; }
+.qp-choice-btn.qp-selected { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .qp-next-wrap, .qp-submit-wrap { margin-top: 1.25rem; }
 
 .add-deck-btn {
   width: 52px; height: 52px; border-radius: 50%;
-  background: #2563EB; color: #fff; border: none;
+  background: var(--accent); color: #fff; border: none;
   font-size: 26px; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,.10);
   display: flex; align-items: center; justify-content: center;
   position: fixed; bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px) + 8px); right: 1.25rem;
@@ -476,16 +476,16 @@ html, body {
    に置いてあるので、position:sticky等は不要。 */
 .folder-exit-dropzone {
   box-sizing: border-box;
-  background: #eff6ff; color: #1d4ed8; font-size: 13px; font-weight: 700;
+  background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;
   padding: .9rem 1rem; text-align: center; line-height: 1.4;
-  border-bottom: 2px dashed #93c5fd;
+  border-bottom: 2px dashed var(--accent-line);
 }
 /* ★ 実際にここへドロップできる状態（applyHoverTarget/clearHoverFolderが
    style.outlineを付け外しする、フォルダカードと共通の仕組み）の間だけ、
    青い枠線が3px描かれる。 */
 .pick-mode-banner {
   box-sizing: border-box;
-  background: #EFF4FF; color: #1d4ed8; font-size: 12.5px; font-weight: 600;
+  background: var(--accent-soft); color: var(--accent); font-size: 12.5px; font-weight: 600;
   padding: .55rem 1rem; text-align: center; line-height: 1.6;
   position: sticky; top: calc(56px + env(safe-area-inset-top, 0px)); z-index: 90;
 }
@@ -500,16 +500,16 @@ html, body {
 .pick-mode-bar-actions .btn { flex: none; padding: 0 1rem; height: 42px; }
 
 .pick-checkbox {
-  width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--border);
+  width: 26px; height: 26px; border-radius: 2px; border: 2px solid var(--border);
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; color: #fff; cursor: pointer;
   background: var(--surface); transition: background .1s, border-color .1s;
 }
-.pick-checkbox.checked  { background: #2563EB; border-color: #2563EB; }
-.pick-checkbox.implied  { background: #93c5fd; border-color: #93c5fd; } /* 上位フォルダの選択で自動的に含まれている */
+.pick-checkbox.checked  { background: var(--accent); border-color: var(--accent); }
+.pick-checkbox.implied  { background: var(--accent-line); border-color: var(--accent-line); } /* 上位フォルダの選択で自動的に含まれている */
 .pick-checkbox.disabled { opacity: .35; cursor: not-allowed; }
 .deck-card.pick-disabled { opacity: .55; }
-.deck-card-note-ineligible { font-size: 12px; color: #c2410c; margin-top: 2px; }
+.deck-card-note-ineligible { font-size: 12px; color: var(--warn); margin-top: 2px; }
 
 /* 選択モード中は、選択に関係ない操作（追加・検索・バナー・進行中一覧など）を隠す */
 .pick-mode-active .add-deck-btn,
@@ -535,7 +535,7 @@ html, body {
   font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem;
 }
 .folder-breadcrumb .crumb {
-  cursor: pointer; padding: 3px 6px; border-radius: 6px; font-weight: 600;
+  cursor: pointer; padding: 3px 6px; border-radius: 2px; font-weight: 600;
 }
 .folder-breadcrumb .crumb:active { background: var(--bg); }
 .folder-breadcrumb .crumb-sep { color: var(--text-secondary); margin: 0 1px; }
@@ -557,10 +557,10 @@ html, body {
 }
 .move-picker-row:last-child { border-bottom: none; }
 .move-picker-row:active { background: var(--bg); }
-.move-picker-row.current { background: #EFF4FF; color: #2563EB; font-weight: 700; }
+.move-picker-row.current { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .move-picker-row.disabled { color: var(--text-secondary); opacity: .4; cursor: not-allowed; }
 .move-picker-current-tag {
-  font-size: 10px; background: #2563EB; color: #fff; padding: 1px 6px; border-radius: 10px; margin-left: 4px;
+  font-size: 10px; background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 2px; margin-left: 4px;
 }
 
 /* ── 学習画面 ── */
@@ -577,7 +577,7 @@ html, body {
   display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; flex-shrink: 0;
 }
 .study-progress-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-.study-progress-fill { height: 100%; background: #2563EB; border-radius: 2px; transition: width .3s ease; }
+.study-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s ease; }
 .study-progress-label { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
 .study-tag-row {
   display: flex; align-items: center; justify-content: space-between;
@@ -585,13 +585,13 @@ html, body {
 }
 .study-q-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: #2563EB; flex-shrink: 0;
+  letter-spacing: .08em; color: var(--accent); flex-shrink: 0;
 }
 /* ★ フォルダ再生時、この問題がどのデッキ（カードセット）由来かを示すバッジ */
 .study-deck-tag {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; border: 1px solid #bfdbfe;
-  padding: 2px 9px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  padding: 2px 9px; border-radius: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 60%;
 }
@@ -600,7 +600,7 @@ html, body {
   white-space: pre-wrap; word-break: break-word; flex: 1;
 }
 .study-q-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
-.study-q-imgs img { height: 80px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+.study-q-imgs img { height: 80px; border-radius: 2px; object-fit: cover; cursor: pointer; }
 .study-bottom { flex-shrink: 0; background: var(--bg); display: flex; flex-direction: column; }
 
 /* 答えを見る前のバー（前へ + 答えを見る） */
@@ -613,7 +613,7 @@ html, body {
 
 .study-answer-panel {
   background: var(--surface);
-  border-top: 2px solid #2563EB;
+  border-top: 2px solid var(--accent);
   padding: 1rem;
   overflow-y: auto; -webkit-overflow-scrolling: touch;
   max-height: 38vh;
@@ -633,7 +633,7 @@ html, body {
   font-family: inherit; font-size: 16px; color: var(--text);
   background: var(--surface); outline: none; transition: border-color .15s;
 }
-.study-answer-input:focus { border-color: #2563EB; }
+.study-answer-input:focus { border-color: var(--accent); }
 
 /* ★ 追加：自動採点の判定結果（○正解 / ✕不正解） */
 .study-grade-result {
@@ -641,23 +641,23 @@ html, body {
   padding: .7rem .9rem; border-radius: var(--r-md);
   margin-bottom: .85rem;
 }
-.study-grade-result.correct   { background: #dcfce7; }
-.study-grade-result.incorrect { background: #fee2e2; }
+.study-grade-result.correct   { background: var(--ok-soft); }
+.study-grade-result.incorrect { background: var(--danger-soft); }
 .grade-mark { font-size: 20px; font-weight: 800; flex-shrink: 0; white-space: nowrap; }
-.study-grade-result.correct   .grade-mark { color: #16a34a; }
-.study-grade-result.incorrect .grade-mark { color: #dc2626; }
+.study-grade-result.correct   .grade-mark { color: var(--ok); }
+.study-grade-result.incorrect .grade-mark { color: var(--danger); }
 .grade-user-answer { font-size: 13px; color: var(--text-secondary); word-break: break-word; line-height: 1.5; }
 @keyframes slideUpCM { from { transform: translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
 .answer-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: #2563EB; margin-bottom: .5rem;
+  letter-spacing: .08em; color: var(--accent); margin-bottom: .5rem;
 }
 .answer-text {
   font-size: 16px; font-weight: 600; line-height: 1.65;
   white-space: pre-wrap; word-break: break-word; color: var(--text);
 }
 .answer-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
-.answer-imgs img { height: 72px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+.answer-imgs img { height: 72px; border-radius: 2px; object-fit: cover; cursor: pointer; }
 .expl-divider { border: none; border-top: 1px solid var(--border); margin: .75rem 0; }
 .expl-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -690,7 +690,7 @@ html, body {
   border: 1px solid var(--border); padding: .75rem 1rem; cursor: pointer;
 }
 .search-result-item:active { background: var(--bg); }
-.search-result-deck { font-size: 11px; font-weight: 700; color: #2563EB; margin-bottom: 4px; }
+.search-result-deck { font-size: 11px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
 .search-result-q { font-size: 14px; font-weight: 600; margin-bottom: 2px; line-height: 1.4; }
 .search-result-a { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
 .search-hint { text-align: center; padding: 3rem 1.5rem; color: var(--text-secondary); font-size: 14px; }
@@ -708,8 +708,8 @@ html, body {
   display: flex; align-items: flex-start; gap: .75rem;
 }
 .created-item-num {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; width: 24px; height: 24px;
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); width: 24px; height: 24px;
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; margin-top: 1px;
 }
@@ -759,7 +759,7 @@ html, body {
   color: var(--text); background: var(--bg); outline: none;
   margin-bottom: 1rem; transition: border-color .15s;
 }
-.modal-input:focus { border-color: #2563EB; background: var(--surface); }
+.modal-input:focus { border-color: var(--accent); background: var(--surface); }
 .modal-btns { display: flex; gap: .5rem; }
 .modal-btns .btn { flex: 1; }
 
@@ -771,32 +771,32 @@ html, body {
 }
 .menu-item:last-child { border-bottom: none; }
 .menu-item:active { background: var(--bg); border-radius: var(--r-md); }
-.menu-item.danger { color: #EF4444; }
+.menu-item.danger { color: var(--danger); }
 .menu-icon { font-size: 20px; width: 32px; text-align: center; }
 
 /* わからないボタン */
 .unsure-btn {
   display: inline-flex; align-items: center; gap: .4rem;
-  padding: .4rem .9rem; border-radius: 20px; font-size: 13px; font-weight: 600;
+  padding: .4rem .9rem; border-radius: 2px; font-size: 13px; font-weight: 600;
   cursor: pointer; border: 1.5px solid var(--border);
   background: var(--surface); color: var(--text-secondary);
   transition: all .15s; flex-shrink: 0;
 }
-.unsure-btn.marked { background: #fffbeb; color: #b45309; border-color: #fcd34d; }
+.unsure-btn.marked { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
 
 /* わからないバッジ */
 .unsure-badge {
   display: inline-flex; align-items: center;
-  font-size: 10px; background: #fffbeb; color: #b45309;
-  border: 1px solid #fcd34d; padding: 1px 7px; border-radius: 20px; font-weight: 700;
+  font-size: 10px; background: var(--warn-soft); color: var(--warn);
+  border: 1px solid var(--warn-line); padding: 1px 7px; border-radius: 2px; font-weight: 700;
 }
 
 /* ★ 追加：学習画面右上の「みんなのわかる率」バッジ */
 .study-understand-badge {
   display: inline-flex; align-items: center;
   font-size: 11px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
-  background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
-  padding: 3px 9px; border-radius: 20px;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line);
+  padding: 3px 9px; border-radius: 2px;
   cursor: pointer; /* ★ タップで「何人分の何人」かを表示できるようにした */
 }
 
@@ -828,7 +828,7 @@ html, body {
   cursor: pointer;
 }
 .reverse-toggle-row input[type="checkbox"] {
-  width: 20px; height: 20px; accent-color: #2563EB; cursor: pointer; flex-shrink: 0;
+  width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
 }
 
 /* ── 画像ライトボックス（タップで拡大表示） ── */
@@ -841,7 +841,7 @@ html, body {
 .img-lightbox-overlay.open { display: flex; animation: fadeInCM .15s ease; }
 .img-lightbox-overlay img {
   max-width: 100%; max-height: 100%;
-  border-radius: 10px; object-fit: contain;
+  border-radius: 2px; object-fit: contain;
   box-shadow: 0 8px 40px rgba(0,0,0,.4);
 }
 
@@ -873,7 +873,7 @@ html, body {
   font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--text-secondary);
   cursor: pointer; transition: all .15s;
 }
-.list-view-tab.active { border-color: #2563EB; color: #2563EB; background: #EFF4FF; }
+.list-view-tab.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .list-view-tab:active { opacity: .8; }
 
 .list-view-item {
@@ -884,29 +884,29 @@ html, body {
 }
 /* ★ 検索結果から一覧にジャンプしたとき、該当の問題を一瞬ハイライトして見つけやすくする */
 .list-view-item-highlight {
-  background: #EFF4FF; border-color: #2563EB;
+  background: var(--accent-soft); border-color: var(--accent);
 }
 .list-view-item-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .65rem; }
 .list-view-item-num {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; width: 22px; height: 22px; flex-shrink: 0;
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); width: 22px; height: 22px; flex-shrink: 0;
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
 }
 .list-view-deck-tag {
-  font-size: 11px; font-weight: 700; color: #2563EB;
-  background: #EFF4FF; border: 1px solid #bfdbfe;
-  padding: 1px 9px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  padding: 1px 9px; border-radius: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
 }
 .list-view-unsure-badge { font-size: 13px; }
 .list-view-edit-btn {
   margin-left: auto; flex-shrink: 0; border: none; background: transparent;
-  font-size: 15px; padding: 4px 6px; border-radius: 6px; cursor: pointer; line-height: 1;
+  font-size: 15px; padding: 4px 6px; border-radius: 2px; cursor: pointer; line-height: 1;
 }
 .list-view-edit-btn:active { background: var(--bg); }
 .list-view-q-tag, .list-view-a-tag, .list-view-e-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .08em; color: #2563EB; margin-bottom: .35rem;
+  letter-spacing: .08em; color: var(--accent); margin-bottom: .35rem;
 }
 .list-view-e-tag { color: var(--text-secondary); margin-top: .65rem; }
 .list-view-q-text {
@@ -932,7 +932,7 @@ html, body {
   white-space: pre-wrap; word-break: break-word;
 }
 .list-view-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 .5rem; }
-.list-view-imgs img { height: 68px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+.list-view-imgs img { height: 68px; border-radius: 2px; object-fit: cover; cursor: pointer; }
 
 /* ══════════ ボタンの「押せた感」＆ローディングスピナー ══════════ */
 /* ★ 追加：サーバー通信を伴うボタン（デッキ作成・フォルダ作成など）を押した際、
@@ -947,7 +947,7 @@ html, body {
 }
 .btn-outline .btn-spinner,
 .btn-ghost   .btn-spinner {
-  border-color: rgba(37,99,235,.25); border-top-color: #2563EB;
+  border-color: rgba(37,99,235,.25); border-top-color: var(--accent);
 }
 .btn.btn-loading { cursor: default; opacity: .8; pointer-events: none; }
 @keyframes btnSpinCM { to { transform: rotate(360deg); } }

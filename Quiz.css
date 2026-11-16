@@ -24,24 +24,24 @@
    ============================================================ */
 
 :root{
-  /* CardMakerには無い、クイズ専用の意味付けカラーだけをここで追加する。
-     背景・境界線・文字色・角丸・影は Style.css の共通トークンをそのまま使う。 */
-  --accent: #2563EB;        /* ブランドカラー（CardMakerの主要ボタン色と共通） */
-  --accent-soft: #EFF4FF;   /* CardMakerの block-action-btn 等と共通の薄い青 */
+  /* Style.css の製図トークンに揃える。クイズ専用の色だけここで足す。 */
+  --accent: #0b6b57;
+  --accent-soft: #e1eeea;
   --accent-ink: #ffffff;
-  --good: #16a34a;          /* completed-card 等と共通の緑（正解） */
-  --good-soft: #dcfce7;
-  --bad: #EF4444;           /* btn-danger 等と共通の赤（不正解・危険操作） */
-  --bad-soft: #FEF2F2;
-  --warn: #b45309;          /* unsure-badge 等と共通の琥珀（一番乗りバッジ） */
-  --warn-soft: #fffbeb;
-  --warn-line: #fcd34d;
+  --good: #2d6a35;
+  --good-soft: #e2eee2;
+  --bad: #b3321f;
+  --bad-soft: #f6e4e0;
+  --warn: #7a5a00;
+  --warn-soft: #f4ecd2;
+  --warn-line: #d9c98a;
   --gold: #f59e0b;          /* 表彰台1位の演出用 */
 
-  --choice-a: var(--bad);    /* ▲ 赤 */
-  --choice-b: var(--accent); /* ◆ 青 */
-  --choice-c: var(--gold);   /* ● 金 */
-  --choice-d: var(--good);   /* ■ 緑 */
+  /* 4択の ▲◆●■ は色で見分ける早押し定番のため、従来の色を維持 */
+  --choice-a: #EF4444;
+  --choice-b: #2563EB;
+  --choice-c: #f59e0b;
+  --choice-d: #16a34a;
 }
 
 /* Style.cssで既に *,*::before,*::after は border-box + margin/padding:0 に
@@ -376,7 +376,7 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
    同じ場所の枠・バッジ色を上書きして「正解／自分の誤答」を示す。 */
 .qz-choice-btn.qz-picked{
   outline:4px solid #fff; outline-offset:-4px;
-  box-shadow:0 0 0 4px rgba(17,24,39,.4), var(--shadow);
+  box-shadow:0 0 0 4px rgba(17,24,39,.4);
   transform:scale(1.02);
 }
 .qz-choice-btn.qz-picked::after{
@@ -387,21 +387,21 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 }
 .qz-choice-btn.qz-correct-flash{
   outline:4px solid #fff; outline-offset:-4px;
-  box-shadow:0 0 0 4px rgba(22,163,74,.45), var(--shadow);
+  box-shadow:0 0 0 4px rgba(22,163,74,.45);
 }
 .qz-choice-btn.qz-correct-flash::after{
   content:"✓ 正解"; position:absolute; top:8px; right:8px;
-  background:#16a34a; color:#fff; font-size:10.5px; font-weight:800;
+  background:var(--ok); color:#fff; font-size:10.5px; font-weight:800;
   letter-spacing:.02em; padding:3px 8px; border-radius:999px; line-height:1.4;
   box-shadow:0 1px 4px rgba(0,0,0,.35);
 }
 .qz-choice-btn.qz-wrong-flash{
   outline:4px solid #fff; outline-offset:-4px;
-  box-shadow:0 0 0 4px rgba(239,68,68,.45), var(--shadow);
+  box-shadow:0 0 0 4px rgba(239,68,68,.45);
 }
 .qz-choice-btn.qz-wrong-flash::after{
   content:"✕ 選んだ答え"; position:absolute; top:8px; right:8px;
-  background:#dc2626; color:#fff; font-size:10.5px; font-weight:800;
+  background:var(--danger); color:#fff; font-size:10.5px; font-weight:800;
   letter-spacing:.02em; padding:3px 8px; border-radius:999px; line-height:1.4;
   box-shadow:0 1px 4px rgba(0,0,0,.35);
 }
@@ -410,8 +410,8 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
   margin-top:16px; padding:16px; border-radius:var(--r-md); text-align:center;
   font-weight:700; font-size:16px;
 }
-.qz-answer-feedback.ok{ background:var(--good-soft); color:#15803d; border:1px solid #bbf7d0; }
-.qz-answer-feedback.ng{ background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
+.qz-answer-feedback.ok{ background:var(--good-soft); color:var(--ok); border:1px solid var(--ok-line); }
+.qz-answer-feedback.ng{ background:var(--danger-soft); color:var(--danger); border:1px solid var(--danger-line); }
 .qz-waiting-note{ color:var(--text-secondary); font-size:13px; text-align:center; margin-top:10px; }
 
 /* ── ホスト：正解発表パネル（CardMakerの .unsure-badge と同じ琥珀色） ───────────────────────── */
@@ -433,8 +433,8 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 .qz-lb-score{ font-weight:700; font-size:14px; color:var(--accent); }
 /* ★ 追加：正解発表(reveal)中、他の参加者がこの問題に正解したか(◯)・不正解か(✕)を表示 */
 .qz-lb-mark{ width:22px; text-align:center; font-weight:800; font-size:14px; flex-shrink:0; }
-.qz-lb-mark.correct{ color:#16a34a; }
-.qz-lb-mark.wrong{ color:#dc2626; }
+.qz-lb-mark.correct{ color:var(--ok); }
+.qz-lb-mark.wrong{ color:var(--danger); }
 .qz-lb-mark.unanswered{ color:var(--text-dim); }
 /* ★ 追加：途中経過・最終結果のリストで自分の行をひと目で分かるようにする */
 .qz-lb-row-me{ border-color:var(--accent); background:var(--accent-soft); }
@@ -451,8 +451,8 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
   border-left:4px solid transparent; border-right:4px solid transparent;
   animation:qzRankPop .4s cubic-bezier(.34,1.56,.64,1);
 }
-.qz-rank-move.up{ border-bottom:6px solid #16a34a; }
-.qz-rank-move.down{ border-top:6px solid #dc2626; }
+.qz-rank-move.up{ border-bottom:6px solid var(--ok); }
+.qz-rank-move.down{ border-top:6px solid var(--danger); }
 @keyframes qzRankPop{ from{ transform:scale(0); opacity:0; } to{ transform:scale(1); opacity:1; } }
 /* ★ この部屋で途中経過を初めて見せる回（比較対象が無くFLIPできない）は、
    上から順に少し遅れてふわっと現れる演出にする */
@@ -462,8 +462,8 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 .qz-podium{ display:flex; align-items:flex-end; gap:10px; width:100%; max-width:360px; margin:10px 0 22px; }
 .qz-podium-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; }
 .qz-podium-bar{ width:100%; border-radius:var(--r-sm) var(--r-sm) 0 0; display:flex; align-items:flex-start; justify-content:center; padding-top:8px; }
-.qz-podium-1 .qz-podium-bar{ height:110px; background:linear-gradient(180deg,#fde68a,var(--gold)); }
-.qz-podium-2 .qz-podium-bar{ height:82px; background:#cbd5e1; }
+.qz-podium-1 .qz-podium-bar{ height:110px; background:linear-gradient(180deg,var(--warn-soft),var(--gold)); }
+.qz-podium-2 .qz-podium-bar{ height:82px; background:var(--border); }
 .qz-podium-3 .qz-podium-bar{ height:64px; background:#e0b088; }
 .qz-podium-medal{ font-size:20px; }
 .qz-podium-name{ font-size:12.5px; font-weight:700; color:var(--text); max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -504,7 +504,7 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 }
 .qz-modal-btn:active{ transform:scale(.97); opacity:.85; }
 .qz-modal-btn-cancel{ background:transparent; color:var(--text-secondary); border:1.5px solid var(--border); }
-.qz-modal-btn-ok{ background:var(--bad-soft); color:var(--bad); border:1.5px solid #fecaca; }
+.qz-modal-btn-ok{ background:var(--bad-soft); color:var(--bad); border:1.5px solid var(--danger-line); }
 
 @media (min-width:600px){
   .qz-choice-grid{ grid-template-columns:1fr 1fr; }

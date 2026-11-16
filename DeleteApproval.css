@@ -48,7 +48,7 @@
 }
 .da-reason {
   white-space: pre-wrap;
-  background: var(--bg, #f8fafc);
+  background: var(--bg, var(--neutral-soft));
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: 10px 12px;
@@ -59,8 +59,8 @@
    届いた/開かれた場合に、開いた本人が「自分宛ではない」と気づける
    ようにするための強調表示（2026/08/31 追加）。 */
 .da-field-owner {
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-line);
   border-radius: var(--r-sm);
   padding: 10px 12px;
 }
@@ -70,7 +70,7 @@
 }
 .da-owner-note {
   font-size: 11.5px;
-  color: #92400e;
+  color: var(--warn);
   line-height: 1.5;
   margin-top: 4px;
 }
@@ -82,7 +82,7 @@
   font-size: 13px;
   line-height: 1.6;
   color: var(--text);
-  background: var(--bg, #f8fafc);
+  background: var(--bg, var(--neutral-soft));
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: 12px 14px;
@@ -104,8 +104,8 @@
 
 /* ── 承認/拒否した後の結果メッセージ ── */
 .da-result {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--ok-soft);
+  color: var(--ok);
   border-radius: var(--r-sm);
   padding: 12px 14px;
   font-size: 14px;

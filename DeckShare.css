@@ -30,8 +30,8 @@
 
 .ds-error-box {
   margin-top: 2rem;
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--danger-soft);
+  color: var(--danger);
   border-radius: var(--r-md);
   padding: 16px 18px;
   font-size: 14px;
