@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7524d9c9f1";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="026d461285";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -1797,8 +1797,12 @@ async function fetchAndMergeDecks() {
   const fetched = data.sets.map(s => {
     // ★ filenameが未記録のローカル下書き（登録直後でfilenameの保存が間に合っていない等）も
     //   同名なら同じデッキとして引き継ぐ（引き継がないとidが変わり「作成中」状態が失われる）。
+    //   ただし他人が同名のデッキを公開した場合に取り違えないよう、「自分が登録したばかりの
+    //   空の作成中デッキ」（0枚・未完成・公開者が自分）に限る。
+    const myNick = getLoginSession()?.nickname;
     const existing = decks.find(d => d.filename === s.filename)
-      || decks.find(d => !d.filename && d.name === s.name);
+      || (s.count === 0 && s.incomplete && myNick && s.published_by === myNick
+          ? decks.find(d => !d.filename && d.name === s.name) : undefined);
     // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
     //   未読み込みなら空配列のままにし、開いたときに取得する。
     // ★ 修正：ただし、サーバー側の最新枚数（s.count）がこの端末にキャッシュ済みの
@@ -1845,9 +1849,11 @@ async function fetchAndMergeDecks() {
       //   引き継ぐ。記録が無い（＝他人の端末で初めて見るデッキ）場合は、サーバー登録直後の
       //   カード0枚のまま（旧来の判定基準）だけを「作成中」とみなし、それ以外は
       //   既に公開済みとして扱う（誤って永久に「未完成」表示から動けなくなるのを防ぐため）。
-      notYetPublished: existing && typeof existing.notYetPublished === 'boolean'
+      // ★ サーバーが「完成」(incomplete=false)と報告しているデッキは、別端末や共同編集者が公開した
+      //   場合でも「作成中」のまま残らないよう、ローカルの記録より優先して公開済みとする。
+      notYetPublished: !!s.incomplete && (existing && typeof existing.notYetPublished === 'boolean'
         ? existing.notYetPublished
-        : (s.count === 0 && !!s.incomplete),
+        : (s.count === 0)),
       // ★ フォルダ所属はサーバー側が正（みんなで共有）。
       //   has_folder_id が true の場合は、folder_id が null（＝ルート）であっても
       //   それをそのまま信頼する（＝ルートへ移動されたことを正しく反映する）。
@@ -3012,9 +3018,9 @@ async function publishDeck(deckId, isComplete = true) {
     // ★ バックグラウンド同期でデッキのidが振り直されていることがあるため、idで見つからなければ
     //   サーバーが返したfilename・名前でも探す（見つからないと「作成中」のまま更新されなかった）。
     const target = decks.find(d => d.id === deckId)
-      || (data.filename && decks.find(d => d.filename === data.filename))
-      || decks.find(d => d.name === deck.name && !d.quizArchive);
-    if (target) {
+      || (data.filename && decks.find(d => d.filename === data.filename));
+    // 別のfilenameを既に持つデッキ（他人のデッキを取り違えた場合など）の filename は書き換えない
+    if (target && (!target.filename || target.filename === data.filename)) {
       target.filename = data.filename;
       // 容量対策で本体が外れた保存を読み直した場合（cardsLoaded===false）は、0枚・読み込み済みと誤記録しない
       target.count = cards.length;
