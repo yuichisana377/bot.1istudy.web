@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="a71c3336bd";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="7524d9c9f1";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1108,14 +1108,15 @@ async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId
   const waitingNote = document.getElementById(waitingNoteId);
   if (waitingNote) waitingNote.style.display = '';
   // ★ 押された瞬間の時刻（サーバー時計換算のms）も送る。通信が遅れても回答時間が不利にならない。
+  const sentQ = renderedQIndex;
   let res = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    res = await apiPost('quiz_answer', withAuth({ code: roomCode, choice_index: choiceIndex, pressed_at_ms: pressedAtMs }));
+    res = await apiPost('quiz_answer', withAuth({ code: roomCode, choice_index: choiceIndex, pressed_at_ms: pressedAtMs, q_index: sentQ }));
     if (res && res.ok) break;
     if (res && res.error && res.error !== 'network') break; // サーバーが明確に拒否した（回答済み等）→再送しない
     await new Promise(r => setTimeout(r, 400)); // 通信失敗のみ自動再送
   }
-  if (!res || (!res.ok && res.error === 'network')) {
+  if (renderedQIndex === sentQ && (!res || (!res.ok && res.error === 'network'))) {
     // 送れなかった：押し直せるように戻す
     hasAnsweredThisQ = false;
     [...choicesEl.children].forEach(btn => { btn.disabled = false; btn.classList.remove('qz-picked', 'qz-dim'); });

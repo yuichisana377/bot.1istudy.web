@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="a71c3336bd";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7524d9c9f1";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -1795,7 +1795,10 @@ async function fetchAndMergeDecks() {
   const data = JSON.parse(txt);
   if (!data.ok) throw new Error(data.error || 'list_cards failed'); // 失敗は呼び出し側で再試行できるよう例外にする
   const fetched = data.sets.map(s => {
-    const existing = decks.find(d => d.filename === s.filename);
+    // ★ filenameが未記録のローカル下書き（登録直後でfilenameの保存が間に合っていない等）も
+    //   同名なら同じデッキとして引き継ぐ（引き継がないとidが変わり「作成中」状態が失われる）。
+    const existing = decks.find(d => d.filename === s.filename)
+      || decks.find(d => !d.filename && d.name === s.name);
     // ★ この端末で既にカード本体を読み込み済みなら、それを引き継いで再取得を省く。
     //   未読み込みなら空配列のままにし、開いたときに取得する。
     // ★ 修正：ただし、サーバー側の最新枚数（s.count）がこの端末にキャッシュ済みの
@@ -3006,7 +3009,11 @@ async function publishDeck(deckId, isComplete = true) {
     //   で decks 配列が再び入れ替わっている可能性があるため、必ずこの時点で
     //   もう一度 loadDecks() し、id で探し直してから更新・保存する。
     decks = loadDecks();
-    const target = decks.find(d => d.id === deckId);
+    // ★ バックグラウンド同期でデッキのidが振り直されていることがあるため、idで見つからなければ
+    //   サーバーが返したfilename・名前でも探す（見つからないと「作成中」のまま更新されなかった）。
+    const target = decks.find(d => d.id === deckId)
+      || (data.filename && decks.find(d => d.filename === data.filename))
+      || decks.find(d => d.name === deck.name && !d.quizArchive);
     if (target) {
       target.filename = data.filename;
       // 容量対策で本体が外れた保存を読み直した場合（cardsLoaded===false）は、0枚・読み込み済みと誤記録しない
