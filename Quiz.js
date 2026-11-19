@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="a48ba48cde";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="a71c3336bd";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -815,8 +815,24 @@ function renderPlayScreen(room, opts) {
   const choicesEl = document.getElementById(choicesId);
   if (qChanged || stateChanged || !choicesEl.dataset.built || Number(choicesEl.dataset.built) !== room.current_q) {
     choicesEl.innerHTML = room.question.choices.map((c, i) => `
-      <button class="qz-choice-btn ${CHOICE_CLASSES[i]}" onclick="submitAnswer(${i}, '${choicesId}', '${waitingNoteId}')">${escapeHtml(c)}</button>`).join('');
+      <button class="qz-choice-btn ${CHOICE_CLASSES[i]}" data-idx="${i}">${escapeHtml(c)}</button>`).join('');
     choicesEl.dataset.built = room.current_q;
+    // ★ 押した瞬間(pointerdown)に反応させる。click(指を離した後)だと、離す前にポーリングで
+    //   ボタンが作り直されると押しが消えて「反応しない」ことがあったため、イベントは
+    //   作り直されない親要素で受ける（委譲）。
+    if (!choicesEl.dataset.bound) {
+      choicesEl.dataset.bound = '1';
+      const handler = (ev) => {
+        const btn = ev.target.closest && ev.target.closest('.qz-choice-btn');
+        if (!btn || btn.disabled || !choicesEl.contains(btn)) return;
+        const idx = Number(btn.dataset.idx);
+        if (!Number.isInteger(idx)) return;
+        if (ev.type === 'pointerdown' && ev.pointerType === 'mouse' && ev.button !== 0) return;
+        submitAnswer(idx, choicesId, waitingNoteId, Date.now() + quizClockOffsetMs);
+      };
+      choicesEl.addEventListener('pointerdown', handler);
+      choicesEl.addEventListener('click', handler); // キーボード操作等のフォールバック（二重送信は hasAnsweredThisQ で防止）
+    }
   }
   // ★ 追加：正解発表前（出題中・回答済みで発表待ち）は選択肢を画面下側に寄せる
   //   （直前に置いた.qz-choice-spacerのflex-growをトグルし、CSS transitionで
@@ -1079,7 +1095,7 @@ function tickCountdownNum(serverNow) {
   }
 }
 
-async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId = 'pp-waiting-note') {
+async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId = 'pp-waiting-note', pressedAtMs = Date.now() + quizClockOffsetMs) {
   if (hasAnsweredThisQ) return;
   hasAnsweredThisQ = true;
   const choicesEl = document.getElementById(choicesId);
@@ -1091,7 +1107,20 @@ async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId
   });
   const waitingNote = document.getElementById(waitingNoteId);
   if (waitingNote) waitingNote.style.display = '';
-  await apiPost('quiz_answer', withAuth({ code: roomCode, choice_index: choiceIndex }));
+  // ★ 押された瞬間の時刻（サーバー時計換算のms）も送る。通信が遅れても回答時間が不利にならない。
+  let res = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await apiPost('quiz_answer', withAuth({ code: roomCode, choice_index: choiceIndex, pressed_at_ms: pressedAtMs }));
+    if (res && res.ok) break;
+    if (res && res.error && res.error !== 'network') break; // サーバーが明確に拒否した（回答済み等）→再送しない
+    await new Promise(r => setTimeout(r, 400)); // 通信失敗のみ自動再送
+  }
+  if (!res || (!res.ok && res.error === 'network')) {
+    // 送れなかった：押し直せるように戻す
+    hasAnsweredThisQ = false;
+    [...choicesEl.children].forEach(btn => { btn.disabled = false; btn.classList.remove('qz-picked', 'qz-dim'); });
+    if (waitingNote) waitingNote.style.display = 'none';
+  }
   pollOnce();
 }
 
