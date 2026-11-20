@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="1e015c636a";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="6a03ce74ab";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -179,11 +179,11 @@ async function initQuizApp() {
     history.replaceState(null, '', location.pathname); // URLをきれいに戻す
     showScreenQ('home');
     goHostSetupScreen();
-    // ★ デッキ選択から戻ったときは、選ぶ前に入力していたタイトルを復元する
+    // ★ デッキ選択から戻ったとき(fromPicker)だけ、選ぶ前に入力していたタイトルを復元する
     try {
       const savedTitle = sessionStorage.getItem('quizHostTitle');
       const titleEl = document.getElementById('hs-title');
-      if (savedTitle && !titleEl.value) titleEl.value = savedTitle;
+      if (params.get('fromPicker') === '1' && savedTitle && !titleEl.value) titleEl.value = savedTitle;
     } catch (e) {}
     try { sessionStorage.removeItem('quizHostTitle'); } catch (e) {}
   } else if (codeParam) {
