@@ -36,7 +36,10 @@ html, body {
      position:fixed な body の overflow:hidden で下側が見えなくなるため） */
 .screen {
   display: none;
-  height: 100dvh;
+  /* ★ ホーム画面にインストールしたPWA(standalone)では、100dvh が実際に見えている領域より
+     大きくなり、下側のボタンが画面外に出て押せなくなることがあった。
+     body は position:fixed; inset:0 で「見えている領域ぴったり」なので、その高さに合わせる。 */
+  height: 100%;
   flex-direction: column;
   /* 画面そのものはスクロールさせない。
      スクロールが必要な画面は内部の .cm-scroll-body や .study-top 側で
