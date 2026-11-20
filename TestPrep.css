@@ -5,6 +5,7 @@
 .tp-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
 .tp-subject{font-size:15px;font-weight:700;color:var(--text)}
 .tp-date{font-size:12px;font-weight:700;color:var(--accent)}
+.tp-content{font-size:12.5px;line-height:1.6;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word;margin:0 0 8px}
 .tp-today{margin:4px 0 2px}
 .tp-today-num{font-size:34px;font-weight:800;color:var(--accent)}
 .tp-today-unit{font-size:13px;font-weight:700;color:var(--text-secondary)}

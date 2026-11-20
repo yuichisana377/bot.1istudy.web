@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="2c6b5ab6b8";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="5e7688f2cd";/*@end*/// ============================================================
 //  TestPrep.js — テスト対策モード（試作・サーバー変更なし）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
@@ -122,6 +122,10 @@ function renderTest(p, deckMap) {
   head.appendChild(el('div', 'tp-subject', p.subject || '（科目なし）'));
   head.appendChild(el('div', 'tp-date', p.date + (days === 0 ? '（今日！）' : '（あと' + days + '日）')));
   card.appendChild(head);
+
+  // 予定の内容（先頭の【カテゴリ】は外して表示。textContent）
+  const body0 = String(p.content || '').replace(/^【[^】]*】\s*/, '').trim();
+  if (body0) card.appendChild(el('div', 'tp-content', body0));
 
   // テスト範囲（自由入力。textContent で表示）
   const sc = el('div', 'tp-scope' + (plan.scope ? '' : ' is-empty'));
