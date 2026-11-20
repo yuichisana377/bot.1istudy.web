@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="5e7688f2cd";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="6a930e218a";/*@end*/// ============================================================
 //  TestPrep.js — テスト対策モード（試作・サーバー変更なし）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
@@ -124,7 +124,7 @@ function renderTest(p, deckMap) {
   card.appendChild(head);
 
   // 予定の内容（先頭の【カテゴリ】は外して表示。textContent）
-  const body0 = String(p.content || '').replace(/^【[^】]*】\s*/, '').trim();
+  const body0 = String(p.content || '').replace(/^【[^】]*】\s*/, '').replace(/\n?📝備考：/, '\n備考：').trim();
   if (body0) card.appendChild(el('div', 'tp-content', body0));
 
   // テスト範囲（自由入力。textContent で表示）
@@ -224,11 +224,13 @@ function openDeckPicker(p, plan) {
   const bg = el('div', 'modal-bg open');
   const box = el('div', 'tp-picker');
   box.appendChild(el('div', 'tp-picker-title', '対象デッキを選ぶ（' + (p.subject || '') + '）'));
-  const chosen = new Set(plan.decks || []);
+  const known = new Set(DECKS.map(d => d.filename));
+  const chosen = new Set((plan.decks || []).filter(f => known.has(f)));
   const NONE = '__none__';
   const subjOf = d => (d.subject || '').trim() || NONE;
   const subjects = Array.from(new Set(DECKS.map(subjOf))).sort((a, b) => a === NONE ? 1 : b === NONE ? -1 : a.localeCompare(b, 'ja'));
-  let curSubj = '';
+  const ps = (p.subject || '').trim();
+  let curSubj = subjects.includes(ps) ? ps : '';
   let query = '';
 
   const search = document.createElement('input');
