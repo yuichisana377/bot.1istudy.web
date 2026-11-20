@@ -1,8 +1,8 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="e616c2c2ac";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="b35b794f86";/*@end*/// ============================================================
 //  TestPrep.js — テスト対策モード（試作・サーバー変更なし）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
-//  「今日やる枚数」を計算する。計画はlocalStorage('tp_plans_v1')に保存。
+//  進捗（見た率・残り枚数）を出し、範囲のデッキをまとめてプレイできるようにする。計画はlocalStorage('tp_plans_v1')に保存。
 //  ★ ユーザー入力（科目名・デッキ名）は textContent / DOM API だけで表示する。
 // ============================================================
 const SESSION_KEY = 'sl_session';
@@ -48,7 +48,7 @@ function loadPlans() { try { return JSON.parse(localStorage.getItem(TP_KEY)) || 
 function savePlans(o) { try { localStorage.setItem(TP_KEY, JSON.stringify(o)); } catch (e) {} }
 
 // 試験までの日数 → 勉強できる日数（試験当日は含めない）。
-// 残りカード数 = 各デッキの「まだ見ていない枚数」 + 2周目以降の全枚数
+// 残りカード数 = 各デッキの「まだ見ていない枚数」
 function computeStats(plan, deckMap, study) {
   let total = 0, seen = 0, unsure = 0;
   const rows = [];
@@ -57,14 +57,12 @@ function computeStats(plan, deckMap, study) {
     if (!d) return;
     const cnt = d.count || 0;
     const s = Math.min(cnt, (study.seen[fn] || []).length);
-    const u = (study.unsure[fn] || []).length;
+    const u = Math.min(cnt, (study.unsure[fn] || []).length);
     total += cnt; seen += s; unsure += u;
     rows.push({ filename: fn, name: d.name, count: cnt, seen: s, unsure: u });
   });
-  const rounds = Math.max(1, plan.rounds || 2);
-  // 1周目＝まだ見ていないカード、2周目以降＝「わからない」カードを繰り返す
-  const remaining = Math.max(0, total - seen) + unsure * (rounds - 1);
-  return { total, seen, unsure, rounds, remaining, rows };
+  const remaining = Math.max(0, total - seen);
+  return { total, seen, unsure, remaining, rows };
 }
 
 // ── API ──────────────────────────────────────
@@ -114,11 +112,10 @@ function renderTest(p, deckMap) {
   if (!plan || (!plan.touched && !(plan.decks || []).length)) {
     const subj = (p.subject || '').trim();
     const auto = DECKS.filter(d => subj && (d.subject || '').trim() === subj).map(d => d.filename);
-    plan = plansState[id] = { decks: auto, rounds: (plan && plan.rounds) || 2 };
+    plan = plansState[id] = { decks: auto, scope: (plan && plan.scope) || '' };
     savePlans(plansState);
   }
   const days = Math.max(0, daysUntil(p.date));
-  const studyDays = Math.max(0, days);           // 今日〜前日まで
   const st = computeStats(plan, deckMap, STUDY);
   const card = el('div', 'tp-card');
 
@@ -127,16 +124,26 @@ function renderTest(p, deckMap) {
   head.appendChild(el('div', 'tp-date', p.date + (days === 0 ? '（今日！）' : '（あと' + days + '日）')));
   card.appendChild(head);
 
+  // テスト範囲（自由入力。textContent で表示）
+  const sc = el('div', 'tp-scope' + (plan.scope ? '' : ' is-empty'));
+  sc.appendChild(el('span', 'tp-scope-label', '範囲'));
+  sc.appendChild(el('span', 'tp-scope-text', plan.scope || '未入力'));
+  const scBtn = el('button', 'tp-scope-edit', plan.scope ? '編集' : '入力する');
+  scBtn.type = 'button';
+  scBtn.addEventListener('click', () => openScopeEditor(p, plan));
+  sc.appendChild(scBtn);
+  card.appendChild(sc);
+
   if (!st.rows.length) {
     card.appendChild(el('div', 'tp-hint', '対象デッキが未選択です。下のボタンで選んでください。'));
   } else {
-    const perDay = studyDays > 0 ? Math.ceil(st.remaining / studyDays) : st.remaining;
+    const pct = st.total ? Math.floor(st.seen / st.total * 100) : 0;
     const big = el('div', 'tp-today');
-    big.appendChild(el('span', 'tp-today-num', String(perDay)));
-    big.appendChild(el('span', 'tp-today-unit', studyDays > 0 ? ' 枚 / 日が目安' : ' 枚が残り'));
+    big.appendChild(el('span', 'tp-today-num', String(pct)));
+    big.appendChild(el('span', 'tp-today-unit', ' % 見た'));
     card.appendChild(big);
     card.appendChild(el('div', 'tp-sub',
-      st.rounds + '周を目標（2周目以降は「わからない」カード）。残り ' + st.remaining + ' 枚（見た ' + st.seen + ' / 全 ' + st.total + ' 枚、わからない ' + st.unsure + ' 枚）'));
+      '残り ' + st.remaining + ' 枚（見た ' + st.seen + ' / 全 ' + st.total + ' 枚、わからない ' + st.unsure + ' 枚）'));
     card.appendChild(bar(st.total ? st.seen / st.total : 0));
 
     st.rows.forEach(r => {
@@ -153,20 +160,60 @@ function renderTest(p, deckMap) {
     });
   }
 
+  // 範囲のデッキをまとめてプレイ／みんなでクイズ
+  const playable = st.rows.filter(r => r.count > 0);
+  if (playable.length) {
+    const playRow = el('div', 'tp-play');
+    const goAll = el('button', 'tp-btn tp-btn-primary', 'まとめてプレイ');
+    goAll.type = 'button';
+    goAll.addEventListener('click', () => {
+      try { sessionStorage.setItem('tpPlay', JSON.stringify({ id: id, name: (p.subject || 'テスト') + ' の範囲', filenames: playable.map(r => r.filename) })); } catch (e) {}
+      location.href = 'Cardmaker.html?tpplay=1';
+    });
+    const goQuiz = el('button', 'tp-btn', 'みんなでクイズ');
+    goQuiz.type = 'button';
+    goQuiz.addEventListener('click', () => {
+      try {
+        sessionStorage.setItem('quizDeckPicker', JSON.stringify(playable.slice(0, 30).map(r => ({ filename: r.filename, name: r.name }))));
+        sessionStorage.setItem('quizHostTitle', (p.subject || 'テスト') + ' 対策クイズ');
+      } catch (e) {}
+      location.href = 'Quiz.html?mode=host&fromPicker=1';
+    });
+    playRow.appendChild(goAll); playRow.appendChild(goQuiz);
+    card.appendChild(playRow);
+  }
   const ctl = el('div', 'tp-ctl');
-  const rl = el('label', 'tp-rounds', '目標周回 ');
-  const sel = document.createElement('select');
-  [1, 2, 3, 4, 5].forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n + '周'; sel.appendChild(o); });
-  sel.value = String(plan.rounds || 2);
-  sel.addEventListener('change', () => { plan.rounds = Number(sel.value); savePlans(plansState); render(); });
-  rl.appendChild(sel);
-  ctl.appendChild(rl);
   const pick = el('button', 'tp-btn', 'デッキを選ぶ');
   pick.type = 'button';
   pick.addEventListener('click', () => openDeckPicker(p, plan));
   ctl.appendChild(pick);
   card.appendChild(ctl);
   return card;
+}
+
+// テスト範囲の入力（自前のモーダル。OS標準UIを使わない）
+function openScopeEditor(p, plan) {
+  const bg = el('div', 'modal-bg open');
+  const box = el('div', 'tp-picker');
+  box.appendChild(el('div', 'tp-picker-title', 'テスト範囲（' + (p.subject || '') + '）'));
+  const ta = document.createElement('textarea');
+  ta.className = 'tp-scope-input';
+  ta.rows = 4; ta.maxLength = 200;
+  ta.placeholder = '例：教科書 p.30〜58、第3章 微分、プリント1〜4';
+  ta.value = plan.scope || '';
+  box.appendChild(ta);
+  box.appendChild(el('div', 'tp-hint', '200文字まで。この端末にだけ保存されます。'));
+  const act = el('div', 'tp-picker-act');
+  const cancel = el('button', 'tp-btn', 'キャンセル'); cancel.type = 'button';
+  const ok = el('button', 'tp-btn tp-btn-primary', '決定'); ok.type = 'button';
+  cancel.addEventListener('click', () => bg.remove());
+  ok.addEventListener('click', () => { plan.scope = ta.value.trim().slice(0, 200); savePlans(plansState); bg.remove(); render(); });
+  act.appendChild(cancel); act.appendChild(ok);
+  box.appendChild(act);
+  bg.appendChild(box);
+  bg.addEventListener('click', e => { if (e.target === bg) bg.remove(); });
+  document.body.appendChild(bg);
+  ta.focus();
 }
 
 // デッキ選択（自前のモーダル。OS標準UIを使わない）
@@ -203,6 +250,7 @@ function openDeckPicker(p, plan) {
 }
 
 async function init() {
+  if (!GUILD_ID) return;
   const body = document.getElementById('tp-body');
   try {
     const [sch, cards, sd] = await Promise.all([
@@ -219,7 +267,10 @@ async function init() {
   } catch (e) {
     body.textContent = '';
     const m = String(e && e.message);
-    if (m === 'not_logged_in') { location.replace(LOGIN_PATH); return; }
+    if (m === 'not_logged_in') {
+      try { localStorage.removeItem(SESSION_KEY); sessionStorage.setItem('post_login_redirect', location.href); } catch (e2) {}
+      location.replace(LOGIN_PATH); return;
+    }
     body.appendChild(el('div', 'tp-empty', m === 'guild_membership_required'
       ? 'このサーバーのメンバーではないため、テスト対策は使えません。'
       : '読み込めませんでした。時間をおいて再読み込みしてください。'));

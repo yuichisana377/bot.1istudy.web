@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="e616c2c2ac";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="b35b794f86";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4702,11 +4702,18 @@ let folderPlayDecks = [];    // ★ 追加：フォルダプレイの対象デ�
 let loadingFolderIds = new Set(); // ★ 追加：カード読み込み中のフォルダid
 
 // ★ フォルダ配下の全デッキ（サブフォルダ含む）を1つの学習セッションとしてプレイする
+// ★ テスト対策ページから渡された「複数デッキまとめてプレイ」用の仮想フォルダ（id → {name, filenames}）
+const virtualPlays = new Map();
+function virtualPlayName(id) { const v = virtualPlays.get(id); return v ? v.name : null; }
 async function openFolderPlayMode(folderId) {
-  const folder = folders.find(f => f.id === folderId);
-  const targetDecks = collectDecksInFolder(folderId)
+  const virt = virtualPlays.get(folderId);
+  const folder = virt ? { name: virt.name, description: null } : folders.find(f => f.id === folderId);
+  const targetDecks = (virt ? decks.filter(d => d.filename && virt.filenames.includes(d.filename)) : collectDecksInFolder(folderId))
     .filter(d => (d.filename ? (d.count ?? d.cards.length) : d.cards.length) > 0);
-  if (!targetDecks.length) return;
+  if (!targetDecks.length) {
+    if (virt) showCmAlert({ title: 'プレイできるデッキがありません', desc: '範囲のデッキが見つからないか、カードが0枚です（削除・非公開になった可能性があります）。' });
+    return;
+  }
 
   loadingFolderIds.add(folderId);
   renderDeckListUI();
@@ -4975,7 +4982,7 @@ async function startStudyMode(mode) {
       pool = [];
       folderPlayDecks.forEach(d => d.cards.forEach(c => pool.push({ ...c, __deckId: d.id })));
       const folder = folders.find(f => f.id === studyFolderId);
-      studyBaseTitle = folder ? folder.name : 'フォルダ';
+      studyBaseTitle = virtualPlayName(studyFolderId) || (folder ? folder.name : 'フォルダ');
     } else {
       const deck = decks.find(d => d.id === studyDeckId);
       pool = deck ? [...deck.cards] : [];
@@ -5004,7 +5011,7 @@ async function startStudyMode(mode) {
       });
       studyCards = merged;
       const folder = folders.find(f => f.id === studyFolderId);
-      studyBaseTitle = folder ? folder.name : 'フォルダ';
+      studyBaseTitle = virtualPlayName(studyFolderId) || (folder ? folder.name : 'フォルダ');
     } else {
       const deck = decks.find(d => d.id === studyDeckId);
       const sourceCards = studyIsQuizDeck ? normalizeQuizPlayableCards(deck.cards) : deck.cards;
@@ -6499,7 +6506,20 @@ initMathPads();
 //   decks/folders（763行目・260行目で既に読み込み済み）だけで完結できるため、
 //   renderDeckList() を待たず先に呼び、最初の描画から選択モードにしておく。
 initPickModeFromUrl();
-renderDeckList().then(() => { jumpToDeckFromUrl(); });
+renderDeckList().then(() => { jumpToDeckFromUrl(); startTestPrepPlayFromUrl(); });
+// ★ テスト対策ページ（TestPrep.html）から ?tpplay=1 で来たら、範囲のデッキをまとめてプレイ画面へ
+//   （渡し物は sessionStorage 'tpPlay' = {id, name, filenames}。サイト内の同一端末のみで使う）
+function startTestPrepPlayFromUrl() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('tpplay') !== '1') return;
+  history.replaceState(null, '', location.pathname + location.hash);
+  let v = null;
+  try { v = JSON.parse(sessionStorage.getItem('tpPlay') || 'null'); sessionStorage.removeItem('tpPlay'); } catch (e) {}
+  if (!v || !Array.isArray(v.filenames) || !v.filenames.length) return;
+  const id = 'tp:' + String(v.id || '').slice(0, 80);
+  virtualPlays.set(id, { name: String(v.name || 'テスト範囲').slice(0, 60), filenames: v.filenames.filter(f => typeof f === 'string') });
+  openFolderPlayMode(id);
+}
 loadChunksInBackground(); // ★ 追加：初期表示をブロックせず、残りの機能チャンクを裏で順に読み込む
 prefetchOtherPages(); // ★ 追加：メニューを開くのを待たず、初期表示後に自動で他ページを裏で先読み
 

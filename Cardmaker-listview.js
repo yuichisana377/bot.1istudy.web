@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-listview.js"]="e616c2c2ac";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-listview.js"]="b35b794f86";/*@end*/// ============================================================
 //  Cardmaker-listview.js — CardMaker「一覧で見る」機能（遅延読み込みチャンク）
 //  ─────────────────────────────────────────────
 //  ★ Cardmaker.js から分離。一覧画面（デッキ一覧）の初期表示には不要な
@@ -37,7 +37,8 @@ function openListView() {
   const titleEl = document.getElementById('list-view-title');
   if (studyIsFolder) {
     const folder = folders.find(f => f.id === studyFolderId);
-    setIconText(titleEl, folder ? Icons.cmHtml('folder', {size:16}) : '', folder ? folder.name : 'フォルダ');
+    const vName = (typeof virtualPlayName === 'function') ? virtualPlayName(studyFolderId) : null;
+    setIconText(titleEl, (folder || vName) ? Icons.cmHtml('folder', {size:16}) : '', vName || (folder ? folder.name : 'フォルダ'));
   } else {
     const deck = decks.find(d => d.id === studyDeckId);
     setIconText(titleEl, '', deck ? deck.name : '');
