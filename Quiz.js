@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="6551eebc8e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="1e015c636a";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -179,6 +179,13 @@ async function initQuizApp() {
     history.replaceState(null, '', location.pathname); // URLをきれいに戻す
     showScreenQ('home');
     goHostSetupScreen();
+    // ★ デッキ選択から戻ったときは、選ぶ前に入力していたタイトルを復元する
+    try {
+      const savedTitle = sessionStorage.getItem('quizHostTitle');
+      const titleEl = document.getElementById('hs-title');
+      if (savedTitle && !titleEl.value) titleEl.value = savedTitle;
+    } catch (e) {}
+    try { sessionStorage.removeItem('quizHostTitle'); } catch (e) {}
   } else if (codeParam) {
     // ★ 共有リンク等、コード付きURLで直接開かれた場合はそのまま参加を試みる
     //   （参加者は普段コードを意識しなくてよいが、リンク共有自体は引き続き使える）。
@@ -366,6 +373,7 @@ async function goHostSetupScreen() {
 //   まっさらな状態から始める（?mode=host での起動やデッキメニュー起動と違い、
 //   ここではlaunchDeckInfo/hsSelectedDecksを毎回リセットする）。
 function startFreshHostSetup() {
+  try { sessionStorage.removeItem('quizHostTitle'); } catch (e) {}
   launchDeckInfo = null;
   hsSelectedDecks = [];
   hsDeckPickerLocked = false;
@@ -375,6 +383,8 @@ function startFreshHostSetup() {
 // ★ 「デッキを選ぶ」／「選び直す」：いつもの単語のホーム画面（Cardmaker.html）を
 //   選択モードで開く。複数のデッキ・フォルダ（サブフォルダ含む）をまとめて選べる。
 function openDeckPicker() {
+  // ★ 別ページへ移動するとこの画面の入力は消えるため、入力済みのタイトルを退避して戻ってから復元する
+  try { sessionStorage.setItem('quizHostTitle', document.getElementById('hs-title').value); } catch (e) {}
   location.href = 'Cardmaker.html?pick=quiz';
 }
 
