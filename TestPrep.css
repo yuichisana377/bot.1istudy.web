@@ -1,0 +1,31 @@
+/* TestPrep.css — テスト対策ページ専用スタイル（使用ページ: TestPrep.html） */
+.tp-notice{background:var(--warn-soft);border-radius:var(--r-md);padding:10px 14px;font-size:12px;line-height:1.7;color:var(--warn);margin-bottom:14px}
+.tp-empty{padding:24px 8px;text-align:center;font-size:13px;color:var(--text-secondary)}
+.tp-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px;margin-bottom:12px}
+.tp-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
+.tp-subject{font-size:15px;font-weight:700;color:var(--text)}
+.tp-date{font-size:12px;font-weight:700;color:var(--accent)}
+.tp-today{margin:4px 0 2px}
+.tp-today-num{font-size:34px;font-weight:800;color:var(--accent)}
+.tp-today-unit{font-size:13px;font-weight:700;color:var(--text-secondary)}
+.tp-sub,.tp-deck-sub,.tp-hint{font-size:11.5px;color:var(--text-secondary);margin:2px 0 6px;line-height:1.6}
+.tp-bar{height:8px;border-radius:var(--r-md);background:var(--border);overflow:hidden}
+.tp-bar-fill{height:100%;background:var(--accent);border-radius:var(--r-md);transition:width .3s}
+.tp-deck{margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.tp-deck-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.tp-deck-name{font-size:13px;font-weight:700;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-go{flex-shrink:0;font-size:12px;font-weight:700;color:#fff;background:var(--accent);border-radius:var(--r-md);padding:5px 12px;text-decoration:none}
+.tp-ctl{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}
+.tp-rounds{font-size:12px;color:var(--text-secondary)}
+.tp-btn{font-family:inherit;font-size:12.5px;font-weight:700;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:var(--r-md);padding:7px 14px;cursor:pointer}
+.tp-btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.tp-picker{background:var(--surface);border-radius:var(--r-lg);width:min(92vw,420px);max-height:80dvh;display:flex;flex-direction:column;padding:16px}
+.tp-picker-title{font-size:14px;font-weight:700;margin-bottom:10px;color:var(--text)}
+.tp-picker-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:2px}
+.tp-pick-row{display:flex;align-items:center;gap:8px;padding:8px 4px;font-size:13px;cursor:pointer}
+.tp-pick-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.tp-pick-meta{font-size:11px;color:var(--text-secondary);flex-shrink:0}
+.tp-picker-act{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.tp-pick-row input[type=checkbox]{appearance:none;-webkit-appearance:none;width:16px;height:16px;margin:0;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--surface);flex-shrink:0;display:grid;place-content:center;cursor:pointer}
+.tp-pick-row input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+.tp-pick-row input[type=checkbox]:checked::after{content:"";width:8px;height:4px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
