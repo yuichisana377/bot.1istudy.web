@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="b35b794f86";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="2c6b5ab6b8";/*@end*/// ============================================================
 //  TestPrep.js — テスト対策モード（試作・サーバー変更なし）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
@@ -109,10 +109,9 @@ function render() {
 function renderTest(p, deckMap) {
   const id = planId(p);
   let plan = plansState[id];
-  if (!plan || (!plan.touched && !(plan.decks || []).length)) {
-    const subj = (p.subject || '').trim();
-    const auto = DECKS.filter(d => subj && (d.subject || '').trim() === subj).map(d => d.filename);
-    plan = plansState[id] = { decks: auto, scope: (plan && plan.scope) || '' };
+  // デッキは自動では選ばない。以前の自動選択（touched なしで decks が入っているもの）は空に戻す
+  if (!plan || (!plan.touched && (plan.decks || []).length)) {
+    plan = plansState[id] = { decks: [], scope: (plan && plan.scope) || '' };
     savePlans(plansState);
   }
   const days = Math.max(0, daysUntil(p.date));
@@ -221,22 +220,53 @@ function openDeckPicker(p, plan) {
   const bg = el('div', 'modal-bg open');
   const box = el('div', 'tp-picker');
   box.appendChild(el('div', 'tp-picker-title', '対象デッキを選ぶ（' + (p.subject || '') + '）'));
-  const list = el('div', 'tp-picker-list');
   const chosen = new Set(plan.decks || []);
-  const subj = (p.subject || '').trim();
-  const sorted = DECKS.slice().sort((a, b) =>
-    ((b.subject || '').trim() === subj) - ((a.subject || '').trim() === subj));
-  sorted.forEach(d => {
-    const lab = el('label', 'tp-pick-row');
-    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = chosen.has(d.filename);
-    cb.addEventListener('change', () => { cb.checked ? chosen.add(d.filename) : chosen.delete(d.filename); });
-    lab.appendChild(cb);
-    lab.appendChild(el('span', 'tp-pick-name', d.name));
-    lab.appendChild(el('span', 'tp-pick-meta', (d.subject ? d.subject + '・' : '') + d.count + '枚'));
-    list.appendChild(lab);
-  });
-  if (!sorted.length) list.appendChild(el('div', 'tp-empty', 'デッキがありません'));
+  const NONE = '__none__';
+  const subjOf = d => (d.subject || '').trim() || NONE;
+  const subjects = Array.from(new Set(DECKS.map(subjOf))).sort((a, b) => a === NONE ? 1 : b === NONE ? -1 : a.localeCompare(b, 'ja'));
+  let curSubj = '';
+  let query = '';
+
+  const search = document.createElement('input');
+  search.type = 'text'; search.className = 'tp-search'; search.placeholder = 'デッキ名で検索';
+  box.appendChild(search);
+  const tabs = el('div', 'tp-tabs');
+  box.appendChild(tabs);
+  const list = el('div', 'tp-picker-list');
   box.appendChild(list);
+  const count = el('div', 'tp-pick-count', '');
+  box.appendChild(count);
+
+  function drawTabs() {
+    tabs.textContent = '';
+    [''].concat(subjects).forEach(sj => {
+      const label = sj === '' ? 'すべて' : (sj === NONE ? '科目なし' : sj);
+      const b = el('button', 'tp-tab' + (sj === curSubj ? ' is-active' : ''), label);
+      b.type = 'button';
+      b.addEventListener('click', () => { curSubj = sj; drawTabs(); drawList(); });
+      tabs.appendChild(b);
+    });
+  }
+  function drawList() {
+    list.textContent = '';
+    const q = query.trim().toLowerCase();
+    const shown = DECKS.filter(d => (!curSubj || subjOf(d) === curSubj) && (!q || (d.name || '').toLowerCase().includes(q)));
+    shown.forEach(d => {
+      const lab = el('label', 'tp-pick-row');
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = chosen.has(d.filename);
+      cb.addEventListener('change', () => { cb.checked ? chosen.add(d.filename) : chosen.delete(d.filename); drawCount(); });
+      lab.appendChild(cb);
+      lab.appendChild(el('span', 'tp-pick-name', d.name));
+      lab.appendChild(el('span', 'tp-pick-meta', (d.subject ? d.subject + '・' : '') + d.count + '枚'));
+      list.appendChild(lab);
+    });
+    if (!shown.length) list.appendChild(el('div', 'tp-empty', DECKS.length ? '該当するデッキがありません' : 'デッキがありません'));
+    drawCount();
+  }
+  function drawCount() { count.textContent = chosen.size + '個 選択中'; }
+  search.addEventListener('input', () => { query = search.value; drawList(); });
+  drawTabs(); drawList();
+
   const act = el('div', 'tp-picker-act');
   const cancel = el('button', 'tp-btn', 'キャンセル'); cancel.type = 'button';
   const ok = el('button', 'tp-btn tp-btn-primary', '決定'); ok.type = 'button';

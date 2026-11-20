@@ -22,7 +22,13 @@
 .tp-btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .tp-picker{background:var(--surface);border-radius:var(--r-lg);width:min(92vw,420px);max-height:80dvh;display:flex;flex-direction:column;padding:16px}
 .tp-picker-title{font-size:14px;font-weight:700;margin-bottom:10px;color:var(--text)}
-.tp-picker-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:2px}
+.tp-picker-list{overflow-y:auto;flex:1;min-height:120px;display:flex;flex-direction:column;gap:2px}
+.tp-search{width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-md);padding:8px 10px;margin-bottom:8px}
+.tp-search:focus{outline:2px solid var(--accent-line);outline-offset:0}
+.tp-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:4px;flex-shrink:0}
+.tp-tab{flex-shrink:0;font-family:inherit;font-size:12px;font-weight:700;color:var(--text-secondary);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:5px 12px;cursor:pointer;white-space:nowrap}
+.tp-tab.is-active{color:#fff;background:var(--accent);border-color:var(--accent)}
+.tp-pick-count{font-size:11.5px;color:var(--text-secondary);margin-top:8px}
 .tp-pick-row{display:flex;align-items:center;gap:8px;padding:8px 4px;font-size:13px;cursor:pointer}
 .tp-pick-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
 .tp-pick-meta{font-size:11px;color:var(--text-secondary);flex-shrink:0}
