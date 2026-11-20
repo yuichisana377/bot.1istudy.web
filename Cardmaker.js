@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="6a03ce74ab";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8dba35cbdc";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4515,6 +4515,42 @@ async function maybeAutoStartStudyTimer(memo, subject) {
 //     しておく（そこでもメモ・分かっていれば科目は自動入力される）。
 //   ・完全にベストエフォート：途中で失敗しても、サーバー側は「一時停止」の
 //     ままなのでデータは失われない（後でStudyLog側から手動で扱える）。
+let autoPausedByHide = false; // 画面が隠れたため自動計測を一時停止中かどうか
+
+// ★ スリープ／アプリ切り替えで画面が隠れたら、CardMaker発の自動計測だけを一時停止し、
+//   戻ってきたとき学習画面がまだ開いていれば再開する（止め忘れで「学習中」のまま残るのを防ぐ）。
+//   手動で始めたタイマー（cm_pending_timer_memoが無い）には触らない。
+function hasAutoTimerPending() {
+  try { return !!JSON.parse(localStorage.getItem('cm_pending_timer_memo') || 'null'); } catch (e) { return false; }
+}
+function studyScreenActive() {
+  return !!document.getElementById('screen-study')?.classList.contains('active');
+}
+document.addEventListener('visibilitychange', async () => {
+  try {
+    const session = getLoginSession();
+    if (!session || !session.session_token || !GUILD_ID) return;
+    const body = JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token });
+    const post = (ep) => fetch(`${API_BASE}${ep}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true,
+    }).then(r => r.json());
+    if (document.visibilityState === 'hidden') {
+      if (!studyScreenActive() || !hasAutoTimerPending() || autoPausedByHide) return;
+      autoPausedByHide = true;
+      post('timer_pause').catch(() => {});
+    } else if (autoPausedByHide) {
+      if (!studyScreenActive()) { finishAutoTimerIfPending(); return; }
+      autoPausedByHide = false;
+      // 隠れる直前の一時停止がまだ届いていない場合に備え、1回だけ待って再試行する
+      let r = await post('timer_resume').catch(() => null);
+      if (r && !r.ok && r.error === 'not_paused') {
+        await new Promise(res => setTimeout(res, 1500));
+        r = await post('timer_resume').catch(() => null);
+      }
+    }
+  } catch (e) {}
+});
+
 async function finishAutoTimerIfPending() {
   try {
     const raw = localStorage.getItem('cm_pending_timer_memo');
@@ -4531,19 +4567,21 @@ async function finishAutoTimerIfPending() {
       headers: { 'Authorization': 'Bearer ' + session.session_token },
     });
     const state = await stateRes.json();
-    if (!state.ok || state.state !== 'running') {
+    // ★ 画面が隠れた(スリープ等)ときに自動で一時停止した分は、そのまま確定処理に進める
+    const pausedByHide = autoPausedByHide && state.ok && state.state === 'paused';
+    autoPausedByHide = false;
+    if (!state.ok || (state.state !== 'running' && !pausedByHide)) {
       // 既に本人が別の画面（StudyLog等）で止めている等、このプレイ発の予約は
       // もう役目を終えているので消す。
       localStorage.removeItem('cm_pending_timer_memo');
       return;
     }
 
-    const pauseRes = await fetch(`${API_BASE}timer_pause`, {
+    const paused = pausedByHide ? state : await (await fetch(`${API_BASE}timer_pause`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
       signal: AbortSignal.timeout(5000),
-    });
-    const paused = await pauseRes.json();
+    })).json();
     if (!paused.ok) return; // 失敗時は何もしない（サーバー側はrunningのまま残る＝データは失われない）
 
     const mins = Math.floor((paused.accumulated_sec || 0) / 60);
