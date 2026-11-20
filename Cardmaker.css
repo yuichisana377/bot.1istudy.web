@@ -12,6 +12,7 @@ html, body {
   overscroll-behavior: none;
   position: fixed;
   inset: 0;
+  min-height: 0; /* Style.css の body{min-height:100vh} で、見えている高さより伸びないように */
 }
 
 /* width:100% + padding を使う要素がはみ出さないよう、
@@ -75,7 +76,7 @@ html, body {
 }
 .topbar-back:active { background: var(--bg); }
 
-.inner { max-width: 520px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
+.inner { max-width: 520px; margin: 0 auto; padding: 1.25rem 1rem calc(6rem + env(safe-area-inset-bottom, 0px)); }
 
 /* ── ボタン ── */
 .btn {
