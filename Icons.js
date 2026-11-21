@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Icons.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Icons.js"]="e5c1906e10";/*@end*/// ============================================================
 //  Icons.js — 絵文字の代わりに使う自作アイコン（OS/フォントに依存しない
 //  純粋なSVG）
 //  ─────────────────────────────
@@ -220,4 +220,61 @@ const Icons = (function () {
 function hideLoadingFallback() {
   const el = document.getElementById('js-fail-fallback');
   if (el) el.remove();
+}
+
+// ============================================================
+//  ボタンの「処理中」表示（スピナー付き）— 2026/11/21 追加
+//  通信を待つボタンで「動いているか分からない」を無くすための共通部品。
+//  ・setBtnBusy(btn, true, "送信中…") で スピナー＋文言＋押せない状態、
+//    setBtnBusy(btn, false) で元の表示・状態に戻す。
+//  ・スピナーは文字色(currentColor)で描くので、白いボタンでも濃いボタンでも見える。
+//  ・見た目用CSSはこの関数が初回に自前で注入する（ページのCSSに依存しない）。
+// ============================================================
+function bbEnsureSpinStyle() {
+  if (document.getElementById("bb-spin-style") || !document.head) return;
+  const st = document.createElement("style");
+  st.id = "bb-spin-style";
+  // .bb-spin ＝ 文字色で回る小さなスピナー（ボタン内・読み込み中表示で共通）
+  // .bb-loading::before / .loading::before ＝ 「読み込み中…」の文字の前に自動でスピナーを付ける
+  st.textContent =
+    ".bb-spin,.bb-loading::before,.loading::before{display:inline-block;width:14px;height:14px;margin-right:8px;vertical-align:-2px;" +
+    "border:2px solid currentColor;border-right-color:transparent;border-radius:50%;" +
+    "animation:bbSpin .7s linear infinite;flex-shrink:0;box-sizing:border-box}" +
+    ".bb-loading::before,.loading::before{content:''}" +
+    "@keyframes bbSpin{to{transform:rotate(360deg)}}" +
+    "@media (prefers-reduced-motion: reduce){.bb-spin,.bb-loading::before,.loading::before{animation-duration:2s}}";
+  document.head.appendChild(st);
+}
+bbEnsureSpinStyle();
+
+// 別ページ（Discordの認可画面など）へ移動中のまま残したボタンが、ブラウザの
+// 「戻る」でページが復元されたとき、スピナー付きで固まって見えないように戻す。
+window.addEventListener("pageshow", function (e) {
+  if (!e.persisted) return;
+  document.querySelectorAll('[data-busy="1"]').forEach(function (b) { setBtnBusy(b, false); });
+});
+
+function setBtnBusy(btn, busy, busyLabel) {
+  if (!btn) return;
+  if (busy) {
+    // 二重呼び出しで元の表示を失わない（ただし中身が他のコードに書き換えられて
+    // スピナーが無くなっている古い印は無視する）
+    if (btn.dataset.busy === "1" && btn.querySelector(".bb-spin")) return;
+    bbEnsureSpinStyle();
+    btn.dataset.busy = "1";
+    btn.dataset.origHtml = btn.innerHTML;
+    btn.dataset.origDisabled = btn.disabled ? "1" : "";
+    btn.innerHTML = '<span class="bb-spin" aria-hidden="true"' + (busyLabel ? '' : ' style="margin-right:0"') + '></span>';
+    if (busyLabel) btn.appendChild(document.createTextNode(busyLabel));
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+  } else {
+    if (btn.dataset.busy !== "1") return;
+    btn.innerHTML = btn.dataset.origHtml;
+    btn.disabled = btn.dataset.origDisabled === "1";
+    btn.removeAttribute("aria-busy");
+    delete btn.dataset.busy;
+    delete btn.dataset.origHtml;
+    delete btn.dataset.origDisabled;
+  }
 }

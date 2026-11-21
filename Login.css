@@ -91,6 +91,27 @@
 .login-back-btn:hover  { background: var(--bg); }
 .login-back-btn:active { background: var(--border); }
 
+/* DMコードでログインする入口：目立つ大きなボタン */
+.login-dm-btn {
+  display: block;
+  width: 100%;
+  margin-top: .8rem;
+  padding: 16px 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+  transition: background .12s, border-color .12s;
+}
+.login-dm-btn:hover  { background: var(--bg); border-color: var(--text-tertiary); }
+.login-dm-btn:active { background: var(--border); }
+
 /* ヒント文 */
 .login-hint {
   font-size: 12px;

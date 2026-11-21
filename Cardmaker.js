@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="e5c1906e10";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -1083,7 +1083,7 @@ function renderDeckListUI() {
     </div>
     <div class="deck-card-actions">
       <button class="btn btn-blue btn-sm" onclick="event.stopPropagation();openFolderPlayMode('${f.id}')"
-        ${folderPlayDisabled?'disabled':''}>${isLoadingThisFolder ? '読み込み中…' : '▶ プレイ'}</button>
+        ${folderPlayDisabled?'disabled':''}>${isLoadingThisFolder ? '<span class="bb-spin"></span>読み込み中…' : '▶ プレイ'}</button>
       <button class="icon-btn" onclick="event.stopPropagation();openFolderMenu('${f.id}')" title="メニュー">${Icons.html('edit', {size:14})}</button>
     </div>
   </div>` };
@@ -1219,7 +1219,7 @@ function renderDeckListUI() {
       </div>
       <div class="deck-card-actions">
         <button class="btn btn-blue btn-sm" onclick="openPlayMode('${d.id}')"
-          ${playDisabled?'disabled':''}>${isLoadingThis ? '読み込み中…' : '▶ プレイ'}</button>
+          ${playDisabled?'disabled':''}>${isLoadingThis ? '<span class="bb-spin"></span>読み込み中…' : '▶ プレイ'}</button>
         <button class="icon-btn" onclick="openDeckMenu('${d.id}')" title="メニュー" ${isLoadingThis?'disabled':''}>${Icons.html('edit', {size:14})}</button>
       </div>
     </div>` };
@@ -2477,7 +2477,7 @@ function openRequestShareModal(filename, deckName, ownerNickname) {
   document.getElementById('request-share-reason').value = '';
   document.getElementById('request-share-err').style.display = 'none';
   const btn = document.getElementById('request-share-submit-btn');
-  btn.disabled = false; btn.textContent = '送信する';
+  setBtnBusy(btn, false); btn.disabled = false; btn.textContent = '送信する';
   openModal('modal-request-share');
 }
 
@@ -2492,7 +2492,7 @@ async function submitRequestShare() {
     return;
   }
   const btn = document.getElementById('request-share-submit-btn');
-  btn.disabled = true; btn.textContent = '送信中…';
+  setBtnBusy(btn, true, '送信中…');
   try {
     const session = getLoginSession();
     const res = await fetch(`${API_BASE}request_deck_share`, {
@@ -2511,7 +2511,7 @@ async function submitRequestShare() {
       : '作成者にDiscordで確認を送りました。承認されたら、もう一度「共有リンクを作る」を押すと発行できます。';
     showBanner(via, '#dcfce7', '#166534', Icons.html('mailSent', {size:15}));
   } catch (e) {
-    btn.disabled = false; btn.textContent = '送信する';
+    setBtnBusy(btn, false);
     errEl.textContent = e.message;
     errEl.style.display = '';
   }
@@ -2530,7 +2530,7 @@ function openRequestDeleteModal(category, filename, targetName, ownerNickname) {
   document.getElementById('request-delete-reason').value = '';
   document.getElementById('request-delete-err').style.display = 'none';
   const btn = document.getElementById('request-delete-submit-btn');
-  btn.disabled = false; btn.textContent = '送信する';
+  setBtnBusy(btn, false); btn.disabled = false; btn.textContent = '送信する';
   openModal('modal-request-delete');
 }
 
@@ -2545,7 +2545,7 @@ async function submitRequestDelete() {
     return;
   }
   const btn = document.getElementById('request-delete-submit-btn');
-  btn.disabled = true; btn.textContent = '送信中…';
+  setBtnBusy(btn, true, '送信中…');
   try {
     const session = getLoginSession();
     const res = await fetch(`${API_BASE}request_delete`, {
@@ -2564,7 +2564,7 @@ async function submitRequestDelete() {
       : '作成者にDiscordで確認を送りました。承認されると削除されます。';
     showBanner(via, '#dcfce7', '#166534', Icons.html('mailSent', {size:15}));
   } catch (e) {
-    btn.disabled = false; btn.textContent = '送信する';
+    setBtnBusy(btn, false);
     errEl.textContent = e.message;
     errEl.style.display = '';
   }

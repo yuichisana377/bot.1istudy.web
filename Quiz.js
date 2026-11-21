@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="e5c1906e10";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -639,9 +639,9 @@ async function submitCreateRoom() {
   }
 
   const btn = document.getElementById('hs-create-btn');
-  btn.disabled = true; btn.textContent = '作成中…';
+  setBtnBusy(btn, true, '作成中…');
   const data = await apiPost('quiz_create', body, 12000);
-  btn.disabled = false; btn.textContent = 'クイズを作成する';
+  setBtnBusy(btn, false);
   if (!data.ok) { errEl.textContent = quizErrorText(data.error); return; }
 
   roomCode = data.code;
@@ -759,7 +759,7 @@ function renderLobby(room) {
   if (isHost) {
     document.getElementById('hl-count').textContent = `参加者 ${room.players.length}人`;
     document.getElementById('hl-players').innerHTML = playerChipsHtml(room.players);
-    document.getElementById('hl-start-btn').disabled = room.players.length === 0;
+    { const sb = document.getElementById('hl-start-btn'); if (sb.dataset.busy !== '1') sb.disabled = room.players.length === 0; }
   } else {
     document.getElementById('pl-status').textContent = `${room.host_nickname} さんが開始するのを待っています…（参加者 ${room.players.length}人）`;
     document.getElementById('pl-players').innerHTML = playerChipsHtml(room.players);
@@ -1140,11 +1140,12 @@ async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId
 // ============================================================
 async function hostStart() {
   const btn = document.getElementById('hl-start-btn');
-  btn.disabled = true;
+  setBtnBusy(btn, true, '開始中…');
   const data = await apiPost('quiz_start', withAuth({ code: roomCode }));
-  if (!data.ok) { btn.disabled = false; showAppAlert({ title: 'エラー', desc: quizErrorText(data.error) }); return; }
+  if (!data.ok) { setBtnBusy(btn, false); showAppAlert({ title: 'エラー', desc: quizErrorText(data.error) }); return; }
   applyServerNow(data);
   renderRoom(data.room);
+  setBtnBusy(btn, false);
 }
 async function confirmQuitHost() {
   if (quitting) return;

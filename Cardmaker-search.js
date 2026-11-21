@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-search.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-search.js"]="e5c1906e10";/*@end*/// ============================================================
 //  Cardmaker-search.js — CardMaker「単語検索」機能（遅延読み込みチャンク）
 //  ─────────────────────────────────────────────
 //  ★ Cardmaker.js から分離。一覧画面の初期表示には不要な機能なので、
@@ -51,7 +51,7 @@ async function prepareSearchScope() {
   const unloaded = targets.filter(d => d.filename && !d.cardsLoaded);
   if (unloaded.length) {
     statusEl.style.display = 'block';
-    statusEl.textContent = `問題データを読み込み中…（${unloaded.length}件のデッキ）`;
+    statusEl.innerHTML = '<span class="bb-spin"></span>' + `問題データを読み込み中…（${unloaded.length}件のデッキ）`;
     await Promise.all(unloaded.map(d => ensureDeckCardsLoaded(d.id)));
   }
   statusEl.style.display = 'none';

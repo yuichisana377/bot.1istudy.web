@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["PendingDeleteCheck.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["PendingDeleteCheck.js"]="e5c1906e10";/*@end*/// ============================================================
 //  PendingDeleteCheck.js — 削除依頼のWeb確認（Discord未連携の受け皿）
 //  ─────────────────────────────
 //  作成者本人以外がデッキ／お知らせの削除を依頼すると、通常はDiscord DMで
@@ -136,11 +136,17 @@
       pdcShowNext();
     }
 
-    async function pdcRespond(action, btn) {
+    // Icons.js が読み込めなくても固まらないよう、無ければ文字だけで代替する
+  function pdcBusy(btn, on) {
+    if (typeof setBtnBusy === 'function') { setBtnBusy(btn, on, '処理中…'); return; }
+    if (on) { btn.dataset.origText = btn.textContent; btn.textContent = '処理中…'; }
+    else if (btn.dataset.origText != null) { btn.textContent = btn.dataset.origText; delete btn.dataset.origText; }
+  }
+
+  async function pdcRespond(action, btn) {
       err.style.display = 'none';
       approveBtn.disabled = true; rejectBtn.disabled = true; laterBtn.disabled = true;
-      const original = btn.textContent;
-      btn.textContent = '処理中…';
+      pdcBusy(btn, true);
       try {
         const res = await fetch(`${PDC_API_BASE}respond_delete_request`, {
           method: 'POST',
@@ -151,16 +157,16 @@
         if (!data.ok) {
           err.textContent = data.error || '処理に失敗しました';
           err.style.display = '';
+          pdcBusy(btn, false);
           approveBtn.disabled = false; rejectBtn.disabled = false; laterBtn.disabled = false;
-          btn.textContent = original;
           return;
         }
         pdcCloseAndNext();
       } catch (e) {
         err.textContent = 'サーバーに接続できませんでした。';
         err.style.display = '';
+        pdcBusy(btn, false);
         approveBtn.disabled = false; rejectBtn.disabled = false; laterBtn.disabled = false;
-        btn.textContent = original;
       }
     }
 

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["DeleteApproval.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["DeleteApproval.js"]="e5c1906e10";/*@end*/// ============================================================
 //  DeleteApproval.js — 削除の確認ページ用スクリプト
 //  DeleteApproval.html から読み込む。
 //  Discordの削除依頼DMに載っているリンク（?token=...）を開いた作成者本人が、
@@ -94,11 +94,10 @@ async function respond(action) {
   hideActionError();
   const approveBtn = qs('btn-approve');
   const rejectBtn = qs('btn-reject');
+  const clickedBtn = action === 'approve' ? approveBtn : rejectBtn;
   approveBtn.disabled = true;
   rejectBtn.disabled = true;
-  const clickedBtn = action === 'approve' ? approveBtn : rejectBtn;
-  const originalLabel = clickedBtn.textContent;
-  clickedBtn.textContent = '処理中…';
+  setBtnBusy(clickedBtn, true, '処理中…');
 
   try {
     const res = await fetch(`${API_BASE}respond_delete_request`, {
@@ -110,9 +109,9 @@ async function respond(action) {
     const data = await res.json();
     if (!data.ok) {
       showActionError(data.error || '処理に失敗しました');
+      setBtnBusy(clickedBtn, false);
       approveBtn.disabled = false;
       rejectBtn.disabled = false;
-      clickedBtn.textContent = originalLabel;
       return;
     }
     qs('da-btn-row').style.display = 'none';
@@ -123,9 +122,9 @@ async function respond(action) {
     resultEl.style.display = '';
   } catch (e) {
     showActionError('サーバーに接続できませんでした。');
+    setBtnBusy(clickedBtn, false);
     approveBtn.disabled = false;
     rejectBtn.disabled = false;
-    clickedBtn.textContent = originalLabel;
   }
 }
 

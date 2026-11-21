@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["ShareApproval.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["ShareApproval.js"]="e5c1906e10";/*@end*/// ============================================================
 //  ShareApproval.js — 共有リンク発行の確認ページ用スクリプト
 //  ShareApproval.html から読み込む。DeleteApproval.jsとほぼ同じ構造。
 //  Discordの共有依頼DMに載っているリンク（?token=...）を開いた作成者本人が、
@@ -76,11 +76,10 @@ async function respond(action) {
   hideActionError();
   const approveBtn = qs('btn-approve');
   const rejectBtn = qs('btn-reject');
+  const clickedBtn = action === 'approve' ? approveBtn : rejectBtn;
   approveBtn.disabled = true;
   rejectBtn.disabled = true;
-  const clickedBtn = action === 'approve' ? approveBtn : rejectBtn;
-  const originalLabel = clickedBtn.textContent;
-  clickedBtn.textContent = '処理中…';
+  setBtnBusy(clickedBtn, true, '処理中…');
 
   try {
     const res = await fetch(`${API_BASE}respond_deck_share_request`, {
@@ -92,9 +91,9 @@ async function respond(action) {
     const data = await res.json();
     if (!data.ok) {
       showActionError(data.error || '処理に失敗しました');
+      setBtnBusy(clickedBtn, false);
       approveBtn.disabled = false;
       rejectBtn.disabled = false;
-      clickedBtn.textContent = originalLabel;
       return;
     }
     qs('sa-btn-row').style.display = 'none';
@@ -103,9 +102,9 @@ async function respond(action) {
     resultEl.style.display = '';
   } catch (e) {
     showActionError('サーバーに接続できませんでした。');
+    setBtnBusy(clickedBtn, false);
     approveBtn.disabled = false;
     rejectBtn.disabled = false;
-    clickedBtn.textContent = originalLabel;
   }
 }
 

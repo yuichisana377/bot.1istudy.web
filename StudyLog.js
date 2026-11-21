@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="42e4e25e2f";/*@end*/// ============================================================ 754
+/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="e5c1906e10";/*@end*/// ============================================================ 754
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
 //  → 累計ポイントはヘッダーバッジに表示
@@ -483,7 +483,7 @@ function openAccountModal() {
       '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">' +
         '自分が発行した、または自分のデッキが共有されているリンクの一覧です。ここから取り消せます。' +
       '</p>' +
-      '<div id="sl-acct-shares-list" style="font-size:12.5px;color:#94a3b8;">読み込み中…</div>' +
+      '<div id="sl-acct-shares-list" style="font-size:12.5px;color:#94a3b8;"><span class="bb-spin"></span>読み込み中…</div>' +
     '</div>';
 
   overlay.appendChild(box);
@@ -660,7 +660,7 @@ async function submitNicknameChange() {
   if (!nickname)            { setAcctMsg("sl-acct-nickname-msg", "ニックネームを入力してください", true); return; }
   if (nickname.length > 16) { setAcctMsg("sl-acct-nickname-msg", "16文字以内で入力してください", true); return; }
 
-  btn.disabled = true;
+  setBtnBusy(btn, true, "保存中…");
   try {
     var data = await api("/change_nickname", {
       method: "POST",
@@ -684,7 +684,7 @@ async function submitNicknameChange() {
   } catch(e) {
     setAcctMsg("sl-acct-nickname-msg", "サーバーに接続できません", true);
   } finally {
-    btn.disabled = false;
+    setBtnBusy(btn, false);
   }
 }
 
@@ -713,13 +713,15 @@ async function forceReLogin() {
 //   心配はない（state自体が「ログイン済みの本人」に対してのみ発行される）。
 async function startDiscordOAuth() {
   var btn = document.getElementById("sl-acct-oauth-btn");
-  btn.disabled = true;
+  var navigating = false;
+  setBtnBusy(btn, true, "移動中…");
   try {
     var data = await api("/discord_oauth_start", {
       method: "POST",
       body: JSON.stringify({ guild_id: GUILD_ID, session_token: SESSION_TOKEN }),
     });
     if (data && data.ok && data.authorize_url) {
+      navigating = true;
       location.href = data.authorize_url; // Discordの認可画面へ移動
     } else if (data && data.error === "not_logged_in") {
       forceReLogin();
@@ -731,7 +733,7 @@ async function startDiscordOAuth() {
   } catch(e) {
     setAcctMsg("sl-acct-oauth-msg", "サーバーに接続できません", true);
   } finally {
-    btn.disabled = false;
+    if (!navigating) setBtnBusy(btn, false);
   }
 }
 
@@ -1107,7 +1109,7 @@ async function deleteMyLog(timeKey, btn) {
     okLabel: "削除する", danger: true,
   });
   if (!ok) return;
-  if (btn) { btn.disabled = true; btn.textContent = "…"; }
+  if (btn) setBtnBusy(btn, true, "");
   var data;
   try {
     data = await api("/delete_study_log", {
@@ -1120,7 +1122,7 @@ async function deleteMyLog(timeKey, btn) {
   if (!data || data.ok === false) {
     if (data && data.error === "not_logged_in") { forceReLogin(); return; }
     showAppAlert({ title: "削除に失敗しました", desc: data && data.error ? data.error : "" });
-    if (btn) { btn.disabled = false; btn.innerHTML = Icons.html('trash', {size:14}); }
+    if (btn) setBtnBusy(btn, false);
     return;
   }
   logs = logs.filter(function(l) { return !(l.student_id === STUDENT.id && l.time === timeKey); });
@@ -1734,9 +1736,10 @@ async function timerStart() {
   if (timerRunning || timerIsPaused) return;
   ensureNotifyPermission(); // ★ ユーザー操作（クリック）のタイミングで許可をリクエスト
   var btn = document.getElementById("btn-start");
-  if (btn) btn.disabled = true; // ★ 連打防止（応答が返るまで）
+  if (btn) setBtnBusy(btn, true, "開始中…"); // ★ 連打防止（応答が返るまで）
 
   var res = await timerApiStart();
+  if (btn) setBtnBusy(btn, false); // ★ ラベルを元に戻してから、下で状態に応じた表示にする
 
   if (!res || res.ok === false) {
     if (res && res.error === "not_logged_in") { forceReLogin(); return; }
@@ -1773,21 +1776,23 @@ async function timerStart() {
 async function timerPauseResume() {
   if (!timerRunning && !timerIsPaused) return;
   var btn = document.getElementById("btn-pause");
-  if (btn) btn.disabled = true; // ★ 連打防止（応答が返るまで）
+  if (btn) setBtnBusy(btn, true, "処理中…"); // ★ 連打防止（応答が返るまで）
 
   if (!timerIsPaused) {
     // 休憩する
     clearInterval(timerInterval); timerInterval = null;
     var res = await timerApiPause();
     if (!res || res.ok === false) {
-      if (res && res.error === "not_logged_in") { forceReLogin(); return; }
+      if (res && res.error === "not_logged_in") { if (btn) setBtnBusy(btn, false); forceReLogin(); return; }
       // サーバーとの同期に失敗した場合は最新状態を取り直して表示だけ合わせる
       var st = await timerApiState();
+      if (btn) setBtnBusy(btn, false);
       if (st && st.ok) applyServerTimerState(st);
       startInterval();
       if (btn) btn.disabled = false;
       return;
     }
+    if (btn) setBtnBusy(btn, false); // ★ ラベルを戻してから状態に応じた表示にする
     applyServerTimerState(res);
     document.getElementById("btn-pause").textContent      = "▶ 再開";
     document.getElementById("timer-status").textContent   = "休憩中...";
@@ -1795,6 +1800,7 @@ async function timerPauseResume() {
   } else {
     // 再開する
     var res2 = await timerApiResume();
+    if (btn) setBtnBusy(btn, false);
     if (!res2 || res2.ok === false) {
       if (res2 && res2.error === "not_logged_in") { forceReLogin(); return; }
       showAppAlert({ title: "通信エラーのため再開できませんでした", desc: "もう一度お試しください。" });

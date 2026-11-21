@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="e5c1906e10";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -413,15 +413,13 @@ async function deleteCurrentNotice() {
   if (!ok) return;
 
   const btn = document.getElementById('view-delete-btn');
-  btn.disabled = true;
-  btn.textContent = '削除中…';
+  setBtnBusy(btn, true, '削除中…');
   try {
     const res = await api('/delete_notice', {
       method: 'POST',
       body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, filename: currentViewFilename, nickname: session.nickname })
     });
-    btn.disabled = false;
-    btn.textContent = '削除する';
+    setBtnBusy(btn, false);
     if (res.ok) {
       closeNoticeModal('view');
       await loadNotices();
@@ -433,8 +431,7 @@ async function deleteCurrentNotice() {
       showAppAlert({ title: '削除に失敗しました', desc: res.error || '' });
     }
   } catch (e) {
-    btn.disabled = false;
-    btn.textContent = '削除する';
+    setBtnBusy(btn, false);
     showAppAlert({ title: 'サーバーに接続できませんでした' });
   }
 }
@@ -453,7 +450,7 @@ function openRequestDeleteModal(filename, ownerNickname) {
   const errEl = document.getElementById('request-delete-err');
   errEl.style.display = 'none';
   const btn = document.getElementById('request-delete-submit-btn');
-  btn.disabled = false; btn.textContent = '送信する';
+  setBtnBusy(btn, false); btn.disabled = false; btn.textContent = '送信する';
   document.getElementById('modal-request-delete').classList.add('open');
 }
 
@@ -470,8 +467,7 @@ async function submitRequestDelete() {
     return;
   }
   const btn = document.getElementById('request-delete-submit-btn');
-  btn.disabled = true;
-  btn.textContent = '送信中…';
+  setBtnBusy(btn, true, '送信中…');
   try {
     const res = await api('/request_delete', {
       method: 'POST',
@@ -481,6 +477,7 @@ async function submitRequestDelete() {
       }),
     });
     if (!res.ok) throw new Error(res.error || '送信に失敗しました');
+    setBtnBusy(btn, false);
     closeNoticeModal('request-delete');
     closeNoticeModal('view');
     showAppAlert({
@@ -491,8 +488,7 @@ async function submitRequestDelete() {
         : '投稿者にDiscordで確認を送りました。承認されると削除されます。',
     });
   } catch (e) {
-    btn.disabled = false;
-    btn.textContent = '送信する';
+    setBtnBusy(btn, false);
     errEl.textContent = e.message;
     errEl.style.display = 'block';
   }

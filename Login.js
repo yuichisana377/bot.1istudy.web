@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Login.js"]="42e4e25e2f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Login.js"]="e5c1906e10";/*@end*/// ============================================================
 //  Login.js — ログインページ専用スクリプト
 //
 //  ★ ログインはDiscordのみ（学籍番号＋パスワードでのログインは廃止）。
@@ -263,6 +263,12 @@ function showStep(id) {
   }
 }
 
+// 「戻る」で復元されたとき、選択ボタンの一括 disabled を解除する
+window.addEventListener("pageshow", function (e) {
+  if (!e.persisted) return;
+  document.querySelectorAll("#guild-choice-list .login-guild-choice-btn").forEach(function (b) { b.disabled = false; });
+});
+
 function setLoadingMsg(msg) {
   const el = document.getElementById("loading-msg");
   if (el) el.textContent = msg;
@@ -333,7 +339,8 @@ function openGuildChoiceStep(token, candidatesArg) {
 
 async function chooseGuildFromChoice(token, guildId, btnEl) {
   document.querySelectorAll("#guild-choice-list .login-guild-choice-btn").forEach(b => b.disabled = true);
-  if (btnEl) btnEl.textContent = "処理中…";
+  let navigating = false;
+  setBtnBusy(btnEl, true, "処理中…");
   const errEl = document.getElementById("guild-choice-err");
   errEl.style.display = "none";
   try {
@@ -347,6 +354,7 @@ async function chooseGuildFromChoice(token, guildId, btnEl) {
     if (result.ok) {
       const palette = paletteFor(result.student.id);
       saveSession(result.student, result.session_token, palette, { id: result.guild_id, name: result.guild_name, multiGuild: result.multi_guild });
+      navigating = true;
       location.href = getRedirectTarget();
       return;
     }
@@ -361,10 +369,10 @@ async function chooseGuildFromChoice(token, guildId, btnEl) {
     // ★ 修正：以前はボタンの文字を"処理中…"のまま戻していなかったため、
     //   実際には失敗して再クリックできる状態でも、見た目だけ固まって
     //   見えてしまっていた（実質的な「処理中で止まる」不具合の一因）。
-    document.querySelectorAll("#guild-choice-list .login-guild-choice-btn").forEach(b => {
-      b.disabled = false;
-      if (b.dataset.origLabel) b.textContent = b.dataset.origLabel;
-    });
+    if (!navigating) {
+      setBtnBusy(btnEl, false);
+      document.querySelectorAll("#guild-choice-list .login-guild-choice-btn").forEach(b => { b.disabled = false; });
+    }
   }
 }
 
@@ -396,7 +404,7 @@ async function requestDmLoginCode() {
   const studentId = idEl.value.trim().toUpperCase();
   document.getElementById("dm-login-err").style.display = "none";
   if (!studentId) { showDmLoginError("学籍番号を入力してください。"); return; }
-  btn.disabled = true;
+  setBtnBusy(btn, true, "送信中…");
   try {
     const res = await fetch(`${API_BASE}dm_login_request`, {
       method: "POST",
@@ -417,7 +425,7 @@ async function requestDmLoginCode() {
   } catch {
     showDmLoginError("サーバーに接続できません。時間をおいて再試行してください。");
   } finally {
-    btn.disabled = false;
+    setBtnBusy(btn, false);
   }
 }
 
@@ -426,7 +434,8 @@ async function verifyDmLoginCode() {
   const btn = document.getElementById("btn-dm-verify");
   document.getElementById("dm-login-err").style.display = "none";
   if (!/^\d{6}$/.test(code)) { showDmLoginError("6桁の数字を入力してください。"); return; }
-  btn.disabled = true;
+  let navigating = false;   // 画面遷移する場合は、遷移が終わるまでスピナーのまま残す
+  setBtnBusy(btn, true, "確認中…");
   try {
     const res = await fetch(`${API_BASE}dm_login_verify`, {
       method: "POST",
@@ -441,6 +450,7 @@ async function verifyDmLoginCode() {
     if (data.ok) {
       const palette = paletteFor(data.student.id);
       saveSession(data.student, data.session_token, palette, { id: data.guild_id, name: data.guild_name, multiGuild: data.multi_guild });
+      navigating = true;
       location.href = getRedirectTarget();
       return;
     }
@@ -456,7 +466,7 @@ async function verifyDmLoginCode() {
   } catch {
     showDmLoginError("サーバーに接続できません。時間をおいて再試行してください。");
   } finally {
-    btn.disabled = false;
+    if (!navigating) setBtnBusy(btn, false);
   }
 }
 
