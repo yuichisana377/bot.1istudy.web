@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="6a930e218a";/*@end*/
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="ad24d793bf";/*@end*/
 // ============================================================
 //  plan.js — 予定管理ページ用スクリプト
 //  index.html から読み込む
@@ -293,10 +293,41 @@ async function loadChannels() {
 // ============================================================
 //  予定一覧読み込み
 // ============================================================
+// ★ 高速化（2026/11/21）：本番は /api/ の中継（Cloudflare Pages Function→バックエンド）が
+//   1回あたり1.5〜5秒かかるため、(1)未来分と過去分1ページ目を並列で取得、
+//   (2)前回取得した予定を端末に保存しておき、起動時はそれを即表示してから裏で更新、にした。
+const PLAN_CACHE_KEY = 'plan_cache_v1_' + GUILD_ID;
+function loadPlanCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(PLAN_CACHE_KEY) || 'null');
+    if (c && Array.isArray(c.plans)) return c;
+  } catch (e) {}
+  return null;
+}
+function savePlanCache() {
+  try {
+    localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify({ plans, pastPlansOffset, pastPlansHasMore }));
+  } catch (e) {}
+}
+let _planInitialLoadDone = false;
+
 async function loadPlans() {
-  document.getElementById('plan-loading').style.display = 'block';
-  document.getElementById('plan-content').innerHTML = '';
-  plans = [];
+  // 初回起動時だけ、前回の予定をキャッシュから即表示する（追加・編集後の再読み込みでは使わない）
+  const cache = !_planInitialLoadDone ? loadPlanCache() : null;
+  _planInitialLoadDone = true;
+  const shownFromCache = !!(cache && cache.plans.length);
+  if (shownFromCache) {
+    plans = cache.plans;
+    pastPlansOffset  = cache.pastPlansOffset || 0;
+    pastPlansHasMore = !!cache.pastPlansHasMore;
+    document.getElementById('plan-loading').style.display = 'none';
+    renderPlans();
+    requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
+  } else {
+    document.getElementById('plan-loading').style.display = 'block';
+    document.getElementById('plan-content').innerHTML = '';
+    plans = [];
+  }
   plansLoadFailed  = false;
   plansLoadErrorDetail = '';
   pastPlansOffset  = 0;
@@ -308,11 +339,14 @@ async function loadPlans() {
   //   それでも失敗した場合だけ plansLoadFailed を立てて renderPlans() 側で
   //   「読み込みに失敗しました」を出す（＝本当に0件のときは従来通り
   //   「予定はありません」のまま）。
+  // 過去分1ページ目は未来分の結果に依存しないので、同時に取りに行く
+  const pastPromise = api(`/list_schedule?guild_id=${GUILD_ID}&scope=past&offset=0&limit=${PAST_PLANS_PAGE_SIZE}`).catch(() => null);
   let data = await fetchFutureSchedule();
   // ★ 通信失敗(__clientError)は api() 内で既に待って再試行済みなので、ここでの再試行はサーバーが {ok:false} を返した場合だけにする（二重再試行・通知の取りこぼし防止）
   if (!data.ok && !data.__clientError) data = await fetchFutureSchedule();
   if (data.ok) {
     plans = dedupePlans(data.plans);
+    if (shownFromCache) { pastPlansOffset = 0; pastPlansHasMore = false; }
   } else if (data.error === 'not_logged_in') {
     // ★ 追加：セッションが無効（期限切れ・破損等）な場合、これまでの
     //   「読み込みに失敗しました」＋再読み込みボタンのままだと、何度
@@ -340,11 +374,15 @@ async function loadPlans() {
   //   （まだ多く残っている場合は「もっと読み込む」ボタンで手動追加）
   //   ★ ①が失敗した状態で②まで走らせても混乱するだけなので、①が
   //   成功したときだけ行う。
+  const keepScroll = shownFromCache ? window.scrollY : null;
   if (!plansLoadFailed) {
-    await loadMorePastPlans();
-    // 過去分の追加で一覧DOMが再描画されるため、その後に1回だけ今日へ移動する。
-    // これで「一瞬だけ今日へ移動 → 再描画で先頭へ戻る」を防ぐ。
-    requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
+    await loadMorePastPlans(pastPromise);
+    savePlanCache();
+  }
+  // 過去分の追加で一覧DOMが再描画されるため、その後に1回だけ今日へ移動する。
+  // キャッシュ表示済みの場合は、読んでいる位置を動かさない。
+  if (keepScroll !== null) {
+    requestAnimationFrame(() => window.scrollTo(0, keepScroll));
   } else {
     requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
   }
@@ -362,14 +400,14 @@ async function fetchFutureSchedule() {
 }
 
 /** 過去の予定を1ページ分読み込んで既存の plans に追加する（「もっと読み込む」ボタンからも呼ばれる） */
-async function loadMorePastPlans() {
+async function loadMorePastPlans(prefetched) {
   if (pastPlansLoading) return;
   pastPlansLoading = true;
   const btn = document.getElementById('plan-load-more-btn');
   if (btn) setLoading(btn, '読み込み中…', true);
 
   try {
-    const data = await api(`/list_schedule?guild_id=${GUILD_ID}&scope=past&offset=${pastPlansOffset}&limit=${PAST_PLANS_PAGE_SIZE}`);
+    const data = (prefetched && await prefetched) || await api(`/list_schedule?guild_id=${GUILD_ID}&scope=past&offset=${pastPlansOffset}&limit=${PAST_PLANS_PAGE_SIZE}`);
     if (data.ok) {
       plans = dedupePlans(plans.concat(data.plans));
       pastPlansOffset += data.plans.length;
