@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-search.js"]="ad24d793bf";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-search.js"]="42e4e25e2f";/*@end*/// ============================================================
 //  Cardmaker-search.js — CardMaker「単語検索」機能（遅延読み込みチャンク）
 //  ─────────────────────────────────────────────
 //  ★ Cardmaker.js から分離。一覧画面の初期表示には不要な機能なので、

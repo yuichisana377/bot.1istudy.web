@@ -2,15 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="ad24d793bf">
-<script src="/Version.js?v=ad24d793bf"></script>
+<meta name="app-version" content="42e4e25e2f">
+<script src="/Version.js?v=42e4e25e2f"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>サービス情報 — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=ad24d793bf">
+<link rel="stylesheet" href="/Style.css?v=42e4e25e2f">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -141,6 +141,10 @@ window.addEventListener('error', function (e) {
           </div>
           <ul class="service-update-list">
             <li class="service-update-item">
+              <span class="service-update-date">2026/11/21</span>
+              <span class="service-update-text">Discordにログインできないとき用に、BotがDMでログイン用の6桁コードを送る機能を追加しました。ログイン画面から学籍番号を入力するとコードが届き、そのコードをWebに入力するとログインできます。コードは5分間・1回だけ使えます。</span>
+            </li>
+            <li class="service-update-item">
               <span class="service-update-date">2026/11/14</span>
               <span class="service-update-text">勉強タイマーが3時間たって自動で休憩に切り替わったことをDMで知らせるとき、Botが約10秒間コマンドに反応しなくなることがあった問題を直しました。</span>
             </li>
@@ -171,6 +175,10 @@ window.addEventListener('error', function (e) {
             <span class="service-card-title">Webサイト アップデート</span>
           </div>
           <ul class="service-update-list">
+            <li class="service-update-item">
+              <span class="service-update-date">2026/11/21</span>
+              <span class="service-update-text">Discordのパスワードを忘れるなどでログインできないとき用に、ログイン画面に「Discordにログインできない方はこちら」を追加しました。学籍番号を入力するとBotから届くDMの6桁コードでログインできます。あわせて、予定の読み込みを速くしました（前回表示した予定を先に出し、裏で最新に更新します）。</span>
+            </li>
             <li class="service-update-item">
               <span class="service-update-date">2026/11/20</span>
               <span class="service-update-text">「テスト対策」ページを追加しました（試作版）。予定管理でカテゴリを「テスト」か「試験」にして登録すると、テスト日までの残り日数と、テスト範囲（自由入力）と、自分で選んだデッキ（科目タブ・検索つき）の見た率が確認できます。範囲のデッキをまとめてプレイしたり、そのまま「みんなでクイズ」を始めることもできます。計画はこの端末にのみ保存されます。</span>
@@ -335,13 +343,13 @@ window.addEventListener('error', function (e) {
 
 </div>
 
-<script src="/Icons.js?v=ad24d793bf"></script>
-<script src="/SwipeGuard.js?v=ad24d793bf"></script>
-<script src="/Dialog.js?v=ad24d793bf"></script>
-<script src="/Common.js?v=ad24d793bf"></script>
-<script src="/ServiceInfo.js?v=ad24d793bf"></script>
-<script src="/PendingDeleteCheck.js?v=ad24d793bf"></script>
-<script src="/PendingShareCheck.js?v=ad24d793bf"></script>
-<script src="/QuizRoomNotify.js?v=ad24d793bf"></script>
+<script src="/Icons.js?v=42e4e25e2f"></script>
+<script src="/SwipeGuard.js?v=42e4e25e2f"></script>
+<script src="/Dialog.js?v=42e4e25e2f"></script>
+<script src="/Common.js?v=42e4e25e2f"></script>
+<script src="/ServiceInfo.js?v=42e4e25e2f"></script>
+<script src="/PendingDeleteCheck.js?v=42e4e25e2f"></script>
+<script src="/PendingShareCheck.js?v=42e4e25e2f"></script>
+<script src="/QuizRoomNotify.js?v=42e4e25e2f"></script>
 </body>
 </html>

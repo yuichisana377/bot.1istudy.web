@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Login.js"]="ad24d793bf";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Login.js"]="42e4e25e2f";/*@end*/// ============================================================
 //  Login.js — ログインページ専用スクリプト
 //
 //  ★ ログインはDiscordのみ（学籍番号＋パスワードでのログインは廃止）。
@@ -304,10 +304,14 @@ function loginWithDiscord() {
 // ★ 複数サーバー対応：既に複数サーバーに登録済みのDiscordユーザーの選択画面。
 //   candidatesParamはURLの?candidates=に載ってきたguild_id/guild_nameだけの
 //   一覧（表示用。実際の選択はtoken側で必ずサーバー側が再検証する）。
-function openGuildChoiceStep(token) {
+function openGuildChoiceStep(token, candidatesArg) {
   const params = new URLSearchParams(location.search);
   let candidates = [];
-  try { candidates = JSON.parse(params.get("candidates") || "[]"); } catch { candidates = []; }
+  if (Array.isArray(candidatesArg)) {
+    candidates = candidatesArg; // ★ DMコードログイン経由：URLではなく応答から直接受け取る
+  } else {
+    try { candidates = JSON.parse(params.get("candidates") || "[]"); } catch { candidates = []; }
+  }
 
   const listEl = document.getElementById("guild-choice-list");
   listEl.innerHTML = "";
@@ -361,6 +365,98 @@ async function chooseGuildFromChoice(token, guildId, btnEl) {
       b.disabled = false;
       if (b.dataset.origLabel) b.textContent = b.dataset.origLabel;
     });
+  }
+}
+
+// ============================================================
+//  DMのコードでログイン（Discordのブラウザログインができない人向け）
+//  サーバー側：bot.py /dm_login_request・/dm_login_verify
+// ============================================================
+let dmLoginRequestId = null;
+
+function openDmLoginStep() {
+  dmLoginRequestId = null;
+  document.getElementById("dm-login-err").style.display = "none";
+  document.getElementById("dm-login-phase-a").style.display = "";
+  document.getElementById("dm-login-phase-b").style.display = "none";
+  document.getElementById("inp-dm-code").value = "";
+  showStep("step-dm-login");
+  setTimeout(() => document.getElementById("inp-dm-student-id")?.focus(), 60);
+}
+
+function showDmLoginError(msg) {
+  const el = document.getElementById("dm-login-err");
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+async function requestDmLoginCode() {
+  const idEl = document.getElementById("inp-dm-student-id");
+  const btn = document.getElementById("btn-dm-send");
+  const studentId = idEl.value.trim().toUpperCase();
+  document.getElementById("dm-login-err").style.display = "none";
+  if (!studentId) { showDmLoginError("学籍番号を入力してください。"); return; }
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}dm_login_request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ student_id: studentId }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      dmLoginRequestId = data.request_id;
+      document.getElementById("dm-login-phase-a").style.display = "none";
+      document.getElementById("dm-login-phase-b").style.display = "";
+      setTimeout(() => document.getElementById("inp-dm-code")?.focus(), 60);
+    } else if (data.error === "too_many_attempts") {
+      showDmLoginError("短時間に何度も試行されました。しばらく待ってからもう一度お試しください。");
+    } else {
+      showDmLoginError("学籍番号を確認してください。");
+    }
+  } catch {
+    showDmLoginError("サーバーに接続できません。時間をおいて再試行してください。");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function verifyDmLoginCode() {
+  const code = document.getElementById("inp-dm-code").value.trim();
+  const btn = document.getElementById("btn-dm-verify");
+  document.getElementById("dm-login-err").style.display = "none";
+  if (!/^\d{6}$/.test(code)) { showDmLoginError("6桁の数字を入力してください。"); return; }
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}dm_login_verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_id: dmLoginRequestId, code }),
+    });
+    const data = await res.json();
+    if (data.ok && data.choose) {
+      openGuildChoiceStep(data.token, data.candidates);
+      return;
+    }
+    if (data.ok) {
+      const palette = paletteFor(data.student.id);
+      saveSession(data.student, data.session_token, palette, { id: data.guild_id, name: data.guild_name, multiGuild: data.multi_guild });
+      location.href = getRedirectTarget();
+      return;
+    }
+    if (data.error === "invalid_code") {
+      showDmLoginError("コードが違います。もう一度確認してください。");
+    } else if (data.error === "too_many_attempts") {
+      showDmLoginError("短時間に何度も試行されました。しばらく待ってからもう一度お試しください。");
+    } else {
+      // expired（期限切れ・試行回数超過）：最初からやり直し
+      openDmLoginStep();
+      showDmLoginError("コードの有効期限が切れました。もう一度コードを送ってください。");
+    }
+  } catch {
+    showDmLoginError("サーバーに接続できません。時間をおいて再試行してください。");
+  } finally {
+    btn.disabled = false;
   }
 }
 

@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="ad24d793bf">
-<script src="/Version.js?v=ad24d793bf"></script>
+<meta name="app-version" content="42e4e25e2f">
+<script src="/Version.js?v=42e4e25e2f"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>ログイン — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=ad24d793bf">
-<link rel="stylesheet" href="/Login.css?v=ad24d793bf">
+<link rel="stylesheet" href="/Style.css?v=42e4e25e2f">
+<link rel="stylesheet" href="/Login.css?v=42e4e25e2f">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -102,8 +102,52 @@ window.addEventListener('error', function (e) {
       ※ サーバーに参加していない場合、予定一覧の閲覧以外は利用できません。
     </p>
 
+    <button class="login-back-btn" onclick="openDmLoginStep()">
+      Discordにログインできない方はこちら（DMでコードを受け取る）
+    </button>
+
     <button class="login-back-btn" onclick="showStep('step-guild-code')">
       サーバーコードをお持ちの方はこちら
+    </button>
+  </div>
+
+  <!-- ══ STEP: DMのコードでログイン（Discordのブラウザログインができない人向け） ══ -->
+  <div class="login-step login-card" id="step-dm-login" style="display:none">
+    <h1 class="login-title">DMのコードでログイン</h1>
+    <p class="login-reg-desc" id="dm-login-desc">
+      Discordのパスワードを忘れた等でログインできない場合、登録済みの学籍番号を入力すると、
+      BotからDiscordのDMへ6桁のコードを送ります（スマホのDiscordアプリなど、すでにログインできている
+      Discordで受け取れます）。
+    </p>
+    <div class="error-bar" id="dm-login-err" style="display:none"></div>
+
+    <div id="dm-login-phase-a">
+      <div class="field">
+        <label for="inp-dm-student-id">学籍番号</label>
+        <input type="text" id="inp-dm-student-id" placeholder="例: 32600" autocomplete="username"
+               autocapitalize="characters" maxlength="20">
+      </div>
+      <button class="btn-primary login-btn" id="btn-dm-send" onclick="requestDmLoginCode()">
+        コードをDMで送る
+      </button>
+    </div>
+
+    <div id="dm-login-phase-b" style="display:none">
+      <p class="login-hint">
+        DMにコードを送りました（登録済みで、DMを受け取れる設定の場合のみ届きます）。5分以内に入力してください。
+      </p>
+      <div class="field">
+        <label for="inp-dm-code">6桁のコード</label>
+        <input type="text" id="inp-dm-code" placeholder="例: 123456" inputmode="numeric"
+               autocomplete="one-time-code" maxlength="6">
+      </div>
+      <button class="btn-primary login-btn" id="btn-dm-verify" onclick="verifyDmLoginCode()">
+        ログイン
+      </button>
+    </div>
+
+    <button class="login-back-btn" onclick="showStep('step-id')">
+      ← 戻る
     </button>
   </div>
 
@@ -185,8 +229,8 @@ window.addEventListener('error', function (e) {
 
 </main>
 
-<script src="/Icons.js?v=ad24d793bf"></script>
-<script src="/SwipeGuard.js?v=ad24d793bf"></script>
-<script src="/Login.js?v=ad24d793bf"></script>
+<script src="/Icons.js?v=42e4e25e2f"></script>
+<script src="/SwipeGuard.js?v=42e4e25e2f"></script>
+<script src="/Login.js?v=42e4e25e2f"></script>
 </body>
 </html>
