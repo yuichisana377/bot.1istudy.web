@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7cf7ef0edd";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="46c0a6c251";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4487,6 +4487,7 @@ function maybeAutoStartStudyTimer(memo, subject) {
   return p;
 }
 async function _autoStartStudyTimer(memo, subject) {
+  let placed = false; // この関数が目印を置いたか（置く前の失敗で既存の目印を消さないため）
   try {
     const session = getLoginSession();
     if (!session || !session.session_token || !GUILD_ID) return;
@@ -4502,6 +4503,7 @@ async function _autoStartStudyTimer(memo, subject) {
     //   しても、片付け側（finishAutoTimerIfPending）が必ずこの目印を見つけられる
     //   （後置きだと、サーバーだけ開始済みで目印が無いまま計測が回り続けていた）。
     localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, subject: subject || null, ts: Date.now() }));
+    placed = true;
     const startRes = await fetch(`${API_BASE}timer_start`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
@@ -4514,14 +4516,14 @@ async function _autoStartStudyTimer(memo, subject) {
     // 通信失敗（タイムアウト等）：サーバーが実際に開始していなければ目印を消す。
     // 残すと、後で手動で始めた計測をCardMaker発と取り違えて止めてしまう。
     try {
-      const s2 = getLoginSession();
+      const s2 = placed ? getLoginSession() : null;
       if (s2 && s2.session_token && GUILD_ID) {
         const r2 = await fetch(`${API_BASE}timer_state?${new URLSearchParams({ guild_id: GUILD_ID })}`, {
           cache: 'no-store', signal: AbortSignal.timeout(5000),
           headers: { 'Authorization': 'Bearer ' + s2.session_token },
         });
         const st3 = await r2.json();
-        if (st3.ok && st3.state !== 'running') localStorage.removeItem('cm_pending_timer_memo');
+        if (st3.ok && st3.state === 'idle') localStorage.removeItem('cm_pending_timer_memo');
       }
     } catch (e2) {}
   } // プレイ自体は止めない
