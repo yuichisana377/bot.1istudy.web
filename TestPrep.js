@@ -1,8 +1,10 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="b5178f4ab8";/*@end*/// ============================================================
-//  TestPrep.js — テスト対策モード（試作・サーバー変更なし）
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="ebcabf5799";/*@end*/// ============================================================
+//  TestPrep.js — テスト対策モード（試作）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
-//  進捗（見た率・残り枚数）を出し、範囲のデッキをまとめてプレイできるようにする。計画はlocalStorage('tp_plans_v1')に保存。
+//  進捗（見た率・残り枚数）を出し、範囲のデッキをまとめてプレイできるようにする。
+//  ★ 対象デッキとテスト範囲は全員共通（サーバーの test_prep_<guild>.json、get_test_prep/save_test_prep）。
+//    サーバーに繋がらないときだけ、localStorage('tp_plans_v1') に端末ごとの下書きとして保存する。
 //  ★ ユーザー入力（科目名・デッキ名）は textContent / DOM API だけで表示する。
 // ============================================================
 const SESSION_KEY = 'sl_session';
@@ -45,7 +47,7 @@ function daysUntil(dateStr) {
 }
 function planId(p) { return p.date + '|' + (p.subject || ''); }
 function loadPlans() { try { return JSON.parse(localStorage.getItem(TP_KEY)) || {}; } catch (e) { return {}; } }
-function savePlans(o) { try { localStorage.setItem(TP_KEY, JSON.stringify(o)); } catch (e) {} }
+function savePlans(o) { if (SHARED_OK) return; /* 共有データが読めている間は端末の下書きを書き換えない（移行前の下書きを守る） */ try { localStorage.setItem(TP_KEY, JSON.stringify(o)); } catch (e) {} }
 
 // 試験までの日数 → 勉強できる日数（試験当日は含めない）。
 // 残りカード数 = 各デッキの「まだ見ていない枚数」
@@ -77,6 +79,36 @@ async function getJson(path) {
   return data;
 }
 
+// 1つのテストの 対象デッキ／範囲 を保存する（fields は {decks} か {scope} か両方）。
+// 共有データが読めている間はサーバーへ送り、成功したらその内容を画面の状態に反映する。
+async function savePlanShared(id, fields) {
+  if (!SHARED_OK) {
+    // 共有データを読めていない間は保存しない（端末だけに保存すると、次回の読み込みで黙って捨てられるため）
+    showAppAlert({ title: '保存できません', desc: 'サーバーのデータを読み込めていません。ページを開き直してからもう一度お試しください。' });
+    return false;
+  }
+  try {
+    const s = getLoginSession();
+    const body = Object.assign({ guild_id: GUILD_ID, session_token: s && s.session_token, id: id }, fields);
+    // 「画面で見ていた版」を送る。他の人が先に変更していたらサーバーが conflict を返す
+    const cur = plansState[id] || {};
+    Object.keys(fields).forEach(k => { body['base_' + k + '_at'] = cur[k + '_at'] || 0; });
+    const res = await fetch(API_BASE + 'save_test_prep', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!data.ok && data.error === 'conflict' && data.plan) {
+      plansState[id] = Object.assign({}, data.plan, { touched: true });
+      showAppAlert({ title: '他の人が先に変更しました', desc: '最新の内容に更新しました。もう一度確認してから変更してください。' });
+      return 'conflict';
+    }
+    if (!data.ok) throw new Error(data.error || 'failed');
+    plansState[id] = Object.assign({}, data.plan, { touched: true });
+    return true;
+  } catch (e) {
+    showAppAlert({ title: '保存できませんでした', desc: '通信に失敗したか、権限がありません。時間をおいてもう一度お試しください。' });
+    return false;
+  }
+}
+
 // ── 描画ヘルパー ─────────────────────────────
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -90,6 +122,7 @@ function bar(ratio, cls) {
   o.appendChild(i); return o;
 }
 
+let SHARED_OK = false;  // サーバーの共有データを読めたか（読めなければ端末ごとの保存にフォールバック）
 let STUDY_FAILED = false;
 let TESTS = [], DECKS = [], STUDY = { seen: {}, unsure: {} };
 const plansState = loadPlans();
@@ -205,12 +238,16 @@ function openScopeEditor(p, plan) {
   ta.placeholder = '例：教科書 p.30〜58、第3章 微分、プリント1〜4';
   ta.value = plan.scope || '';
   box.appendChild(ta);
-  box.appendChild(el('div', 'tp-hint', '200文字まで。この端末にだけ保存されます。'));
+  box.appendChild(el('div', 'tp-hint', '200文字まで。全員に共通で表示されます。'));
   const act = el('div', 'tp-picker-act');
   const cancel = el('button', 'tp-btn', 'キャンセル'); cancel.type = 'button';
   const ok = el('button', 'tp-btn tp-btn-primary', '決定'); ok.type = 'button';
   cancel.addEventListener('click', () => bg.remove());
-  ok.addEventListener('click', () => { plan.scope = ta.value.trim().slice(0, 200); savePlans(plansState); bg.remove(); render(); });
+  ok.addEventListener('click', async () => {
+    const done = await savePlanShared(planId(p), { scope: ta.value.trim().slice(0, 200) });
+    if (!done) return;  // 'conflict' は最新を取り込み済みなので閉じて再描画する
+    bg.remove(); render();
+  });
   act.appendChild(cancel); act.appendChild(ok);
   box.appendChild(act);
   bg.appendChild(box);
@@ -290,7 +327,11 @@ function openDeckPicker(p, plan) {
   const cancel = el('button', 'tp-btn', 'キャンセル'); cancel.type = 'button';
   const ok = el('button', 'tp-btn tp-btn-primary', '決定'); ok.type = 'button';
   cancel.addEventListener('click', () => bg.remove());
-  ok.addEventListener('click', () => { plan.decks = Array.from(chosen); plan.touched = true; savePlans(plansState); bg.remove(); render(); });
+  ok.addEventListener('click', async () => {
+    const done = await savePlanShared(planId(p), { decks: Array.from(chosen).concat((plan.decks || []).filter(f => !known.has(f))) });  // 一覧に出ていない既存デッキは消さない
+    if (!done) return;
+    bg.remove(); render();
+  });
   act.appendChild(cancel); act.appendChild(ok);
   box.appendChild(act);
   bg.appendChild(box);
@@ -302,16 +343,32 @@ async function init() {
   if (!GUILD_ID) return;
   const body = document.getElementById('tp-body');
   try {
-    const [sch, cards, sd] = await Promise.all([
+    const [sch, cards, sd, shared] = await Promise.all([
       getJson('list_schedule?guild_id=' + GUILD_ID + '&scope=future'),
       getJson('list_cards?guild_id=' + GUILD_ID),
       getJson('get_study_data?guild_id=' + GUILD_ID).catch(() => null),
+      getJson('get_test_prep?guild_id=' + GUILD_ID).catch(() => null),
     ]);
     TESTS = (sch.plans || []).filter(isTestPlan).sort((a, b) => a.date.localeCompare(b.date));
     DECKS = (cards.sets || []).filter(s => s.filename && !s.incomplete);
     const d = sd && sd.data ? sd.data : {};
     if (!sd) STUDY_FAILED = true;
     STUDY = { seen: d.seen || {}, unsure: d.unsure || {} };
+    if (shared && shared.plans) {
+      SHARED_OK = true;
+      // 共有データを正とする。まだサーバーに無いテストは、この端末の下書きがあれば一度だけ送って共有する
+      const local = Object.assign({}, plansState);
+      Object.keys(plansState).forEach(k => { delete plansState[k]; });
+      Object.keys(shared.plans).forEach(k => { plansState[k] = Object.assign({}, shared.plans[k], { touched: true }); });
+      for (const p of TESTS) {
+        const id = planId(p), lp = local[id];
+        if (plansState[id] || !lp || !lp.touched) continue;
+        const f = {};
+        if ((lp.decks || []).length) f.decks = lp.decks;
+        if (lp.scope) f.scope = lp.scope;
+        if (Object.keys(f).length) await savePlanShared(id, f);
+      }
+    }
     render();
   } catch (e) {
     body.textContent = '';
