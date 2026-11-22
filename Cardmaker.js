@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="46c0a6c251";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="bc084d2081";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4487,7 +4487,7 @@ function maybeAutoStartStudyTimer(memo, subject) {
   return p;
 }
 async function _autoStartStudyTimer(memo, subject) {
-  let placed = false; // この関数が目印を置いたか（置く前の失敗で既存の目印を消さないため）
+  let markerTs = null; // この関数が目印を置いた時刻（置く前の失敗で既存の目印を消さないため）
   try {
     const session = getLoginSession();
     if (!session || !session.session_token || !GUILD_ID) return;
@@ -4502,8 +4502,8 @@ async function _autoStartStudyTimer(memo, subject) {
     // ★ 開始リクエストを送る「前」に目印を置く。応答待ちの間に画面を閉じたり戻ったり
     //   しても、片付け側（finishAutoTimerIfPending）が必ずこの目印を見つけられる
     //   （後置きだと、サーバーだけ開始済みで目印が無いまま計測が回り続けていた）。
-    localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, subject: subject || null, ts: Date.now() }));
-    placed = true;
+    markerTs = Date.now();
+    localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, subject: subject || null, ts: markerTs }));
     const startRes = await fetch(`${API_BASE}timer_start`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
@@ -4511,22 +4511,51 @@ async function _autoStartStudyTimer(memo, subject) {
     });
     const started = await startRes.json();
     if (!started.ok) { localStorage.removeItem('cm_pending_timer_memo'); return; }
+    adoptTimerId(markerTs, started.timer_id, started.created === true); // どの計測かを目印に控える（片付け時に照合する）
     // ★ 目印は停止・保存されるまでlocalStorageに残す（finishAutoTimerIfPending参照）。
   } catch (e) {
-    // 通信失敗（タイムアウト等）：サーバーが実際に開始していなければ目印を消す。
-    // 残すと、後で手動で始めた計測をCardMaker発と取り違えて止めてしまう。
-    try {
-      const s2 = placed ? getLoginSession() : null;
-      if (s2 && s2.session_token && GUILD_ID) {
-        const r2 = await fetch(`${API_BASE}timer_state?${new URLSearchParams({ guild_id: GUILD_ID })}`, {
-          cache: 'no-store', signal: AbortSignal.timeout(5000),
-          headers: { 'Authorization': 'Bearer ' + s2.session_token },
-        });
-        const st3 = await r2.json();
-        if (st3.ok && st3.state === 'idle') localStorage.removeItem('cm_pending_timer_memo');
-      }
-    } catch (e2) {}
+    // 通信失敗（タイムアウト等）：サーバーが開始したかどうか分からない。
+    // 開始リクエストが遅れて届く場合があるので、少し待って2回確認し、
+    // 2回とも未開始(idle)のときだけ目印を消す（動いていれば目印は残す）。
+    // この確認が終わるまで終了処理(finishAutoTimerIfPending)は待つ（autoStartInFlight経由）。
+    if (markerTs != null) await reconcileUnconfirmedMarker(markerTs);
   } // プレイ自体は止めない
+}
+
+// 目印（ts一致のもの）に計測ID(timer_id)を書き込む。IDが無い（古いサーバー）場合は何もしない。
+function adoptTimerId(ts, timerId, certain) {
+  if (timerId == null) return;
+  try {
+    const m = JSON.parse(localStorage.getItem('cm_pending_timer_memo') || 'null');
+    if (m && m.ts === ts && m.timer_id == null && (certain || timerId >= ts - 30000)) { m.timer_id = timerId; localStorage.setItem('cm_pending_timer_memo', JSON.stringify(m)); }
+  } catch (e) {}
+}
+
+// 開始通信が失敗した目印が、本当に不要（サーバー未開始）かを確かめて片付ける。
+// 自分(ts)が置いた目印だけを対象にする（その後に別のプレイが置いた目印は消さない）。
+async function reconcileUnconfirmedMarker(ts) {
+  const sameMarker = () => {
+    try { const m = JSON.parse(localStorage.getItem('cm_pending_timer_memo') || 'null'); return !!m && m.ts === ts; } catch (e) { return false; }
+  };
+  const fetchState = async () => {
+    const s = getLoginSession();
+    if (!s || !s.session_token || !GUILD_ID) return null;
+    const r = await fetch(`${API_BASE}timer_state?${new URLSearchParams({ guild_id: GUILD_ID })}`, {
+      cache: 'no-store', signal: AbortSignal.timeout(5000),
+      headers: { 'Authorization': 'Bearer ' + s.session_token },
+    });
+    return r.json();
+  };
+  try {
+    for (let i = 0; i < 2; i++) {
+      if (i > 0) await new Promise(res => setTimeout(res, 6000));
+      if (!sameMarker()) return;
+      const st = await fetchState();
+      if (!st || !st.ok) return; // 確認できない → 目印は残す
+      if (st.state !== 'idle') { adoptTimerId(ts, st.timer_id); return; } // 動いている／休憩中 → 開始は成功していた。その計測を目印に紐付ける
+    }
+    if (sameMarker()) localStorage.removeItem('cm_pending_timer_memo');
+  } catch (e) {}
 }
 
 // ★ 追加：CardMakerでの学習が終わったとき（最後まで完走 or 途中で画面を離れた）、
@@ -4544,6 +4573,9 @@ let autoPausedByHide = false; // 画面が隠れたため自動計測を一時�
 // ★ スリープ／アプリ切り替えで画面が隠れたら、CardMaker発の自動計測だけを一時停止し、
 //   戻ってきたとき学習画面がまだ開いていれば再開する（止め忘れで「学習中」のまま残るのを防ぐ）。
 //   手動で始めたタイマー（cm_pending_timer_memoが無い）には触らない。
+function autoTimerIdFromMarker() {
+  try { const m = JSON.parse(localStorage.getItem('cm_pending_timer_memo') || 'null'); return m && m.timer_id != null ? m.timer_id : undefined; } catch (e) { return undefined; }
+}
 function hasAutoTimerPending() {
   try { return !!JSON.parse(localStorage.getItem('cm_pending_timer_memo') || 'null'); } catch (e) { return false; }
 }
@@ -4554,7 +4586,7 @@ document.addEventListener('visibilitychange', async () => {
   try {
     const session = getLoginSession();
     if (!session || !session.session_token || !GUILD_ID) return;
-    const body = JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token });
+    const body = JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, timer_id: autoTimerIdFromMarker() });
     const post = (ep) => fetch(`${API_BASE}${ep}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true,
     }).then(r => r.json());
@@ -4565,6 +4597,7 @@ document.addEventListener('visibilitychange', async () => {
       post('timer_pause').then(r => { if (r && !r.ok) autoPausedByHide = false; }).catch(() => { autoPausedByHide = false; });
     } else if (autoPausedByHide) {
       if (!studyScreenActive()) { finishAutoTimerIfPending(); return; }
+      if (!hasAutoTimerPending()) { autoPausedByHide = false; return; } // 目印が消えていれば自分の計測ではない
       autoPausedByHide = false;
       // 隠れる直前の一時停止がまだ届いていない場合に備え、1回だけ待って再試行する
       let r = await post('timer_resume').catch(() => null);
@@ -4585,7 +4618,7 @@ window.addEventListener('pagehide', () => {
     autoPausedByHide = true;
     fetch(`${API_BASE}timer_pause`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
-      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, timer_id: autoTimerIdFromMarker() }),
     }).catch(() => {});
   } catch (e) {}
 });
@@ -4610,6 +4643,13 @@ async function finishAutoTimerIfPending() {
     });
     const state = await stateRes.json();
     // ★ 画面が隠れた(スリープ等)ときに自動で一時停止した分は、そのまま確定処理に進める
+    // ★ 目印に控えた計測ID（timer_id）が今のタイマーと違えば、このプレイが始めたものではない
+    //   （別端末・別画面で止めて始め直された計測など）。触らず、目印だけ消す（隠れたときの一時停止も計測IDで照合してから送るので、他の計測を止めてはいない）。
+    if (state.ok && pending.timer_id != null && state.timer_id != null && pending.timer_id !== state.timer_id) {
+      localStorage.removeItem('cm_pending_timer_memo');
+      autoPausedByHide = false;
+      return;
+    }
     const pausedByHide = autoPausedByHide && state.ok && state.state === 'paused';
     autoPausedByHide = false;
     if (!state.ok || (state.state !== 'running' && !pausedByHide)) {
