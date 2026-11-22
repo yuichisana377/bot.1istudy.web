@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="ebcabf5799";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="cbd13584d7";/*@end*/// ============================================================
 //  TestPrep.js — テスト対策モード（試作）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
@@ -81,8 +81,9 @@ async function getJson(path) {
 
 // 1つのテストの 対象デッキ／範囲 を保存する（fields は {decks} か {scope} か両方）。
 // 共有データが読めている間はサーバーへ送り、成功したらその内容を画面の状態に反映する。
-async function savePlanShared(id, fields) {
+async function savePlanShared(id, fields, quiet) {
   if (!SHARED_OK) {
+    if (quiet) return false;
     // 共有データを読めていない間は保存しない（端末だけに保存すると、次回の読み込みで黙って捨てられるため）
     showAppAlert({ title: '保存できません', desc: 'サーバーのデータを読み込めていません。ページを開き直してからもう一度お試しください。' });
     return false;
@@ -97,14 +98,14 @@ async function savePlanShared(id, fields) {
     const data = await res.json();
     if (!data.ok && data.error === 'conflict' && data.plan) {
       plansState[id] = Object.assign({}, data.plan, { touched: true });
-      showAppAlert({ title: '他の人が先に変更しました', desc: '最新の内容に更新しました。もう一度確認してから変更してください。' });
+      if (!quiet) showAppAlert({ title: '他の人が先に変更しました', desc: '最新の内容に更新しました。もう一度確認してから変更してください。' });
       return 'conflict';
     }
     if (!data.ok) throw new Error(data.error || 'failed');
     plansState[id] = Object.assign({}, data.plan, { touched: true });
     return true;
   } catch (e) {
-    showAppAlert({ title: '保存できませんでした', desc: '通信に失敗したか、権限がありません。時間をおいてもう一度お試しください。' });
+    if (!quiet) showAppAlert({ title: '保存できませんでした', desc: '通信に失敗したか、権限がありません。時間をおいてもう一度お試しください。' });
     return false;
   }
 }
@@ -366,7 +367,7 @@ async function init() {
         const f = {};
         if ((lp.decks || []).length) f.decks = lp.decks;
         if (lp.scope) f.scope = lp.scope;
-        if (Object.keys(f).length) await savePlanShared(id, f);
+        if (Object.keys(f).length) await savePlanShared(id, f, true);  // 移行は黙って行う（失敗しても下書きは残り、次回再試行）
       }
     }
     render();

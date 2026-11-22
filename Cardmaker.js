@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="ebcabf5799";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="cbd13584d7";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5850,11 +5850,17 @@ function applyOrientationTransform(ctx, orientation, width, height) {
 }
 function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
+    // CSP の img-src が 'self' data: のみで blob: を許可していないため、
+    // createObjectURL ではなく FileReader の data: URL で読み込む。
     const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像の読み込みに失敗しました')); };
-    img.src = url;
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+    reader.onload  = () => {
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
   });
 }
 async function compressImageFile(file) {
