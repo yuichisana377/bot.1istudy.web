@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="bc084d2081";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="b5178f4ab8";/*@end*/// ============================================================
 //  TestPrep.js — テスト対策モード（試作・サーバー変更なし）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
@@ -230,7 +230,20 @@ function openDeckPicker(p, plan) {
   const subjOf = d => (d.subject || '').trim() || NONE;
   const subjects = Array.from(new Set(DECKS.map(subjOf))).sort((a, b) => a === NONE ? 1 : b === NONE ? -1 : a.localeCompare(b, 'ja'));
   const ps = (p.subject || '').trim();
-  let curSubj = subjects.includes(ps) ? ps : '';
+  // ★ 予定の科目名とデッキの科目名が完全一致しなくても（全角半角・空白・「1a」等の付き方の違い）、
+  //   近いものがちょうど1つなら、その科目で最初から絞り込む。見つからなければ「すべて」。
+  const normS = s => String(s || '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+  let curSubj = '';
+  if (ps) {
+    if (subjects.includes(ps)) curSubj = ps;
+    else {
+      const np = normS(ps);
+      const exact = subjects.filter(s => s !== NONE && normS(s) === np);
+      const near = subjects.filter(s => s !== NONE && normS(s) && (normS(s).includes(np) || np.includes(normS(s))));
+      if (exact.length === 1) curSubj = exact[0];
+      else if (near.length === 1) curSubj = near[0];
+    }
+  }
   let query = '';
 
   const search = document.createElement('input');
