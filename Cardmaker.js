@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="e5c1906e10";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="4a5e545bc6";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4480,7 +4480,13 @@ function updateUnderstandingBadgeForCurrentCard() {
 //     メモ欄へ自動入力する）。
 //   ・完全にベストエフォート：ログインしていない／通信に失敗した場合は
 //     何もせず、プレイ自体は止めない。
-async function maybeAutoStartStudyTimer(memo, subject) {
+let autoStartInFlight = null; // 開始処理の完了待ち（完了前に画面を離れても取りこぼさないため）
+function maybeAutoStartStudyTimer(memo, subject) {
+  const p = _autoStartStudyTimer(memo, subject).finally(() => { if (autoStartInFlight === p) autoStartInFlight = null; });
+  autoStartInFlight = p;
+  return p;
+}
+async function _autoStartStudyTimer(memo, subject) {
   try {
     const session = getLoginSession();
     if (!session || !session.session_token || !GUILD_ID) return;
@@ -4492,16 +4498,18 @@ async function maybeAutoStartStudyTimer(memo, subject) {
     const state = await stateRes.json();
     if (!state.ok || state.state !== 'idle') return; // 計測中／休憩中なら何もしない
 
+    // ★ 開始リクエストを送る「前」に目印を置く。応答待ちの間に画面を閉じたり戻ったり
+    //   しても、片付け側（finishAutoTimerIfPending）が必ずこの目印を見つけられる
+    //   （後置きだと、サーバーだけ開始済みで目印が無いまま計測が回り続けていた）。
+    localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, subject: subject || null, ts: Date.now() }));
     const startRes = await fetch(`${API_BASE}timer_start`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
       signal: AbortSignal.timeout(5000),
     });
     const started = await startRes.json();
-    if (!started.ok) return;
-    // ★ このタイマーがCardMaker発（＝自分で片付ける責任がある）ことの目印として、
-    //   停止・保存されるまでlocalStorageに残しておく（finishAutoTimerIfPending参照）。
-    localStorage.setItem('cm_pending_timer_memo', JSON.stringify({ memo, subject: subject || null, ts: Date.now() }));
+    if (!started.ok) { localStorage.removeItem('cm_pending_timer_memo'); return; }
+    // ★ 目印は停止・保存されるまでlocalStorageに残す（finishAutoTimerIfPending参照）。
   } catch (e) {} // 通信失敗時は何もしない（プレイ自体は止めない）
 }
 
@@ -4537,7 +4545,8 @@ document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'hidden') {
       if (!studyScreenActive() || !hasAutoTimerPending() || autoPausedByHide) return;
       autoPausedByHide = true;
-      post('timer_pause').catch(() => {});
+      // 一時停止が通らなかった（開始より先に届いた等）場合は、閉じるとき（pagehide）に再試行できるよう戻す
+      post('timer_pause').then(r => { if (r && !r.ok) autoPausedByHide = false; }).catch(() => { autoPausedByHide = false; });
     } else if (autoPausedByHide) {
       if (!studyScreenActive()) { finishAutoTimerIfPending(); return; }
       autoPausedByHide = false;
@@ -4551,12 +4560,29 @@ document.addEventListener('visibilitychange', async () => {
   } catch (e) {}
 });
 
+// ★ iOS等では閉じる操作でvisibilitychangeが届かずpagehideだけのことがあるため、同じ一時停止を送る。
+window.addEventListener('pagehide', () => {
+  try {
+    const session = getLoginSession();
+    if (!session || !session.session_token || !GUILD_ID) return;
+    if (!studyScreenActive() || !hasAutoTimerPending() || autoPausedByHide) return;
+    autoPausedByHide = true;
+    fetch(`${API_BASE}timer_pause`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token }),
+    }).catch(() => {});
+  } catch (e) {}
+});
+
 async function finishAutoTimerIfPending() {
   try {
+    if (autoStartInFlight) { try { await autoStartInFlight; } catch (e) {} } // 開始処理の完了を待つ
     const raw = localStorage.getItem('cm_pending_timer_memo');
     if (!raw) return;
     const pending = JSON.parse(raw);
     if (!pending || !pending.memo) { localStorage.removeItem('cm_pending_timer_memo'); return; }
+    // 古い目印（24時間超）は、別の計測を誤って止めないよう破棄する
+    if (pending.ts && Date.now() - pending.ts > 24 * 3600 * 1000) { localStorage.removeItem('cm_pending_timer_memo'); return; }
 
     const session = getLoginSession();
     if (!session || !session.session_token || !GUILD_ID) return;
