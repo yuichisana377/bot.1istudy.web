@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="4a5e545bc6";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7cf7ef0edd";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4510,7 +4510,21 @@ async function _autoStartStudyTimer(memo, subject) {
     const started = await startRes.json();
     if (!started.ok) { localStorage.removeItem('cm_pending_timer_memo'); return; }
     // ★ 目印は停止・保存されるまでlocalStorageに残す（finishAutoTimerIfPending参照）。
-  } catch (e) {} // 通信失敗時は何もしない（プレイ自体は止めない）
+  } catch (e) {
+    // 通信失敗（タイムアウト等）：サーバーが実際に開始していなければ目印を消す。
+    // 残すと、後で手動で始めた計測をCardMaker発と取り違えて止めてしまう。
+    try {
+      const s2 = getLoginSession();
+      if (s2 && s2.session_token && GUILD_ID) {
+        const r2 = await fetch(`${API_BASE}timer_state?${new URLSearchParams({ guild_id: GUILD_ID })}`, {
+          cache: 'no-store', signal: AbortSignal.timeout(5000),
+          headers: { 'Authorization': 'Bearer ' + s2.session_token },
+        });
+        const st3 = await r2.json();
+        if (st3.ok && st3.state !== 'running') localStorage.removeItem('cm_pending_timer_memo');
+      }
+    } catch (e2) {}
+  } // プレイ自体は止めない
 }
 
 // ★ 追加：CardMakerでの学習が終わったとき（最後まで完走 or 途中で画面を離れた）、
