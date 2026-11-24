@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="544f06bd96";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="38542c9686";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -574,6 +574,7 @@ function onFilenameInput() {
 }
 
 function onContentInput() {
+  clearNoticeBugHighlight();
   scheduleDraftSave();
 }
 
@@ -614,6 +615,58 @@ function stripNoticeBugChars(str) {
   return out;
 }
 
+// 自動削除を断られたとき、混ざっている文字の位置を本文の下にハイライト表示し、最初の1つを選択状態にする
+function clearNoticeBugHighlight() {
+  const p = document.getElementById('upload-bug-panel');
+  if (p) p.remove();
+}
+function showNoticeBugHighlight(content) {
+  clearNoticeBugHighlight();
+  const ta = document.getElementById('upload-content');
+  const panel = document.createElement('div');
+  panel.id = 'upload-bug-panel';
+  panel.style.cssText = 'margin-top:8px;padding:10px 12px;border:1px solid #fca5a5;background:#fef2f2;border-radius:8px;font-size:13px;line-height:1.7;color:#7f1d1d;';
+  const head = document.createElement('div');
+  head.style.cssText = 'font-weight:600;margin-bottom:4px;';
+  head.textContent = '見えない文字の場所（赤い部分）。消して打ち直してください';
+  panel.appendChild(head);
+
+  let firstIdx = -1, shown = 0, total = 0, idx = 0;
+  content.split('\n').forEach((line, li) => {
+    const chars = Array.from(line);
+    chars.forEach((ch, ci) => {
+      const cp = ch.codePointAt(0);
+      if (isNoticeBugChar(cp)) {
+        total++;
+        if (firstIdx < 0) firstIdx = idx + chars.slice(0, ci).join('').length;
+        if (shown < 8) {
+          shown++;
+          const row = document.createElement('div');
+          row.style.cssText = 'font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all;';
+          row.appendChild(document.createTextNode(`${li + 1}行目: …${chars.slice(Math.max(0, ci - 12), ci).join('')}`));
+          const mark = document.createElement('mark');
+          mark.style.cssText = 'background:#dc2626;color:#fff;padding:0 4px;border-radius:4px;margin:0 2px;';
+          mark.textContent = 'U+' + cp.toString(16).toUpperCase().padStart(4, '0');
+          row.appendChild(mark);
+          row.appendChild(document.createTextNode(`${chars.slice(ci + 1, ci + 13).join('')}…`));
+          panel.appendChild(row);
+        }
+      }
+    });
+    idx += line.length + 1;
+  });
+  if (total > shown) {
+    const more = document.createElement('div');
+    more.textContent = `ほか${total - shown}件`;
+    panel.appendChild(more);
+  }
+  ta.insertAdjacentElement('afterend', panel);
+  if (firstIdx >= 0) {
+    ta.focus();
+    ta.setSelectionRange(firstIdx, firstIdx + 1);
+  }
+}
+
 async function submitUpload() {
   const session = requireLoginOrRedirect();
   if (!session) return;
@@ -634,7 +687,8 @@ async function submitUpload() {
       desc: `本文に画面では見えない特殊な文字が混ざっています。\n${list}\n\nコピー元から紛れ込んだ可能性があります。自動で削除して投稿しますか？`,
       okLabel: '削除して投稿',
     });
-    if (!ok) return;
+    if (!ok) { showNoticeBugHighlight(content); return; }
+    clearNoticeBugHighlight();
     content = stripNoticeBugChars(content);
     document.getElementById('upload-content').value = content;
     refreshNoticePreviewIfOpen();
