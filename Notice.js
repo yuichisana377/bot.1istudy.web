@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="2fdc15c061";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="9bba396833";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -676,7 +676,7 @@ function showNoticeErr(id, msg) {
   const el = document.getElementById(id);
   el.innerHTML = Icons.html('close', {size:14}) + ' ' + String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   el.style.display = 'block';
-  setTimeout(() => el.style.display = 'none', 4000);
+  setTimeout(() => el.style.display = 'none', Math.max(4000, String(msg).length * 150));
 }
 function closeNoticeModal(name) {
   document.getElementById('modal-' + name).classList.remove('open');
