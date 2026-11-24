@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="c18d10ab72";/*@end*/
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="e5eab3e251";/*@end*/
 // ============================================================
 //  plan.js — 予定管理ページ用スクリプト
 //  index.html から読み込む
@@ -310,6 +310,22 @@ function savePlanCache() {
   } catch (e) {}
 }
 let _planInitialLoadDone = false;
+let _cacheTodayScrollY = 0;
+
+/** 画面の上端に最も近い日付グループと、その画面上の位置を控える */
+function captureScrollAnchor() {
+  const groups = document.querySelectorAll('.date-group[data-date]');
+  for (const g of groups) {
+    const top = g.getBoundingClientRect().top;
+    if (top >= 0 || g.getBoundingClientRect().bottom > 0) return { date: g.dataset.date, top };
+  }
+  return null;
+}
+function restoreScrollAnchor(a) {
+  const el = document.querySelector(`.date-group[data-date="${a.date}"]`);
+  if (!el) { scrollToToday(); return; }
+  window.scrollTo(0, el.getBoundingClientRect().top + window.pageYOffset - a.top);
+}
 
 async function loadPlans() {
   // 初回起動時だけ、前回の予定をキャッシュから即表示する（追加・編集後の再読み込みでは使わない）
@@ -322,7 +338,7 @@ async function loadPlans() {
     pastPlansHasMore = !!cache.pastPlansHasMore;
     document.getElementById('plan-loading').style.display = 'none';
     renderPlans();
-    requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
+    requestAnimationFrame(() => requestAnimationFrame(() => { scrollToToday(); _cacheTodayScrollY = window.scrollY; }));
   } else {
     document.getElementById('plan-loading').style.display = 'block';
     document.getElementById('plan-content').innerHTML = '';
@@ -342,6 +358,11 @@ async function loadPlans() {
   // 過去分1ページ目は未来分の結果に依存しないので、同時に取りに行く
   const pastPromise = api(`/list_schedule?guild_id=${GUILD_ID}&scope=past&offset=0&limit=${PAST_PLANS_PAGE_SIZE}`).catch(() => null);
   let data = await fetchFutureSchedule();
+  // ★ 修正：キャッシュ表示後に一覧が作り直される（過去分が一度消え、後で再追加される）と、
+  //   スクロール位置がずれて「今日」から離れてしまっていた。作り直す前に、利用者が
+  //   自分で動かしたかどうか／今見ている日付の位置を控えておく。
+  const userMoved = shownFromCache && Math.abs(window.scrollY - _cacheTodayScrollY) > 40;
+  const anchor = userMoved ? captureScrollAnchor() : null;
   // ★ 通信失敗(__clientError)は api() 内で既に待って再試行済みなので、ここでの再試行はサーバーが {ok:false} を返した場合だけにする（二重再試行・通知の取りこぼし防止）
   if (!data.ok && !data.__clientError) data = await fetchFutureSchedule();
   if (data.ok) {
@@ -374,15 +395,14 @@ async function loadPlans() {
   //   （まだ多く残っている場合は「もっと読み込む」ボタンで手動追加）
   //   ★ ①が失敗した状態で②まで走らせても混乱するだけなので、①が
   //   成功したときだけ行う。
-  const keepScroll = shownFromCache ? window.scrollY : null;
   if (!plansLoadFailed) {
     await loadMorePastPlans(pastPromise);
     savePlanCache();
   }
   // 過去分の追加で一覧DOMが再描画されるため、その後に1回だけ今日へ移動する。
   // キャッシュ表示済みの場合は、読んでいる位置を動かさない。
-  if (keepScroll !== null) {
-    requestAnimationFrame(() => window.scrollTo(0, keepScroll));
+  if (anchor) {
+    requestAnimationFrame(() => restoreScrollAnchor(anchor));
   } else {
     requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
   }
