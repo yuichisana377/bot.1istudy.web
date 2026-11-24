@@ -2,15 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="38542c9686">
-<script src="/Version.js?v=38542c9686"></script>
+<meta name="app-version" content="37df62fa7e">
+<script src="/Version.js?v=37df62fa7e"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>お知らせ — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=38542c9686">
+<link rel="stylesheet" href="/Style.css?v=37df62fa7e">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
 <style>
@@ -236,6 +236,10 @@ window.addEventListener('error', function (e) {
         font-size:14px;background:var(--bg);color:var(--text);outline:none;resize:vertical;
         font-family:inherit;line-height:1.6;"></textarea>
       <div class="notice-body" id="upload-preview" style="display:none;"></div>
+      <div style="margin-top:8px;">
+        <button type="button" style="padding:6px 12px;font-size:13px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg);color:var(--text);cursor:pointer;font-family:inherit;" onclick="document.getElementById('upload-image-input').click()">画像を追加（.md のみ）</button>
+        <input type="file" id="upload-image-input" accept="image/jpeg,image/png,image/webp,image/gif" multiple style="display:none" onchange="onNoticeImagesSelected(event)">
+      </div>
       <div class="notice-draft-status" id="draft-status"></div>
     </div>
 
@@ -249,13 +253,13 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=38542c9686"></script>
-<script src="/SwipeGuard.js?v=38542c9686"></script>
-<script src="/Dialog.js?v=38542c9686"></script>
-<script src="/Common.js?v=38542c9686"></script>
-<script src="/Notice.js?v=38542c9686"></script>
-<script src="/PendingDeleteCheck.js?v=38542c9686"></script>
-<script src="/PendingShareCheck.js?v=38542c9686"></script>
-<script src="/QuizRoomNotify.js?v=38542c9686"></script>
+<script src="/Icons.js?v=37df62fa7e"></script>
+<script src="/SwipeGuard.js?v=37df62fa7e"></script>
+<script src="/Dialog.js?v=37df62fa7e"></script>
+<script src="/Common.js?v=37df62fa7e"></script>
+<script src="/Notice.js?v=37df62fa7e"></script>
+<script src="/PendingDeleteCheck.js?v=37df62fa7e"></script>
+<script src="/PendingShareCheck.js?v=37df62fa7e"></script>
+<script src="/QuizRoomNotify.js?v=37df62fa7e"></script>
 </body>
 </html>

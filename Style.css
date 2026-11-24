@@ -1079,6 +1079,13 @@ body {
 .notice-body.markdown-body h3 { font-size: 1.12em; }
 .notice-body.markdown-body h4 { font-size: 1em; }
 
+.notice-body.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-md);
+  margin: .4em 0;
+}
+
 .notice-body.markdown-body p {
   margin: 0 0 .8em;
 }

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="38542c9686";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="37df62fa7e";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -331,7 +331,7 @@ function switchNoticeTab(tab) {
     // renderNoticeBody は .md 拡張子のときのみ Markdown レンダリング、それ以外はプレーン表示
     previewEl.innerHTML = '';
     previewEl.className = 'notice-body';
-    renderNoticeBody(previewEl, filename, content || '（内容がありません）');
+    renderNoticeBody(previewEl, filename, expandNoticeImages(content) || '（内容がありません）');
     previewEl.style.display = 'block';
     textarea.style.display = 'none';
     previewBtn.classList.add('active');
@@ -362,12 +362,19 @@ function scheduleDraftSave() {
 
 function saveDraftNow() {
   const filename = document.getElementById('upload-filename').value;
-  const content = document.getElementById('upload-content').value;
+  const rawContent = document.getElementById('upload-content').value;
+  const content = rawContent;
   const statusEl = document.getElementById('draft-status');
 
   if (!filename.trim() && !content.trim()) return; // 空なら保存しない
 
   const key = isEditingNotice ? draftKeyForEdit(editingOriginalFilename) : DRAFT_KEY_NEW;
+  // 画像入りは数MBになり localStorage（他機能と共用）を圧迫するため、下書き保存しない
+  if (expandNoticeImages(rawContent) !== rawContent) {
+    try { localStorage.removeItem(key); } catch (e) {}
+    statusEl.textContent = '画像を含むお知らせは下書き自動保存の対象外です';
+    return;
+  }
   try {
     localStorage.setItem(key, JSON.stringify({ filename, content, ts: Date.now() }));
     statusEl.innerHTML = Icons.html('save', {size:14}) + ' 下書きを自動保存しました（' + new Date().toLocaleTimeString('ja-JP') + '）';
@@ -509,6 +516,7 @@ function openUploadModal() {
 
   document.getElementById('upload-filename').value = '';
   document.getElementById('upload-filename').disabled = false;
+  noticeImages = {};
   document.getElementById('upload-content').value = '';
   document.getElementById('upload-file-input').value = '';
   document.getElementById('upload-file-input').closest('.field').style.display = '';
@@ -540,7 +548,8 @@ function openEditModal() {
 
   document.getElementById('upload-filename').value = currentViewFilename;
   document.getElementById('upload-filename').disabled = false; // ★ 編集時もファイル名（タイトル）を変更可能に
-  document.getElementById('upload-content').value = currentViewContent || '';
+  noticeImages = {};
+  document.getElementById('upload-content').value = /\.md$/i.test(currentViewFilename) ? collapseNoticeImages(currentViewContent || '') : (currentViewContent || '');
   document.getElementById('upload-file-input').value = '';
   document.getElementById('upload-file-input').closest('.field').style.display = 'none';
   document.getElementById('upload-ok').style.display = 'none';
@@ -576,6 +585,92 @@ function onFilenameInput() {
 function onContentInput() {
   clearNoticeBugHighlight();
   scheduleDraftSave();
+}
+
+// ============================================================
+//  画像の添付（本文のMarkdownに data URI として埋め込む）
+//  ・編集中のテキスト欄には短い目印 `![名前](img:ID)` だけを置き、実データは
+//    noticeImages に保持する（巨大なbase64で入力欄が重くならないように）。
+//  ・プレビュー・投稿・下書き保存の時だけ実データに展開する。
+// ============================================================
+let noticeImages = {};            // ID → data URI
+const NOTICE_IMG_MAX_SIDE = 1280; // 長辺の上限px（超えたら縮小）
+const NOTICE_IMG_MAX_TOTAL = 6000000; // 本文全体（画像込み）の上限文字数（サーバー側と同値）
+
+function expandNoticeImages(text) {
+  return String(text || '').replace(/\]\(img:(\w+)\)/g, (m, id) => noticeImages[id] ? '](' + noticeImages[id] + ')' : m);
+}
+
+function collapseNoticeImages(text) {
+  return String(text || '').replace(/\]\((data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+\/=]+)\)/g, (m, uri) => {
+    let id = Object.keys(noticeImages).find(k => noticeImages[k] === uri);
+    if (!id) { id = 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); noticeImages[id] = uri; }
+    return '](img:' + id + ')';
+  });
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
+/** 画像ファイルを長辺NOTICE_IMG_MAX_SIDE以内に縮小し、JPEGのdata URIにする（透過PNGは白背景になる） */
+async function compressNoticeImage(file) {
+  const src = await readFileAsDataURL(file);
+  const img = await new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error('decode'));
+    im.src = src;
+  });
+  const scale = Math.min(1, NOTICE_IMG_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', 0.8);
+}
+
+async function onNoticeImagesSelected(e) {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (!files.length) return;
+  const filename = document.getElementById('upload-filename').value.trim();
+  if (/\.txt$/i.test(filename)) {
+    showNoticeErr('upload-err', '画像は .md のお知らせでのみ使えます（ファイル名を .md にしてください）');
+    return;
+  }
+  const ta = document.getElementById('upload-content');
+  for (const file of files) {
+    if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type)) {
+      showNoticeErr('upload-err', `「${file.name}」は対応していない形式です（JPEG/PNG/WebP/GIF）`);
+      continue;
+    }
+    try {
+      const uri = await compressNoticeImage(file);
+      const id = 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      noticeImages[id] = uri;
+      const alt = file.name.replace(/\.[^.]+$/, '').replace(/[\[\]()]/g, '');
+      const tag = `![${alt}](img:${id})`;
+      const pos = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+      const before = ta.value.slice(0, pos), after = ta.value.slice(pos);
+      const pre = before && !before.endsWith('\n') ? '\n\n' : '';
+      ta.value = before + pre + tag + '\n\n' + after;
+      ta.selectionStart = ta.selectionEnd = (before + pre + tag + '\n\n').length;
+    } catch (err) {
+      showNoticeErr('upload-err', `「${file.name}」を読み込めませんでした`);
+    }
+  }
+  onContentInput();
+  refreshNoticePreviewIfOpen();
 }
 
 function onLocalFileSelected(e) {
@@ -695,6 +790,11 @@ async function submitUpload() {
     if (!content.trim()) { showNoticeErr('upload-err', '内容が空です'); return; }
   }
 
+  // ★ 画像の目印を実データ（data URI）に戻して送る
+  const sendContent = expandNoticeImages(content);
+  if (sendContent !== content && /\.txt$/i.test(filename)) { showNoticeErr('upload-err', '画像は .md のお知らせでのみ使えます'); return; }
+  if (sendContent.length > NOTICE_IMG_MAX_TOTAL) { showNoticeErr('upload-err', '画像が大きすぎます。枚数を減らしてください'); return; }
+
   // ★ 同じ名前（既存の別お知らせと同名）で保存しようとした場合は上書き確認する
   //   ・新規投稿で既存と同名 → 上書きするか確認
   //   ・編集でタイトルを既存の別名に変更 → 上書きするか確認
@@ -723,7 +823,7 @@ async function submitUpload() {
     // 新規投稿・編集どちらもこのエンドポイントを使う
     const res = await api('/upload_notice', {
       method: 'POST',
-      body: JSON.stringify({ filename, content, uploader, guild_id: GUILD_ID, session_token: session.session_token })
+      body: JSON.stringify({ filename, content: sendContent, uploader, guild_id: GUILD_ID, session_token: session.session_token })
     });
     btn.disabled = false;
     btn.textContent = btnLabel;
@@ -742,7 +842,7 @@ async function submitUpload() {
       clearDraftAfterSubmit();
       showNoticeOk('upload-ok');
       if (editing) {
-        currentViewContent = content;
+        currentViewContent = sendContent;
         currentViewFilename = filename;
         editingOriginalFilename = filename;
       }
