@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="cbd13584d7";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="2fdc15c061";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -313,6 +313,12 @@ function renderNoticeBody(bodyEl, filename, content) {
 // ============================================================
 //  プレビュー（アップロード／編集モーダル内）
 // ============================================================
+/** プレビュー表示中に内容・ファイル名が変わったら（ファイル選択・下書き復元など）プレビューを描き直す */
+function refreshNoticePreviewIfOpen() {
+  const previewBtn = document.getElementById('tab-preview-btn');
+  if (previewBtn && previewBtn.classList.contains('active')) switchNoticeTab('preview');
+}
+
 function switchNoticeTab(tab) {
   const editBtn = document.getElementById('tab-edit-btn');
   const previewBtn = document.getElementById('tab-preview-btn');
@@ -564,6 +570,7 @@ function onFilenameInput() {
     hintEl.textContent = '';
   }
   scheduleDraftSave();
+  refreshNoticePreviewIfOpen();
 }
 
 function onContentInput() {
@@ -579,6 +586,7 @@ function onLocalFileSelected(e) {
   const reader = new FileReader();
   reader.onload = () => {
     document.getElementById('upload-content').value = reader.result;
+    refreshNoticePreviewIfOpen();
   };
   reader.readAsText(file, 'utf-8');
 }
