@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="ea9d93a3a0";/*@end*/
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="7e43ae87b5";/*@end*/
 // ============================================================
 //  plan.js — 予定管理ページ用スクリプト
 //  index.html から読み込む
@@ -225,7 +225,7 @@ function onTodayButton() {
   if (isLog) {
     scrollLogsTop();
   } else {
-    scrollToToday();
+    scrollToToday('smooth');
   }
 }
 
@@ -311,9 +311,18 @@ function savePlanCache() {
 }
 let _planInitialLoadDone = false;
 let _cacheTodayScrollY = 0;
+// 読み込み待ちの間に利用者が自分でスクロールしたか（その場合は自動スクロールで上書きしない）
+let _userTouchedScroll = false;
+['wheel', 'touchmove', 'keydown'].forEach(ev =>
+  window.addEventListener(ev, () => { _userTouchedScroll = true; }, { passive: true }));
+function planViewVisible() {
+  const el = document.getElementById('plan-sub-plan');
+  return !el || el.classList.contains('active');
+}
 
 /** 画面の上端に最も近い日付グループと、その画面上の位置を控える */
 function captureScrollAnchor() {
+  if (!planViewVisible()) return null;
   const groups = document.querySelectorAll('.date-group[data-date]');
   for (const g of groups) {
     const top = g.getBoundingClientRect().top;
@@ -324,10 +333,11 @@ function captureScrollAnchor() {
 function restoreScrollAnchor(a) {
   const el = document.querySelector(`.date-group[data-date="${a.date}"]`);
   if (!el) { scrollToToday(); return; }
-  window.scrollTo(0, el.getBoundingClientRect().top + window.pageYOffset - a.top);
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.pageYOffset - a.top, behavior: 'instant' });
 }
 
 async function loadPlans() {
+  _userTouchedScroll = false;
   // 初回起動時だけ、前回の予定をキャッシュから即表示する（追加・編集後の再読み込みでは使わない）
   const cache = !_planInitialLoadDone ? loadPlanCache() : null;
   _planInitialLoadDone = true;
@@ -401,7 +411,9 @@ async function loadPlans() {
   }
   // 過去分の追加で一覧DOMが再描画されるため、その後に1回だけ今日へ移動する。
   // キャッシュ表示済みの場合は、読んでいる位置を動かさない。
-  if (anchor) {
+  if (_userTouchedScroll && shownFromCache) {
+    // 待っている間に利用者が自分で動かした場合は、その位置を尊重する
+  } else if (anchor) {
     requestAnimationFrame(() => restoreScrollAnchor(anchor));
   } else {
     requestAnimationFrame(() => requestAnimationFrame(scrollToToday));
@@ -442,7 +454,8 @@ async function loadMorePastPlans(prefetched) {
   renderPlans();
 }
 
-function scrollToToday() {
+function scrollToToday(behavior) {
+  if (!planViewVisible()) return;
   const filtered = getFilteredPlans();
   if (!filtered.length) return;
 
@@ -465,7 +478,7 @@ function scrollToToday() {
 
   window.scrollTo({
     top: offset,
-    behavior: 'instant'
+    behavior: behavior === 'smooth' ? 'smooth' : 'instant'
   });
 }
 
@@ -1248,7 +1261,7 @@ async function checkScheduleUpdate() {
     // スクロール位置を保ったまま予定一覧を再描画
     const scrollY = window.scrollY;
     renderPlans();
-    window.scrollTo(0, scrollY);
+    window.scrollTo({ top: scrollY, behavior: 'instant' });
 
     // 編集／削除モーダルが開いていれば、その選択リストも最新化
     if (document.getElementById('modal-edit')?.classList.contains('open')) {
