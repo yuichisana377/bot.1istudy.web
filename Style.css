@@ -1606,3 +1606,63 @@ body {
   letter-spacing: .03em;
 }
 .header { border-bottom: 2px solid var(--border-strong); }
+
+/* ============================================================
+   モーション調整（2026/11/25）
+   ─ 強めのease-out・押下フィードバック・オーバーレイのフェード。
+   ─ 出現のみアニメーション（displayで出し入れしているため退場は即時）。
+   ─ 動きを減らす設定（prefers-reduced-motion）では移動を止めて不透明度だけにする。
+============================================================ */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ドロワー：iOS風の減速カーブ。背景の暗幕はフェードで出す */
+.drawer { transition: transform .3s var(--ease-drawer); will-change: transform; }
+.drawer-overlay.open { animation: fadeIn .22s var(--ease-out); }
+.modal-bg.open { animation: fadeIn .18s var(--ease-out); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* モーダル：スマホは下からせり上がり、PCは少し拡大しながら中央に出る */
+.modal { animation: slideUp .28s var(--ease-drawer); }
+@media (min-width: 520px) {
+  .modal { animation: modalPop .2s var(--ease-out); }
+}
+@keyframes modalPop { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ドロップダウン：トリガー側（上）を起点に開く */
+.app-dd-panel.open { transform-origin: top center; animation: appDdIn .16s var(--ease-out); }
+
+/* 押したときの手応え（transformだけを動かす） */
+.btn-primary, .btn-danger, .chip, .view-btn, .fab-btn, .nav-page-link, .load-more-btn,
+.today-btn-plan, .menu-btn, .notice-card, .drawer-item {
+  transition-property: background-color, color, border-color, opacity, transform;
+  transition-duration: .15s;
+  transition-timing-function: var(--ease-out);
+}
+.btn-primary:active, .btn-danger:active, .chip:active, .view-btn:active, .fab-btn:active,
+.nav-page-link:active, .load-more-btn:active, .today-btn-plan:active, .menu-btn:active {
+  transform: scale(.97);
+}
+.drawer-item:active { transform: scale(.985); }
+.plan-row:active, .notice-card:active, .sel-item:active { transform: scale(.992); }
+.plan-row, .sel-item { transition: background-color .12s, transform .15s var(--ease-out); }
+
+/* FAB：開くときの回転とメニューの出方を少し弾ませずに滑らかに */
+.fab-main { transition: transform .25s var(--ease-out); }
+.fab-actions { transition: opacity .2s var(--ease-out), transform .25s var(--ease-out); }
+.fab-actions.open .fab-action { animation: fabItemIn .26s var(--ease-out) backwards; }
+.fab-actions.open .fab-action:nth-last-child(1) { animation-delay: 0ms; }
+.fab-actions.open .fab-action:nth-last-child(2) { animation-delay: 40ms; }
+.fab-actions.open .fab-action:nth-last-child(3) { animation-delay: 80ms; }
+@keyframes fabItemIn { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+
+/* 動きを減らす設定の場合は移動・拡大を止める */
+@media (prefers-reduced-motion: reduce) {
+  .drawer { transition-duration: .01ms; }
+  .modal, .app-dd-panel.open, .fab-actions.open .fab-action { animation: fadeIn .15s ease; }
+  .btn-primary:active, .btn-danger:active, .chip:active, .view-btn:active, .fab-btn:active,
+  .nav-page-link:active, .load-more-btn:active, .today-btn-plan:active, .menu-btn:active,
+  .drawer-item:active, .plan-row:active, .notice-card:active, .sel-item:active { transform: none; }
+}
