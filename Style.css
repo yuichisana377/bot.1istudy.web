@@ -127,6 +127,8 @@ body {
    予定管理
 ============================ */
 .plan-main { max-width: 640px; margin: 0 auto; padding: 1.1rem 1rem 7rem; }
+/* パソコンの広い画面では左右の余白が大きすぎるため、少し広げる */
+@media (min-width: 900px) { .plan-main { max-width: 860px; } }
 
 .plan-sub-view { display: none; }
 .plan-sub-view.active { display: block; }
