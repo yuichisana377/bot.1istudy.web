@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="37df62fa7e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="0d72217c86";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -370,7 +370,7 @@ function saveDraftNow() {
 
   const key = isEditingNotice ? draftKeyForEdit(editingOriginalFilename) : DRAFT_KEY_NEW;
   // 画像入りは数MBになり localStorage（他機能と共用）を圧迫するため、下書き保存しない
-  if (expandNoticeImages(rawContent) !== rawContent) {
+  if (expandNoticeImages(rawContent) !== rawContent || /data:image\//.test(rawContent) || rawContent.length > 200000) {
     try { localStorage.removeItem(key); } catch (e) {}
     statusEl.textContent = '画像を含むお知らせは下書き自動保存の対象外です';
     return;
@@ -681,7 +681,7 @@ function onLocalFileSelected(e) {
 
   const reader = new FileReader();
   reader.onload = () => {
-    document.getElementById('upload-content').value = reader.result;
+    document.getElementById('upload-content').value = /\.md$/i.test(file.name) ? collapseNoticeImages(reader.result) : reader.result;
     refreshNoticePreviewIfOpen();
   };
   reader.readAsText(file, 'utf-8');
