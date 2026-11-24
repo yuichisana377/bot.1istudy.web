@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="7e43ae87b5";/*@end*/// ============================================================ 754
+/*@ver*/(window.__jsVer=window.__jsVer||{})["StudyLog.js"]="354b9f96ce";/*@end*/// ============================================================ 754
 //  StudyLog.js — 勉強ログ専用スクリプト
 //  ポイントは GitHub (points_{guild_id}.json) でサーバー管理
 //  → 累計ポイントはヘッダーバッジに表示
@@ -187,21 +187,23 @@ function renderDrawerAccount() {
   // ★ 複数サーバー対応：別のDiscordサーバーへ切り替える（ログアウトしてから
   //   再度ログインしてもらう＝どのサーバーへ行くかはログイン時にサーバー側が
   //   自動判定する。Login.js参照）。
-  // ★ 修正：以前は「複数サーバーに参加している人だけに表示」していたが、
-  //   その判定（multi_guild）は前回ログイン時点のスナップショットのため、
-  //   ログイン後に別のサーバーへBotを追加しても反映されず、切り替える
-  //   手段そのものが無くなってしまう不具合があった。常に表示する方式に変更。
-  var switchBtn = document.createElement('button');
-  switchBtn.type = 'button';
-  switchBtn.className = 'drawer-account-menu-item';
-  switchBtn.innerHTML = Icons.html('refresh', {size:16}) + ' サーバーを切り替える';
-  switchBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem('current_guild');
-    location.href = '/Login.html';
-  });
-  menu.appendChild(switchBtn);
+  // ★ 最終ログイン時（current_guild.multi_guild）にBot導入済みの複数サーバーへ
+  //   参加していた人にだけ表示する（単一サーバーの人には出さない）。
+  var isMultiGuild = false;
+  try { isMultiGuild = !!JSON.parse(localStorage.getItem('current_guild')).multi_guild; } catch (e) {}
+  if (isMultiGuild) {
+    var switchBtn = document.createElement('button');
+    switchBtn.type = 'button';
+    switchBtn.className = 'drawer-account-menu-item';
+    switchBtn.innerHTML = Icons.html('refresh', {size:16}) + ' サーバーを切り替える';
+    switchBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem('current_guild');
+      location.href = '/Login.html';
+    });
+    menu.appendChild(switchBtn);
+  }
 
   var logoutBtn = document.createElement('button');
   logoutBtn.type = 'button';
