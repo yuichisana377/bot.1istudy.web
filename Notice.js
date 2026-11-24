@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="9bba396833";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="544f06bd96";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -591,15 +591,55 @@ function onLocalFileSelected(e) {
   reader.readAsText(file, 'utf-8');
 }
 
+// サーバー（bot.py の find_bug_chars）と同じ判定基準
+function isNoticeBugChar(cp) {
+  if (cp === 0x200D || (cp >= 0xFE00 && cp <= 0xFE0F) || (cp >= 0xE0100 && cp <= 0xE01EF)) return false;
+  if (cp < 0x20) return cp !== 9 && cp !== 10 && cp !== 13;
+  if (cp === 0x7F || cp === 0xFFFE || cp === 0xFFFF || cp === 0x00AD || cp === 0x180E || cp === 0xFEFF) return true;
+  return (cp >= 0xD800 && cp <= 0xDFFF) || (cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0xFDD0 && cp <= 0xFDEF)
+      || (cp >= 0x200B && cp <= 0x200C) || (cp >= 0x2060 && cp <= 0x2064) || (cp >= 0x2066 && cp <= 0x2069)
+      || (cp >= 0x202A && cp <= 0x202E) || (cp >= 0xE0000 && cp <= 0xE007F);
+}
+function findNoticeBugChars(str) {
+  const counts = new Map();
+  for (const ch of String(str)) {
+    const cp = ch.codePointAt(0);
+    if (isNoticeBugChar(cp)) counts.set(cp, (counts.get(cp) || 0) + 1);
+  }
+  return [...counts].map(([cp, count]) => ({ cp, count }));
+}
+function stripNoticeBugChars(str) {
+  let out = '';
+  for (const ch of String(str)) if (!isNoticeBugChar(ch.codePointAt(0))) out += ch;
+  return out;
+}
+
 async function submitUpload() {
   const session = requireLoginOrRedirect();
   if (!session) return;
   const filename = document.getElementById('upload-filename').value.trim();
-  const content  = document.getElementById('upload-content').value;
+  let content    = document.getElementById('upload-content').value;
 
   if (!filename) { showNoticeErr('upload-err', 'ファイル名を入力してください'); return; }
   if (!/\.(md|txt)$/i.test(filename)) { showNoticeErr('upload-err', 'ファイル名は .md か .txt にしてください'); return; }
   if (!content.trim()) { showNoticeErr('upload-err', '内容が空です'); return; }
+
+  // ★ 目に見えない文字・制御文字が混ざっていたら、投稿前に警告して自動削除を選べるようにする
+  //   （サーバー側でも同じ基準で弾くため、ここで先に整えておく。ZWJ・異体字セレクタは許可）
+  const bugs = findNoticeBugChars(content);
+  if (bugs.length) {
+    const list = bugs.map(b => `U+${b.cp.toString(16).toUpperCase().padStart(4, '0')}（${b.count}個）`).join('、');
+    const ok = await showAppConfirm({
+      title: '見えない文字が含まれています',
+      desc: `本文に画面では見えない特殊な文字が混ざっています。\n${list}\n\nコピー元から紛れ込んだ可能性があります。自動で削除して投稿しますか？`,
+      okLabel: '削除して投稿',
+    });
+    if (!ok) return;
+    content = stripNoticeBugChars(content);
+    document.getElementById('upload-content').value = content;
+    refreshNoticePreviewIfOpen();
+    if (!content.trim()) { showNoticeErr('upload-err', '内容が空です'); return; }
+  }
 
   // ★ 同じ名前（既存の別お知らせと同名）で保存しようとした場合は上書き確認する
   //   ・新規投稿で既存と同名 → 上書きするか確認
