@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="e5eab3e251";/*@end*/
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Plan.js"]="a56bbad560";/*@end*/
 // ============================================================
 //  plan.js — 予定管理ページ用スクリプト
 //  index.html から読み込む
@@ -465,7 +465,7 @@ function scrollToToday() {
 
   window.scrollTo({
     top: offset,
-    behavior: 'auto'
+    behavior: 'instant'
   });
 }
 
