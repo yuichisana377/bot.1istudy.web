@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="567236572b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="cc08bbd2e0";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2175,7 +2175,7 @@ function startQuizFromDeck(deckId) {
   location.href = url;
 }
 async function menuEdit()   { closeModal('modal-deck-menu'); await openEditDeck(menuTargetId); }
-function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId); }
+function menuRename() { closeModal('modal-deck-menu'); openRename(menuTargetId, false); }
 function menuMove()   { closeModal('modal-deck-menu'); openMovePicker('deck', menuTargetId); }
 
 // ── CSVダウンロード ────────────────────
@@ -4044,9 +4044,12 @@ function refreshStudyCardDisplay(c) {
 
 // ── デッキ名変更 ──────────────────────
 let renamingDeckId = null;
-async function openRename(id) {
-  renamingDeckId = id;
+let renamingFromEdit = false;
+async function openRename(id, fromEdit) {
   const deck = decks.find(d => d.id === id);
+  if (!deck) return;   // 編集中に裏の同期でデッキが一覧から消えた場合
+  renamingDeckId = id;
+  renamingFromEdit = !!fromEdit;
   const currentSubject = deck.subject || '';
   const currentName = currentSubject && deck.name.startsWith(currentSubject + ' ')
     ? deck.name.slice(currentSubject.length + 1) : deck.name;
@@ -4056,7 +4059,9 @@ async function openRename(id) {
   //   「公開予定」トグルを表示する。既にサーバー登録済み（filenameあり）の
   //   デッキは、公開予定を取り消したい場合は既存の「非公開に戻す」メニューを使う。
   const planRow = document.getElementById('modal-rename-plan-publish-row');
-  if (!deck.filename) {
+  // 編集画面から開いた場合は、編集画面のボタン類（保存/公開して保存）が
+  // 開いた時点の登録状態で決まっているため、登録状態が変わる「公開予定」は出さない
+  if (!deck.filename && !renamingFromEdit) {
     planRow.style.display = '';
     document.getElementById('modal-rename-plan-publish').checked = deck.planPublish !== false;
   } else {
@@ -4093,7 +4098,7 @@ async function saveRename() {
   // ★ 追加：まだサーバー未登録のデッキのみ、公開予定トグルの変更を反映する
   const wasPlanPublish = deck.planPublish !== false;
   let planPublishChanged = false;
-  if (!deck.filename) {
+  if (!deck.filename && !renamingFromEdit) {
     const nowPlanPublish = document.getElementById('modal-rename-plan-publish').checked;
     if (nowPlanPublish !== wasPlanPublish) planPublishChanged = true;
     deck.planPublish = nowPlanPublish;
@@ -4105,7 +4110,12 @@ async function saveRename() {
   closeModal('modal-rename');
   renderDeckListUI();
   // 編集画面のヘッダーからの変更でも、すぐ新しい名前を表示する
-  if (currentDeckId === deck.id) document.getElementById('edit-deck-title').textContent = deck.name;
+  const editingThis = renamingFromEdit && currentDeckId === deck.id;
+  if (currentDeckId === deck.id) {
+    document.getElementById('edit-deck-title').textContent = deck.name;
+    const dBox = document.getElementById('edit-deck-desc');
+    if (dBox) { dBox.textContent = deck.description || ''; dBox.style.display = deck.description ? '' : 'none'; }
+  }
 
   // ★ 追加：公開予定が「なし→あり」に変わった場合、この時点でサーバーへ登録し、
   //   他の人の一覧にも「作成中」として表示されるようにする。
@@ -4122,6 +4132,17 @@ async function saveRename() {
   //   ★ 修正：cardsLoaded=true のキャッシュがあっても古い可能性があるため必ず
   //     最新化する。失敗時も loadDeckCardsWithRecovery が回復手段を提示するので、
   //     rename操作だけがずっとできなくなる、ということはない。
+  if (deck.filename && editingThis) {
+    // 編集画面から変更した場合：カードは編集画面を開いた時点で最新を読み込み済みで、
+    // 以降の追加・編集はこの手元の deck.cards に積まれている。ここでサーバーから
+    // 取り直すと、名前変更の通信中に追加したカードが上書きで消えるため、取り直さず、
+    // 順番待ち（queueSyncDeckToServer）で現在の内容をそのまま同期する。
+    await waitForPendingSync(deck.id);
+    // 待っている間に decks が作り直されている場合があるため、最新の参照で同期する
+    const ok = await queueSyncDeckToServer(decks.find(d => d.id === deck.id) || deck);
+    if (!ok) showBanner('サーバーへの名前変更の反映に失敗しました', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+    return;
+  }
   if (deck.filename) {
     // ★ 追加：この直後の強制リロードでローカルの変更（追加/削除など未同期分）が
     //   消えてしまわないよう、まず直前の同期処理が終わるのを待つ。

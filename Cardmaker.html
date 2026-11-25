@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="567236572b">
-<script src="/Version.js?v=567236572b"></script>
+<meta name="app-version" content="cc08bbd2e0">
+<script src="/Version.js?v=cc08bbd2e0"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>CardMaker — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=567236572b">
-<link rel="stylesheet" href="/Cardmaker.css?v=567236572b">
+<link rel="stylesheet" href="/Style.css?v=cc08bbd2e0">
+<link rel="stylesheet" href="/Cardmaker.css?v=cc08bbd2e0">
 <!-- ★ 追加：数式（分数・ルートなど）をきれいに表示するためのKaTeX -->
 <!-- ★ 更新（2026/08/20）：0.16.11に出力エスケープ不備の既知脆弱性（Snyk:
      SNYK-JS-KATEX-8647963, Medium）があったため0.16.21以降へ更新。
@@ -271,7 +271,7 @@ window.addEventListener('error', function (e) {
 <div class="screen" id="screen-edit">
   <div class="topbar">
     <button class="topbar-back" onclick="confirmLeaveEdit()">←</button>
-    <div class="topbar-title topbar-title-editable" id="edit-deck-title" role="button" tabindex="0" title="タップしてデッキ名を変更" onclick="openRename(currentDeckId)">デッキ名</div>
+    <div class="topbar-title topbar-title-editable" id="edit-deck-title" role="button" tabindex="0" title="タップしてデッキ名を変更" onclick="openRename(currentDeckId, true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRename(currentDeckId, true);}">デッキ名</div>
     <div class="editor-counter" id="edit-counter">0枚</div>
   </div>
   <div class="cm-scroll-body" id="edit-scroll">
@@ -774,13 +774,13 @@ window.addEventListener('error', function (e) {
   <img id="img-lightbox-img" src="" alt="">
 </div>
 
-<script src="/Icons.js?v=567236572b"></script>
-<script src="/SwipeGuard.js?v=567236572b"></script>
-<script src="/Dropdown.js?v=567236572b"></script>
-<script src="/Common.js?v=567236572b"></script>
-<script src="/Cardmaker.js?v=567236572b"></script>
-<script src="/PendingDeleteCheck.js?v=567236572b"></script>
-<script src="/PendingShareCheck.js?v=567236572b"></script>
-<script src="/QuizRoomNotify.js?v=567236572b"></script>
+<script src="/Icons.js?v=cc08bbd2e0"></script>
+<script src="/SwipeGuard.js?v=cc08bbd2e0"></script>
+<script src="/Dropdown.js?v=cc08bbd2e0"></script>
+<script src="/Common.js?v=cc08bbd2e0"></script>
+<script src="/Cardmaker.js?v=cc08bbd2e0"></script>
+<script src="/PendingDeleteCheck.js?v=cc08bbd2e0"></script>
+<script src="/PendingShareCheck.js?v=cc08bbd2e0"></script>
+<script src="/QuizRoomNotify.js?v=cc08bbd2e0"></script>
 </body>
 </html>
