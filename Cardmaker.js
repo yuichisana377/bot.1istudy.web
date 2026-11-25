@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="06c922c7cc";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8a583605fc";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -3298,7 +3298,12 @@ function renderCreatedList() {
     //   「外へ出す」にする。以前はカード上端がバーの下端に届くまで持ち上げる必要があり出しにくかった。
     //   ただし余白分は「掴んだ位置から上へ実際に動かした時だけ」有効（バー表示で一覧が押し下げられるため、
     //   掴んだ直後に誤って反応しないように。カード上端の判定は従来どおりバー下端）。
-    if (exitZone && ((clientY <= exitZone.bottom + EXIT_ZONE_MARGIN_PX && clientY < dragOriginY - EDGE_ARM_PX)
+    //   パンくず（フォルダ名の並び）が見えている時は、その下端まで指が来ても「外へ出す」とみなす
+    //   （パンくずのあたりで止まって反応しない、という指摘への対応）。
+    const crumbEl = document.getElementById('folder-breadcrumb');
+    const crumbBottom = (crumbEl && crumbEl.style.display !== 'none') ? crumbEl.getBoundingClientRect().bottom : 0;
+    const zoneLimit = exitZone ? Math.max(exitZone.bottom + EXIT_ZONE_MARGIN_PX, crumbBottom) : 0;
+    if (exitZone && ((clientY <= zoneLimit && clientY < dragOriginY - EDGE_ARM_PX)
         || dragEl.getBoundingClientRect().top <= exitZone.bottom)) {
       const parentFolder = folders.find(f => f.id === currentFolderId);
       const parentId = parentFolder ? (parentFolder.parentId ?? null) : null;
