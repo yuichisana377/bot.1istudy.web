@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["DeckShare.js"]="df176ce963";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["DeckShare.js"]="4c0e5b9c33";/*@end*/// ============================================================
 //  DeckShare.js — 共有リンク専用の閲覧ビューア（DeckShare.html）用スクリプト
 //  ─────────────────────────────
 //  CardMakerのデッキ作成者が発行した「共有リンク」（?token=...）を開いた、
@@ -104,6 +104,24 @@ function matchVectorAt(s, i) {
   if (!/^(?:[A-Za-z0-9']|_\([A-Za-z0-9+\-]+\))+$/.test(inner)) return null;
   return { inner, end: close + 1 };
 }
+// Unicodeの上付き・下付き文字（² ³ ⁴ ₁ など）は、フォントによって字ごとに高さがバラバラに
+// なる（¹²³は別フォントから描画されるため）。描画時はKaTeXの上付き/下付きに揃えて高さを統一する。
+const UNI_SUPSUB = {};
+(function () {
+  const sup = '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ⁽⁾', supA = '0123456789+-n()';
+  const sub = '₀₁₂₃₄₅₆₇₈₉₊₋₍₎', subA = '0123456789+-()';
+  for (let k = 0; k < sup.length; k++) UNI_SUPSUB[sup[k]] = ['^', supA[k]];
+  for (let k = 0; k < sub.length; k++) UNI_SUPSUB[sub[k]] = ['_', subA[k]];
+})();
+// 位置 i から同じ種類（上付き/下付き）のUnicode文字が続く範囲を { latex, end } で返す。
+function matchUniSupSubAt(s, i) {
+  const f = UNI_SUPSUB[s[i]];
+  if (!f) return null;
+  let j = i, body = '';
+  while (j < s.length && UNI_SUPSUB[s[j]] && UNI_SUPSUB[s[j]][0] === f[0]) { body += UNI_SUPSUB[s[j]][1]; j++; }
+  return { latex: `{}${f[0]}{${body}}`, end: j };
+}
+
 function simpleMathToLatexRaw(s) {
   let out = '';
   let i = 0;
@@ -131,21 +149,35 @@ function simpleMathToLatexRaw(s) {
         }
       }
     }
+    // ベクトル →(a)
     const vecM = matchVectorAt(s, i);
     if (vecM) { out += `\\overrightarrow{${simpleMathToLatexRaw(vecM.inner)}}`; i = vecM.end; continue; }
+    // 下付き _(b)
     const subM = matchSubscriptAt(s, i);
     if (subM) { out += `_{${subM.inner}}`; i = subM.end; continue; }
+    const uniM = matchUniSupSubAt(s, i);
+    if (uniM) { out += uniM.latex; i = uniM.end; continue; }
     out += s[i];
     i++;
   }
   return out;
 }
+
+// 簡易記法（√(...) ・ ∛(...) ・ (分子)/(分母)）を、KaTeXが描画できるLaTeX記法へ変換する。
+// 内側にネストした数式（√の中に分数がある等）も再帰的に変換する。
+// 該当するパターンが無い部分（旧形式の生LaTeXや、普通の文章）はそのまま素通しする。
 function simpleMathToLatex(raw) {
   if (raw == null) return '';
   const s = String(raw);
   let out = '';
   let i = 0;
   while (i < s.length) {
+    // 旧形式の生LaTeX \( ... \) は中身を一切変換せずそのまま通す（入れ子の \( でKaTeXが壊れるのを防ぐ）
+    if (s[i] === '\\' && s[i+1] === '(') {
+      const endIdx = s.indexOf('\\)', i + 2);
+      if (endIdx !== -1) { out += s.slice(i, endIdx + 2); i = endIdx + 2; continue; }
+    }
+    // √(...) ・ ∛(...)
     if ((s[i] === '√' || s[i] === '∛') && s[i+1] === '(') {
       const isCube = s[i] === '∛';
       const closeIdx = findMatchingParen(s, i+1);
@@ -156,6 +188,7 @@ function simpleMathToLatex(raw) {
         continue;
       }
     }
+    // (分子)/(分母)
     if (s[i] === '(') {
       const closeIdx = findMatchingParen(s, i);
       if (closeIdx !== -1 && s[closeIdx+1] === '/' && s[closeIdx+2] === '(') {
@@ -168,19 +201,29 @@ function simpleMathToLatex(raw) {
           continue;
         }
       }
+
     }
+    // ベクトル →(a)
     const vecM = matchVectorAt(s, i);
     if (vecM) { out += `\\(\\overrightarrow{${simpleMathToLatexRaw(vecM.inner)}}\\)`; i = vecM.end; continue; }
+    // 下付き _(b)
     const subM = matchSubscriptAt(s, i);
     if (subM) { out += `\\(_{${subM.inner}}\\)`; i = subM.end; continue; }
+    const uniM = matchUniSupSubAt(s, i);
+    if (uniM) { out += `\\(${uniM.latex}\\)`; i = uniM.end; continue; }
     out += s[i];
     i++;
   }
   return out;
 }
+
+// 生のテキスト（√(4)のような簡易記法、または旧形式の\(\frac{}{}\)なども含む）を、
+// 指定要素に「普通の数式の見た目」で描画する。
+// KaTeXが読み込めていない場合（オフライン等）は記法そのままの文章として表示する。
 function setMathText(el, raw) {
   if (!el) return;
-  el.textContent = simpleMathToLatex(raw || '');
+  // KaTeXが読み込めない場合は、変換後の生LaTeXではなく元の文字列をそのまま表示する
+  el.textContent = window.renderMathInElement ? simpleMathToLatex(raw || '') : (raw || '');
   if (window.renderMathInElement) {
     try {
       renderMathInElement(el, {
