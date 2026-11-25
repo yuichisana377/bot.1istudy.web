@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="d1ebf21d10";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="9e03cc1aeb";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6282,6 +6282,24 @@ function matchVectorAt(s, i) {
 // simpleMathToLatexの内部再帰用：\( \) を付けない「素の」LaTeXへの変換。
 // √の中に分数がある等、ネストした数式の内側で使う（KaTeXの引数の中に\(\)を
 // 再度差し込むと壊れるため、ネスト部分には区切り記号を付けない）。
+// Unicodeの上付き・下付き文字（² ³ ⁴ ₁ など）は、フォントによって字ごとに高さがバラバラに
+// なる（¹²³は別フォントから描画されるため）。描画時はKaTeXの上付き/下付きに揃えて高さを統一する。
+const UNI_SUPSUB = {};
+(function () {
+  const sup = '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ', supA = '0123456789+-n';
+  const sub = '₀₁₂₃₄₅₆₇₈₉₊₋', subA = '0123456789+-';
+  for (let k = 0; k < sup.length; k++) UNI_SUPSUB[sup[k]] = ['^', supA[k]];
+  for (let k = 0; k < sub.length; k++) UNI_SUPSUB[sub[k]] = ['_', subA[k]];
+})();
+// 位置 i から同じ種類（上付き/下付き）のUnicode文字が続く範囲を { latex, end } で返す。
+function matchUniSupSubAt(s, i) {
+  const f = UNI_SUPSUB[s[i]];
+  if (!f) return null;
+  let j = i, body = '';
+  while (j < s.length && UNI_SUPSUB[s[j]] && UNI_SUPSUB[s[j]][0] === f[0]) { body += UNI_SUPSUB[s[j]][1]; j++; }
+  return { latex: `{}${f[0]}{${body}}`, end: j };
+}
+
 function simpleMathToLatexRaw(s) {
   let out = '';
   let i = 0;
@@ -6315,6 +6333,8 @@ function simpleMathToLatexRaw(s) {
     // 下付き _(b)
     const subM = matchSubscriptAt(s, i);
     if (subM) { out += `_{${subM.inner}}`; i = subM.end; continue; }
+    const uniM = matchUniSupSubAt(s, i);
+    if (uniM) { out += uniM.latex; i = uniM.end; continue; }
     out += s[i];
     i++;
   }
@@ -6362,6 +6382,8 @@ function simpleMathToLatex(raw) {
     // 下付き _(b)
     const subM = matchSubscriptAt(s, i);
     if (subM) { out += `\\(_{${subM.inner}}\\)`; i = subM.end; continue; }
+    const uniM = matchUniSupSubAt(s, i);
+    if (uniM) { out += `\\(${uniM.latex}\\)`; i = uniM.end; continue; }
     out += s[i];
     i++;
   }
