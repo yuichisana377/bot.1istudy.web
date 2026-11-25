@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="4c0e5b9c33";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="567236572b";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4104,6 +4104,8 @@ async function saveRename() {
   saveDecks(decks);
   closeModal('modal-rename');
   renderDeckListUI();
+  // 編集画面のヘッダーからの変更でも、すぐ新しい名前を表示する
+  if (currentDeckId === deck.id) document.getElementById('edit-deck-title').textContent = deck.name;
 
   // ★ 追加：公開予定が「なし→あり」に変わった場合、この時点でサーバーへ登録し、
   //   他の人の一覧にも「作成中」として表示されるようにする。
@@ -6238,8 +6240,8 @@ async function warnIfBugChars(str, fieldId) {
 //  ・既に「\(\sqrt{...}\)」のような旧形式（生LaTeX）で保存済みの既存カードも、
 //    simpleMathToLatexではパターンが一致しないためそのまま素通りし、
 //    今まで通りKaTeXで正しく描画される（後方互換）。
-//  ・上付き文字・数字の下付き文字や±などの記号は、単独でも問題なく表示できるよう
-//    従来どおりUnicode文字をそのまま挿入する方式のままにしている。
+//  ・上付き・下付き文字は保存・入力欄ではUnicode文字のまま。描画時だけ
+//    simpleMathToLatex がKaTeXの上付き/下付きに変換し、高さを揃える。
 //  ・下付きの英字（a b c x y z）はUnicodeに無い文字（b c y z）があるため、
 //    簡易記法「_(b)」で保存し、描画時に simpleMathToLatex が KaTeX の下付きに変換する。
 //  ・ベクトルは簡易記法「→(a)」「→(AB)」で保存し、描画時に KaTeX の
