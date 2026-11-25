@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8a583605fc";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="f8f12b9d1e";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -3208,8 +3208,12 @@ function renderCreatedList() {
     let speed = 0;
     // ★ 修正：端に近いだけでなく、掴んだ位置からその方向へ実際に
     //   EDGE_ARM_PX 以上動かしていることも条件に加える。
-    if (lastClientY < rect.top + edge && lastClientY < dragOriginY - EDGE_ARM_PX) {
-      speed = -maxSpeed * Math.min(1, (rect.top + edge - lastClientY) / edge);
+    // 「外へ出す」バー表示中は、上向き自動スクロールの帯をバーの下端から数える
+    //   （バーの判定と帯が重なると、スクロール中ずっと「外へ出す」になってしまうため）
+    const barEl = document.getElementById('folder-exit-dropzone');
+    const topLine = (barEl && barEl.style.display !== 'none') ? Math.max(rect.top, barEl.getBoundingClientRect().bottom) : rect.top;
+    if (lastClientY < topLine + edge && lastClientY < dragOriginY - EDGE_ARM_PX) {
+      speed = -maxSpeed * Math.min(1, (topLine + edge - lastClientY) / edge);
     } else if (lastClientY > rect.bottom - edge && lastClientY > dragOriginY + EDGE_ARM_PX) {
       speed = maxSpeed * Math.min(1, (lastClientY - (rect.bottom - edge)) / edge);
     }
@@ -3296,14 +3300,11 @@ function renderCreatedList() {
     const exitZone = getExitZoneRect();
     // ★ 2026/11/25：指がバー（＋下の余白）に入った、またはカードの上端がバーの少し手前まで来たら
     //   「外へ出す」にする。以前はカード上端がバーの下端に届くまで持ち上げる必要があり出しにくかった。
-    //   ただし余白分は「掴んだ位置から上へ実際に動かした時だけ」有効（バー表示で一覧が押し下げられるため、
-    //   掴んだ直後に誤って反応しないように。カード上端の判定は従来どおりバー下端）。
-    //   パンくず（フォルダ名の並び）が見えている時は、その下端まで指が来ても「外へ出す」とみなす
-    //   （パンくずのあたりで止まって反応しない、という指摘への対応）。
-    const crumbEl = document.getElementById('folder-breadcrumb');
-    const crumbBottom = (crumbEl && crumbEl.style.display !== 'none') ? crumbEl.getBoundingClientRect().bottom : 0;
-    const zoneLimit = exitZone ? Math.max(exitZone.bottom + EXIT_ZONE_MARGIN_PX, crumbBottom) : 0;
-    if (exitZone && ((clientY <= zoneLimit && clientY < dragOriginY - EDGE_ARM_PX)
+    //   余白(+40px)は一覧が先頭までスクロール済みの時だけ（スクロール中は上端付近のカードとの
+    //   並び替えと区別できないため）。バーは一覧に重ねて表示している（一覧は押し下がらない）ので、掴んだ位置から上へ実際に
+    //   動かした時だけ有効にする。これで掴んだ直後・ほぼ動かしていない時の誤反応を防ぐ。
+    const movedUp = clientY < dragOriginY - EDGE_ARM_PX;
+    if (exitZone && movedUp && (clientY <= exitZone.bottom + (scrollParent && scrollParent.scrollTop > 0 ? 0 : EXIT_ZONE_MARGIN_PX)
         || dragEl.getBoundingClientRect().top <= exitZone.bottom)) {
       const parentFolder = folders.find(f => f.id === currentFolderId);
       const parentId = parentFolder ? (parentFolder.parentId ?? null) : null;

@@ -482,7 +482,10 @@ html, body {
 .folder-exit-dropzone {
   box-sizing: border-box;
   background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;
-  padding: 1.3rem 1rem; text-align: center; line-height: 1.4;
+  /* 一覧に重ねて表示する（高さ60px分のマイナスマージン）。出し入れしても一覧が押し下がらない。
+     以前は通常配置で、ドラッグを始めた瞬間に一覧が下へずれ、指とカードの位置がずれていた。 */
+  height: 60px; margin-bottom: -60px; position: relative; z-index: 95;
+  display: flex; align-items: center; justify-content: center; gap: .4rem;
   border-bottom: 2px dashed var(--accent-line);
 }
 /* ★ 実際にここへドロップできる状態（applyHoverTarget/clearHoverFolderが
