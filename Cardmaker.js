@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="6dc34f0086";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="6ff2f386f6";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -254,14 +254,14 @@ function saveDecks(d) {
 }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
-// ── フォルダ（最大3階層・みんなで共有） ──
+// ── フォルダ（最大10階層・みんなで共有） ──
 // フォルダの本体はサーバー（GitHub上の folders.json）に保存され、全員で共有される。
 // ローカルのキャッシュは「サーバーから取得できるまでの間、即座に表示するため」だけに使う。
 const FOLDER_CACHE_KEY = `cardmaker_folders_cache_v1_${GUILD_ID}`;
 migrateGuildScopedLocalKey('cardmaker_folders_cache_v1', FOLDER_CACHE_KEY);
 function loadFoldersCache() { try { return JSON.parse(localStorage.getItem(FOLDER_CACHE_KEY)) || []; } catch { return []; } }
 function saveFoldersCache(f) { try { localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(f)); } catch (e) {} }
-const MAX_FOLDER_DEPTH = 3;
+const MAX_FOLDER_DEPTH = 10;
 
 // ★ 「クイズ過去問」フォルダ（クイズ由来の4択アーカイブ用・システムフォルダ）。
 //   固定IDはbot.py側と同じ値。名前変更・削除・移動はできず、中身は
@@ -3341,7 +3341,7 @@ function renderCreatedList() {
       if (allowed) {
         applyHoverTarget(folderCard, fid);
       } else {
-        // ★ 追加：例えばフォルダの階層が上限（3階層）に達していて移動できない場合など、
+        // ★ 追加：例えばフォルダの階層が上限（10階層）に達していて移動できない場合など、
         //   「フォルダに重ねているのに何も起きない」という分かりにくさを解消するため、
         //   赤枠で「ここには移動できない」ことを示す（自動では開かない）。
         applyBlockedHoverTarget(folderCard);
