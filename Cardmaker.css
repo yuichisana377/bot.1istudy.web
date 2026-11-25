@@ -482,7 +482,7 @@ html, body {
 .folder-exit-dropzone {
   box-sizing: border-box;
   background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;
-  padding: .9rem 1rem; text-align: center; line-height: 1.4;
+  padding: 1.3rem 1rem; text-align: center; line-height: 1.4;
   border-bottom: 2px dashed var(--accent-line);
 }
 /* ★ 実際にここへドロップできる状態（applyHoverTarget/clearHoverFolderが
