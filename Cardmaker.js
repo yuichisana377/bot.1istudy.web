@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="cc08bbd2e0";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="960ce6d5a7";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2961,6 +2961,9 @@ async function publishDeck(deckId, isComplete = true) {
   saveDecks(decks); showScreen('list');
 
   // showScreen('list') 実行後の最新の decks から対象デッキを取得する
+  // 名前変更などの同期がまだ飛んでいる場合、後から届いて「完成」を「未完成」に
+  // 戻してしまわないよう、先に順番待ちの同期が終わるのを待つ。
+  await waitForPendingSync(deckId);
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
 
