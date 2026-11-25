@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="0e7bce2925";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="d1ebf21d10";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -930,8 +930,8 @@ function renderPlayScreen(room, opts) {
   renderedQIndex = room.current_q; renderedState = room.state;
 
   document.getElementById(progressId).textContent = `Q ${room.current_q + 1} / ${room.total_questions}`;
-  const myScore = room.players.find(p => p.id === STUDENT.id)?.score ?? 0;
-  document.getElementById(scoreId).textContent = `${myScore}点`;
+  const me = room.players.find(p => p.id === STUDENT.id);
+  document.getElementById(scoreId).textContent = `${me?.score ?? 0}${me?.score_unit || '点'}`;
 
   // ★ 追加：途中参加でこの問題にはまだ混ざれない「見学中」の場合は、問題・選択肢の
   //   代わりに専用の案内だけを出す（ホストは常にactive_from_q=0なのでspectatingにはならない）。
