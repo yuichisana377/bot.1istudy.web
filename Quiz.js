@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="79a4056737";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="0e7bce2925";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -408,8 +408,18 @@ function quizErrorText(code) {
 //  クイズを作る（ホスト：セットアップ）
 // ============================================================
 let hsAllowLateJoin = false; // 途中参加を許可するか（作成のたびにデフォルト＝不許可へ戻す）
+let hsScoreMode = 'total'; // 'total'（合計点）/ 'average'（1問あたり平均点。途中参加ありのときのみ有効）
+function setScoreMode(mode) {
+  hsScoreMode = mode;
+  document.querySelectorAll('#hs-score-mode-toggle .qz-toggle-opt').forEach((b, i) => {
+    b.classList.toggle('active', (i === 1) === (mode === 'average'));
+  });
+}
 function setLateJoinOption(v) {
   hsAllowLateJoin = v;
+  // 途中参加を許可するときだけ「順位のつけ方」を選べる（不許可なら常に合計点）
+  document.getElementById('hs-score-mode-field').style.display = v ? '' : 'none';
+  if (!v) setScoreMode('total');
   document.querySelectorAll('#hs-late-join-toggle .qz-toggle-opt').forEach((b, i) => {
     b.classList.toggle('active', (i === 1) === v);
   });
@@ -688,7 +698,7 @@ async function submitCreateRoom() {
   const title = document.getElementById('hs-title').value.trim();
   const isDeckSrc = document.querySelector('#hs-source-toggle .qz-toggle-opt[data-src="deck"]').classList.contains('active');
 
-  const body = withAuth({ title, allow_late_join: hsAllowLateJoin });
+  const body = withAuth({ title, allow_late_join: hsAllowLateJoin, score_mode: hsAllowLateJoin ? hsScoreMode : 'total' });
 
   // ★ 追加：詳細設定の出題時間・正解発表の表示時間（省略時はサーバー側の既定値のまま）。
   const timeLimit = parseInt(document.getElementById('hs-time-limit').value, 10);
@@ -1071,7 +1081,7 @@ function miniLeaderboardHtml(players) {
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
       ${quizMarkHtml(p)}
-      <span class="qz-lb-score">${p.score}点</span>
+      <span class="qz-lb-score">${p.score}${escapeHtml(p.score_unit || '点')}</span>
     </div>`).join('');
 }
 
@@ -1123,7 +1133,7 @@ function renderRanking(room) {
       <span class="qz-lb-rank">${i + 1}${moveHtml}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
-      <span class="qz-lb-score">${p.score}点</span>
+      <span class="qz-lb-score">${p.score}${escapeHtml(p.score_unit || '点')}</span>
     </div>`;
   }).join('');
 
@@ -1335,7 +1345,7 @@ function renderResult(room) {
     return `
       <div class="qz-podium-col ${podiumClass[i]}">
         <div class="qz-podium-name">${escapeHtml(p.nickname)}</div>
-        <div class="qz-podium-score">${p.score}点</div>
+        <div class="qz-podium-score">${p.score}${escapeHtml(p.score_unit || '点')}</div>
         <div class="qz-podium-bar"><span class="qz-podium-medal">${medalMap[i]}</span></div>
       </div>`;
   }).join('');
@@ -1345,7 +1355,7 @@ function renderResult(room) {
       <span class="qz-lb-rank">${i + 1}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
-      <span class="qz-lb-score">${p.score}点</span>
+      <span class="qz-lb-score">${p.score}${escapeHtml(p.score_unit || '点')}</span>
     </div>`).join('');
 }
 
