@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="6ff2f386f6";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["TestPrep.js"]="d1a7d220e1";/*@end*/// ============================================================
 //  TestPrep.js — テスト対策モード（試作）
 //  予定管理の【テスト】/【試験】予定 + CardMakerのデッキ(list_cards) +
 //  自分の学習データ(get_study_data の seen/unsure) から、残り日数に応じた
