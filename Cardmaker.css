@@ -2,7 +2,7 @@
    描画され高さがバラバラになる。この範囲だけ1つのフォントに固定して揃える。 */
 @font-face {
   font-family: "SupSubFix";
-  src: local("Segoe UI Symbol"), local("Cambria Math"), local("Apple Symbols"),
+  src: local("Segoe UI Symbol"), local("Apple Symbols"),
        local("Noto Sans Symbols 2"), local("DejaVu Sans");
   unicode-range: U+00B2, U+00B3, U+00B9, U+2070-209F;
 }

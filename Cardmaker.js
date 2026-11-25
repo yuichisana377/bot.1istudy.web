@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8edb017c48";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="df176ce963";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6286,8 +6286,8 @@ function matchVectorAt(s, i) {
 // なる（¹²³は別フォントから描画されるため）。描画時はKaTeXの上付き/下付きに揃えて高さを統一する。
 const UNI_SUPSUB = {};
 (function () {
-  const sup = '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ', supA = '0123456789+-n';
-  const sub = '₀₁₂₃₄₅₆₇₈₉₊₋', subA = '0123456789+-';
+  const sup = '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ⁽⁾', supA = '0123456789+-n()';
+  const sub = '₀₁₂₃₄₅₆₇₈₉₊₋₍₎', subA = '0123456789+-()';
   for (let k = 0; k < sup.length; k++) UNI_SUPSUB[sup[k]] = ['^', supA[k]];
   for (let k = 0; k < sub.length; k++) UNI_SUPSUB[sub[k]] = ['_', subA[k]];
 })();
@@ -6350,6 +6350,11 @@ function simpleMathToLatex(raw) {
   let out = '';
   let i = 0;
   while (i < s.length) {
+    // 旧形式の生LaTeX \( ... \) は中身を一切変換せずそのまま通す（入れ子の \( でKaTeXが壊れるのを防ぐ）
+    if (s[i] === '\\' && s[i+1] === '(') {
+      const endIdx = s.indexOf('\\)', i + 2);
+      if (endIdx !== -1) { out += s.slice(i, endIdx + 2); i = endIdx + 2; continue; }
+    }
     // √(...) ・ ∛(...)
     if ((s[i] === '√' || s[i] === '∛') && s[i+1] === '(') {
       const isCube = s[i] === '∛';
@@ -6395,7 +6400,8 @@ function simpleMathToLatex(raw) {
 // KaTeXが読み込めていない場合（オフライン等）は記法そのままの文章として表示する。
 function setMathText(el, raw) {
   if (!el) return;
-  el.textContent = simpleMathToLatex(raw || '');
+  // KaTeXが読み込めない場合は、変換後の生LaTeXではなく元の文字列をそのまま表示する
+  el.textContent = window.renderMathInElement ? simpleMathToLatex(raw || '') : (raw || '');
   if (window.renderMathInElement) {
     try {
       renderMathInElement(el, {
