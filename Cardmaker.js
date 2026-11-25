@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="fce6816ee1";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="06c922c7cc";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -3280,7 +3280,7 @@ function renderCreatedList() {
   // ★ 追加：指（ポインタ）の真下にあるフォルダカード、または画面上部のパンくず付近を調べ、
   //   少しの間そこに留まっていたら自動的に「フォルダの中へ入る」／「親フォルダへ戻る」を行う。
   //   ドラッグ中の要素自身は判定対象から除外する。
-  const EXIT_ZONE_MARGIN_PX = 56; // 「外へ出す」バーの下側に足す当たり判定の余白
+  const EXIT_ZONE_MARGIN_PX = 40; // 「外へ出す」バーの下側に足す当たり判定の余白
   function checkHoverFolder(clientX, clientY) {
     if (!dragEl) return;
 
@@ -3296,8 +3296,10 @@ function renderCreatedList() {
     const exitZone = getExitZoneRect();
     // ★ 2026/11/25：指がバー（＋下の余白）に入った、またはカードの上端がバーの少し手前まで来たら
     //   「外へ出す」にする。以前はカード上端がバーの下端に届くまで持ち上げる必要があり出しにくかった。
-    if (exitZone && (clientY <= exitZone.bottom + EXIT_ZONE_MARGIN_PX
-        || dragEl.getBoundingClientRect().top <= exitZone.bottom + EXIT_ZONE_MARGIN_PX / 2)) {
+    //   ただし余白分は「掴んだ位置から上へ実際に動かした時だけ」有効（バー表示で一覧が押し下げられるため、
+    //   掴んだ直後に誤って反応しないように。カード上端の判定は従来どおりバー下端）。
+    if (exitZone && ((clientY <= exitZone.bottom + EXIT_ZONE_MARGIN_PX && clientY < dragOriginY - EDGE_ARM_PX)
+        || dragEl.getBoundingClientRect().top <= exitZone.bottom)) {
       const parentFolder = folders.find(f => f.id === currentFolderId);
       const parentId = parentFolder ? (parentFolder.parentId ?? null) : null;
       const dragKey = dragEl.dataset.key;
