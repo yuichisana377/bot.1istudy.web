@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="d1a7d220e1">
-<script src="/Version.js?v=d1a7d220e1"></script>
+<meta name="app-version" content="79a4056737">
+<script src="/Version.js?v=79a4056737"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>みんなでクイズ</title>
 <!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
      共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
-<link rel="stylesheet" href="/Style.css?v=d1a7d220e1">
-<link rel="stylesheet" href="Quiz.css?v=d1a7d220e1">
+<link rel="stylesheet" href="/Style.css?v=79a4056737">
+<link rel="stylesheet" href="Quiz.css?v=79a4056737">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -232,6 +232,33 @@ window.addEventListener('error', function (e) {
   </div>
 </section>
 
+<!-- ============ ゲスト参加（ログインしていない人：ニックネームだけ入力） ============ -->
+<section class="screen" id="screen-guest-join">
+  <header class="qz-header">
+    <span></span>
+    <div class="qz-brand-sm">クイズに参加</div>
+    <span></span>
+  </header>
+  <div class="qz-body qz-body-center">
+    <p class="qz-label">ログインしなくても、ニックネームだけで参加できます</p>
+    <label class="qz-field">
+      <span class="qz-field-label">ニックネーム（12文字まで）</span>
+      <input id="gj-nickname" class="qz-input" maxlength="12" autocomplete="off" placeholder="例）たろう">
+    </label>
+    <p class="qz-hint" id="gj-error" style="color:#dc2626;min-height:1.2em;"></p>
+    <button class="qz-cta" id="gj-btn" type="button" onclick="submitGuestJoin()">参加する</button>
+  </div>
+</section>
+
+<!-- ============ ゲスト：終了後・参加できなかった時 ============ -->
+<section class="screen" id="screen-guest-end">
+  <header class="qz-header"><span></span><div class="qz-brand-sm">みんなでクイズ</div><span></span></header>
+  <div class="qz-body qz-body-center">
+    <p class="qz-label" id="ge-msg">ご参加ありがとうございました</p>
+    <a class="qz-cta" href="/Login.html" style="text-decoration:none;text-align:center;">ログインして使う</a>
+  </div>
+</section>
+
 <!-- ============ ホスト：ロビー ============ -->
 <section class="screen" id="screen-host-lobby">
   <header class="qz-header">
@@ -241,6 +268,10 @@ window.addEventListener('error', function (e) {
   </header>
   <div class="qz-body qz-body-center">
     <p class="qz-label">参加者は「参加する」からこのクイズを選べます</p>
+    <!-- ★ 追加：参加URL（ログイン済みならそのまま参加、未ログインならニックネームだけで参加できる） -->
+    <p class="qz-hint">またはこのURLを送ってください（ログインしていない人もニックネームだけで参加できます）</p>
+    <div class="qz-join-url" id="hl-url"></div>
+    <button class="qz-cta" id="hl-copy-btn" type="button" onclick="copyJoinUrl()">参加URLをコピー</button>
     <p class="qz-hint" id="hl-count">参加者 0人</p>
     <div class="qz-player-grid" id="hl-players"></div>
     <button class="qz-cta" id="hl-start-btn" onclick="hostStart()" disabled>クイズを始める</button>
@@ -375,11 +406,11 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=d1a7d220e1"></script>
-<script src="/SwipeGuard.js?v=d1a7d220e1"></script>
-<script src="/Dialog.js?v=d1a7d220e1"></script>
-<script src="/Dropdown.js?v=d1a7d220e1"></script>
-<script src="/Common.js?v=d1a7d220e1"></script>
-<script src="Quiz.js?v=d1a7d220e1"></script>
+<script src="/Icons.js?v=79a4056737"></script>
+<script src="/SwipeGuard.js?v=79a4056737"></script>
+<script src="/Dialog.js?v=79a4056737"></script>
+<script src="/Dropdown.js?v=79a4056737"></script>
+<script src="/Common.js?v=79a4056737"></script>
+<script src="Quiz.js?v=79a4056737"></script>
 </body>
 </html>

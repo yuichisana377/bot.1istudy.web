@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="d1a7d220e1";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="79a4056737";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -8,12 +8,20 @@ const API_BASE = "/api/";
 // ★ 複数サーバー対応：以前は固定値だったが、ログイン（またはサーバーコード）で
 //   この端末に覚えさせたサーバーをlocalStorageの"current_guild"から読む形にした
 //   （Login.js参照）。まだ一度もサーバーが分かっていない端末はLogin.htmlへ誘導する。
-const GUILD_ID = (function () {
+// ★ 追加（2026/11/25）：ホストが発行した参加URL（?code=XXXXX&g=サーバーID）で開かれた場合は、
+//   端末が覚えているサーバーではなくURLのg=を使う（ログインしていない人はサーバーを知らないため）。
+const LINK_GUILD = (function () {
+  const p = new URLSearchParams(location.search);
+  const g = (p.get('g') || '').trim();
+  return (p.get('code') && /^\d{5,25}$/.test(g)) ? g : null;
+})();
+const CURRENT_GUILD = (function () {
   try {
     const g = JSON.parse(localStorage.getItem('current_guild'));
     return g && g.guild_id ? String(g.guild_id) : null;
   } catch (e) { return null; }
 })();
+const GUILD_ID = LINK_GUILD || CURRENT_GUILD;
 if (!GUILD_ID) {
   try { sessionStorage.setItem('post_login_redirect', location.href); } catch (e) {}
   location.replace('/Login.html');
@@ -22,8 +30,17 @@ const LOGIN_PATH = '/Login.html';
 const SESSION_KEY = 'sl_session';
 
 
+// ★ 参加URLで開かれ、かつこの端末がそのサーバーでログイン済みとは言えない場合は、
+//   ログイン画面へ飛ばさずゲスト参加（ニックネームだけ）に進める。
+const LINK_AS_GUEST = !!LINK_GUILD && (function () {
+  const s = getLoginSession();
+  return !(s && s.session_token && CURRENT_GUILD === LINK_GUILD);
+})();
+let isGuest = false; // ゲストとして参加中か（trueなら STUDENT.sessionToken はゲストトークン）
+
 // ── 未ログインならログイン画面へ（Cardmaker.js と同じ考え方） ──
 (function () {
+  if (LINK_AS_GUEST) return;
   const s = getLoginSession();
   if (!s || !s.session_token) {
     sessionStorage.setItem('post_login_redirect', location.href);
@@ -190,7 +207,8 @@ async function initQuizApp() {
     // ★ 共有リンク等、コード付きURLで直接開かれた場合はそのまま参加を試みる
     //   （参加者は普段コードを意識しなくてよいが、リンク共有自体は引き続き使える）。
     showScreenQ('home');
-    joinRoomByCode(codeParam);
+    if (LINK_AS_GUEST) startGuestFlow(codeParam);
+    else joinRoomByCode(codeParam);
   } else if (mode === 'join') {
     showScreenQ('home');
     goJoinScreen();
@@ -201,9 +219,79 @@ async function initQuizApp() {
 
 function backToHomeFromResult() {
   stopPolling();
+  const wasCode = roomCode;
   roomCode = null; isHost = false; renderedQIndex = -1; renderedState = null;
   history.replaceState(null, '', location.pathname);
+  if (isGuest) {
+    // ゲストにはホーム（参加・作成）が無い（ログインが必要）ので、終了画面を出す
+    try { if (wasCode) sessionStorage.removeItem('quizGuest:' + wasCode); } catch (e) {}
+    showScreenQ('guest-end');
+    return;
+  }
   showScreenQ('home');
+}
+
+// ============================================================
+//  ゲスト参加（ログイン不要・ニックネームだけ）— 2026/11/25 追加
+//  ホストが待機中に発行する参加URL（?code=&g=）から来た、ログインしていない人用。
+//  サーバーが発行する「そのルーム専用のゲストトークン」を sessionStorage に保存し、
+//  再読み込みしても同じ参加者として復帰できる（毎回新しいゲストが増えないように）。
+// ============================================================
+let guestJoinCode = null;
+function guestStoreKey(code) { return 'quizGuest:' + code; }
+async function startGuestFlow(code) {
+  code = (code || '').trim().toUpperCase();
+  guestJoinCode = code;
+  // 再読み込み時：保存済みのゲスト参加者としてそのまま復帰できればそうする
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(guestStoreKey(code)) || 'null');
+    if (saved && saved.token && saved.id) {
+      STUDENT.id = saved.id; STUDENT.nickname = saved.nickname; STUDENT.sessionToken = saved.token; isGuest = true;
+      const data = await apiGet('quiz_state', withAuth({ code }));
+      if (data.ok) { enterRoomAsGuest(code, data); return; }
+      if (data.error === 'network') {
+        // 一時的な通信失敗では保存済みトークンを消さない（消すと同じ人が幽霊ゲストとして残る）
+        document.getElementById('ge-msg').textContent = '通信できませんでした。電波の良い場所でページを再読み込みしてください';
+        showScreenQ('guest-end');
+        return;
+      }
+      sessionStorage.removeItem(guestStoreKey(code));
+      STUDENT.id = null; STUDENT.nickname = null; STUDENT.sessionToken = null; isGuest = false;
+    }
+  } catch (e) {}
+  document.getElementById('gj-error').textContent = '';
+  showScreenQ('guest-join');
+}
+function enterRoomAsGuest(code, data) {
+  roomCode = code; isHost = false; isGuest = true;
+  renderedQIndex = -1; renderedState = null;
+  applyServerNow(data);
+  history.replaceState(null, '', `${location.pathname}?code=${code}&g=${GUILD_ID}`);
+  renderRoom(data.room);
+  startPolling();
+}
+async function submitGuestJoin() {
+  const input = document.getElementById('gj-nickname');
+  const errEl = document.getElementById('gj-error');
+  const btn = document.getElementById('gj-btn');
+  const nickname = input.value.replace(/\s+/g, ' ').trim();
+  if (!nickname) { errEl.textContent = 'ニックネームを入力してください'; return; }
+  errEl.textContent = '';
+  setBtnBusy(btn, true, '参加中…');
+  const data = await apiPost('quiz_guest_join', { guild_id: GUILD_ID, code: guestJoinCode, nickname });
+  setBtnBusy(btn, false);
+  if (!data.ok) {
+    if (data.error === 'room_not_found' || data.error === 'quiz_already_started') {
+      document.getElementById('ge-msg').textContent = quizErrorText(data.error);
+      showScreenQ('guest-end');
+      return;
+    }
+    errEl.textContent = quizErrorText(data.error);
+    return;
+  }
+  STUDENT.id = data.guest.id; STUDENT.nickname = data.guest.nickname; STUDENT.sessionToken = data.guest.session_token;
+  try { sessionStorage.setItem(guestStoreKey(guestJoinCode), JSON.stringify({ id: STUDENT.id, nickname: STUDENT.nickname, token: STUDENT.sessionToken })); } catch (e) {}
+  enterRoomAsGuest(guestJoinCode, data);
 }
 
 // ============================================================
@@ -273,6 +361,11 @@ async function joinRoomByCode(code) {
   if (!code) return;
   stopRoomListPolling();
   const data = await apiPost('quiz_join', withAuth({ code }));
+  if (!data.ok && LINK_GUILD && (data.error === 'not_logged_in' || data.error === 'guild_membership_required')) {
+    // ★ 参加URLから来たが、ログインが切れている／このサーバーのメンバーではない場合はゲスト参加へ
+    startGuestFlow(code);
+    return;
+  }
   if (!data.ok) {
     await showConfirm({
       title: '参加できませんでした', desc: quizErrorText(data.error),
@@ -290,7 +383,7 @@ async function joinRoomByCode(code) {
   isHost = !!data.is_host;
   renderedQIndex = -1; renderedState = null;
   applyServerNow(data);
-  history.replaceState(null, '', `${location.pathname}?code=${code}`);
+  history.replaceState(null, '', `${location.pathname}?code=${code}${LINK_GUILD ? '&g=' + LINK_GUILD : ''}`);
   renderRoom(data.room);
   startPolling();
 }
@@ -300,6 +393,10 @@ function quizErrorText(code) {
     room_not_found: 'そのコードのクイズは見つかりませんでした',
     quiz_already_started: 'このクイズはもう始まっています',
     not_logged_in: 'ログインが切れています。ログインし直してください',
+    invalid_nickname: 'ニックネームは1〜12文字で入力してください',
+    nickname_taken: 'そのニックネームはこのクイズで既に使われています。別のものにしてください',
+    room_full: 'このクイズのゲスト参加の人数がいっぱいです',
+    too_many_attempts: '試行回数が多すぎます。しばらくしてからもう一度お試しください',
     network: '通信に失敗しました。もう一度お試しください',
     deck_not_found: '選んだデッキが見つかりませんでした。デッキを選び直してください',
     deck_too_small: '選んだデッキ（合計）に、答えの種類が4つ以上ありません。デッキを追加するか選び直してください',
@@ -692,6 +789,12 @@ async function pollOnce() {
       stopPolling();
       await showConfirm({ title: 'このクイズは終了しました', desc: 'ホストが退出したか、時間が経ちすぎたため終了しました。', okLabel: 'ホームに戻る', cancelLabel: '閉じる' });
       backToHomeFromResult();
+    } else if (isGuest && (data.error === 'not_logged_in' || data.error === 'guild_membership_required')) {
+      // ゲストトークンの有効期限切れ（ルームとは別）
+      stopPolling();
+      roomCode = null;
+      document.getElementById('ge-msg').textContent = '参加の有効期限が切れました。もう一度参加URLを開いてください';
+      showScreenQ('guest-end');
     }
     return;
   }
@@ -757,6 +860,7 @@ function renderLobby(room) {
   titleEl.textContent = room.title;
 
   if (isHost) {
+    document.getElementById('hl-url').textContent = joinUrlFor(roomCode);
     document.getElementById('hl-count').textContent = `参加者 ${room.players.length}人`;
     document.getElementById('hl-players').innerHTML = playerChipsHtml(room.players);
     { const sb = document.getElementById('hl-start-btn'); if (sb.dataset.busy !== '1') sb.disabled = room.players.length === 0; }
@@ -764,6 +868,32 @@ function renderLobby(room) {
     document.getElementById('pl-status').textContent = `${room.host_nickname} さんが開始するのを待っています…（参加者 ${room.players.length}人）`;
     document.getElementById('pl-players').innerHTML = playerChipsHtml(room.players);
   }
+}
+
+// ★ 追加：ホストが待機中に発行する参加URL。ログイン済みの端末ならそのままこのクイズへ、
+//   未ログインならニックネームだけ入れて参加できる（g= はサーバーID）。
+function joinUrlFor(code) {
+  return `${location.origin}/Quiz.html?code=${encodeURIComponent(code)}&g=${encodeURIComponent(GUILD_ID)}`;
+}
+async function copyJoinUrl() {
+  const url = joinUrlFor(roomCode);
+  const btn = document.getElementById('hl-copy-btn');
+  let ok = false;
+  try { await navigator.clipboard.writeText(url); ok = true; } catch (e) {}
+  if (!ok) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch (e) {}
+  }
+  if (!ok) { showAppAlert({ title: '参加URL', desc: url }); return; }
+  const old = btn.dataset.label || btn.textContent;
+  btn.dataset.label = old;
+  btn.textContent = 'コピーしました';
+  setTimeout(() => { btn.textContent = old; }, 1800);
 }
 
 function playerChipsHtml(players) {
