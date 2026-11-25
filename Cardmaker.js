@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="960ce6d5a7";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="32972b3d80";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -3137,26 +3137,20 @@ function renderCreatedList() {
   let autoScrollRAF = null;
   let scrollParent = null;
 
-  // ★ 追加：デッキ／フォルダをドラッグ中、フォルダの上にしばらく重ねたままにしていると
-  //   自動的にそのフォルダを開く（iOSのホーム画面でアプリをフォルダの上に重ねる操作と同様）。
-  //   開くと同時に、掴んでいる項目も実際にそのフォルダの中へ移動させる
-  //   （見た目だけ開いて中身のデータは元のフォルダのまま…という不整合を避けるため）。
-  //   ★ 追加：逆に、間違えてフォルダに入ってしまった時のために、ドラッグしたまま画面上部の
-  //     パンくず付近まで持ち上げると同じ仕組みで親フォルダへ戻れるようにしている
-  //     （autoOpenFolderDuringDrag は「どこへ移動して開くか」を汎用的に扱うので、
-  //     戻り先（親フォルダ）を渡せば「出る」動作もそのまま実現できる）。
-  const HOVER_OPEN_MS = 650; // これだけ同じ場所（フォルダ／パンくず付近）で止めておくと自動的に反応する
-  // ★ 追加：指先の微妙な震え・elementFromPointの一瞬の誤検出などで、フォルダの上に
-  //   ちゃんと重ねているつもりでも一瞬だけ対象を見失うことがあり、そのたびに
-  //   即座にホバー判定をリセットしていると HOVER_OPEN_MS のタイマーが永遠に完了せず
-  //   「フォルダに重ねても反応しない」ように見える不具合があった。対象を見失っても
-  //   すぐには消さず、この猶予時間内に同じ対象へ戻ってくればリセットしなかったことにする。
+  // ★ 変更（2026/11/25）：デッキ／フォルダをドラッグ中、フォルダの上に重ねると青枠が出て、
+  //   そのまま指を離すとそのフォルダの中へ入る（Windowsのエクスプローラーと同じ操作）。
+  //   以前は重ねたまま少し待つとフォルダが自動で開き、掴んだ項目と一緒にページも移動していたが、
+  //   今は現在のページに留まる。逆に、フォルダの中にいる時は画面上部の「外へ出す」バーへ
+  //   重ねて（青枠）離すと、親フォルダへ移動する。
+  // ★ 追加：指先の微妙な震え・elementFromPointの一瞬の誤検出などで、重ねているつもりでも
+  //   一瞬だけ対象を見失うことがあるため、見失ってもすぐには青枠を消さず、この猶予時間内に
+  //   同じ対象へ戻ってくればリセットしなかったことにする（猶予待ちの間に離した場合は対象外）。
   const HOVER_MISS_GRACE_MS = 200;
   let hoverFolderEl = null;
   let hoverFolderTimer = null;
+  let hoverTargetId = null; // ★ 変更（2026/11/25）：重ねているフォルダのid（ルート＝null）。離した時にここへ入れる
   let hoverClearTimer = null; // ★ 追加：上記の猶予時間用タイマー
   let hoverBlockedEl = null; // ★ 追加：移動先として無効な対象に赤枠を出している間、その要素を覚えておく
-  let hoverOpenInProgress = false; // ★ フォルダ自動オープンの処理中に二重発火しないようにする
   // ★ バグ修正：デッキ／フォルダを掴んだ位置がたまたま画面の上端／下端付近
   //   （例：スクロールしてすぐ見えている一番上の項目を掴んだ場合など）だと、
   //   指を全く動かしていないのに自動スクロールが始まり、そのまま一番上／
@@ -3287,7 +3281,7 @@ function renderCreatedList() {
   //   少しの間そこに留まっていたら自動的に「フォルダの中へ入る」／「親フォルダへ戻る」を行う。
   //   ドラッグ中の要素自身は判定対象から除外する。
   function checkHoverFolder(clientX, clientY) {
-    if (!dragEl || hoverOpenInProgress) return;
+    if (!dragEl) return;
 
     // ① まず「一覧の上端まで持ち上げたら親フォルダへ戻る」ゾーンを判定する
     //   （フォルダの中にいる時だけ。ルート表示中は戻り先が無いので対象外）
@@ -3381,16 +3375,14 @@ function renderCreatedList() {
     // ★ 追加：猶予時間中に対象を再検出できた（同じ対象でも別の対象でも）ので、
     //   保留中の「消す」予約はキャンセルする（hoverFolderTimer自体はそのまま継続）。
     if (hoverClearTimer) { clearTimeout(hoverClearTimer); hoverClearTimer = null; }
-    if (hoverFolderEl === el) return; // 既に同じ対象を計測中
+    if (hoverFolderEl === el) { hoverTargetId = targetFolderId; return; } // 既に同じ対象に青枠を出している
     clearHoverFolder();
     hoverFolderEl = el;
-    // ★ 重ねている間、見た目でも分かるようにハイライトする
+    hoverTargetId = targetFolderId;
+    // ★ 変更（2026/11/25）：Windowsのように、重ねている間は青枠を出すだけにし、
+    //   フォルダは自動では開かない。指を離した時（endDrag）にそのフォルダの中へ入れる。
     hoverFolderEl.style.outline = '3px solid #3b82f6';
     hoverFolderEl.style.outlineOffset = '-3px';
-    hoverFolderTimer = setTimeout(() => {
-      hoverFolderTimer = null;
-      autoOpenFolderDuringDrag(targetFolderId);
-    }, HOVER_OPEN_MS);
   }
 
   // ★ 追加：対象を見失った瞬間に即座に消さず、HOVER_MISS_GRACE_MSだけ待ってから消す。
@@ -3435,108 +3427,51 @@ function renderCreatedList() {
     }
   }
 
-  // ★ 追加：ドラッグ中の項目を、指を重ねていたフォルダの中へ実際に移動させたうえで、
-  //   そのフォルダを自動的に開く。開いた後も同じ項目のドラッグをそのまま継続できるようにする。
-  async function autoOpenFolderDuringDrag(targetFolderId) {
-    if (!dragEl) return;
-    hoverOpenInProgress = true;
-    clearHoverFolder();
-
-    const key = dragEl.dataset.key;
-
-    try {
-      if (key.startsWith('folder:')) {
-        const fid = key.slice('folder:'.length);
-        const f = folders.find(x => x.id === fid);
-        if (!f) return;
-        f.parentId = targetFolderId; // 楽観的にローカルへ反映
-        saveFoldersCache(folders);
-        // ★ バグ修正：guild_id/session_tokenが抜けていたため、require_login_json（サーバー側）
-        //   が「missing guild_id」で常に弾いていた＝ドラッグでのフォルダ移動が、ローカルの
-        //   見た目上は移動できたように見えても、実際にはサーバーへ一度も反映されていなかった
-        //   （selectMoveTarget〈フォルダメニュー→移動〉側は元々送っていて無事だった）。
-        fetch(`${API_BASE}save_folder`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, id: f.id, name: f.name, parent_id: targetFolderId, nickname: getLoginSession()?.nickname }),
-          signal: AbortSignal.timeout(8000),
-        }).then(res => res.json()).then(data => {
-          if (!data.ok) showBanner('フォルダ移動のサーバー反映に失敗しました', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
-          else fetchAndMergeFolders().catch(() => {});
-        }).catch(() => showBanner('フォルダ移動のサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15})));
-      } else {
-        const d = key.startsWith('deck:')
-          ? decks.find(x => x.filename === key.slice('deck:'.length))
-          : decks.find(x => x.id === key.slice('localdeck:'.length));
-        if (!d) return;
-        if (d.filename) {
-          const loaded = await loadDeckCardsWithRecovery(d.id);
-          if (!loaded || !dragEl) return; // ユーザーが「やめる」を選んだ／その間にドラッグが終了した場合は中断
-        }
-        d.folderId = targetFolderId;
-        saveDecks(decks);
-        if (d.filename) {
-          queueSyncDeckToServer(d).then(ok => {
-            if (!ok) showBanner('サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
-          });
-        }
+  // ★ 変更（2026/11/25）：指を離した時に、重ねていたフォルダの中（戻りゾーンなら親フォルダ）へ
+  //   項目を実際に移動する。以前はフォルダを自動で開いて一緒にページも移動していたが、
+  //   今は現在のページに留まり、移動した項目だけが一覧から消える。
+  async function dropDraggedIntoFolder(key, targetFolderId) {
+    if (key.startsWith('folder:')) {
+      const fid = key.slice('folder:'.length);
+      const f = folders.find(x => x.id === fid);
+      if (!f) return false;
+      f.parentId = targetFolderId; // 楽観的にローカルへ反映
+      saveFoldersCache(folders);
+      fetch(`${API_BASE}save_folder`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild_id: GUILD_ID, session_token: getLoginSession()?.session_token, id: f.id, name: f.name, parent_id: targetFolderId, nickname: getLoginSession()?.nickname }),
+        signal: AbortSignal.timeout(8000),
+      }).then(res => res.json()).then(data => {
+        if (!data.ok) showBanner('フォルダ移動のサーバー反映に失敗しました', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+        else fetchAndMergeFolders().catch(() => {});
+      }).catch(() => showBanner('フォルダ移動のサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15})));
+    } else {
+      const d = key.startsWith('deck:')
+        ? decks.find(x => x.filename === key.slice('deck:'.length))
+        : decks.find(x => x.id === key.slice('localdeck:'.length));
+      if (!d) return false;
+      if (d.filename) {
+        const loaded = await loadDeckCardsWithRecovery(d.id);
+        if (!loaded) return false; // 「やめる」を選んだ場合は移動しない
       }
-
-      if (!dragEl) return; // 上のawait中に指が離された場合はここで終了
-
-      // ★ 追加：フォルダを切り替える直前の「見た目の位置」と、その時点の最新の指の位置を
-      //   ここで（＝各種await完了後の最新の状態で）確定させる。デッキ読み込み待ちなどの
-      //   非同期処理中に指が動いていた場合でも、ここで最新値を使うことでズレを防ぐ。
-      const oldVisualTop = dragEl.getBoundingClientRect().top;
-      const resumeClientX = lastClientX;
-      const resumeClientY = lastClientY;
-
-      // フォルダを開く
-      currentFolderId = targetFolderId;
-      updateFolderExitDropzoneVisibility(); // ★ 追加：ルートまで戻った場合は受け皿を隠す（逆に潜った場合は出す）
-
-      // ★ ドラッグ中は renderDeckListUI() が丸ごとスキップされるため、ここだけ
-      //   一時的にガードを外して再描画し、開いたフォルダの中身を表示する。
-      const wasDragActive = cmListDragActive;
-      cmListDragActive = false;
-      renderDeckListUI();
-      cmListDragActive = wasDragActive;
-
-      const body = document.querySelector('#screen-list .cm-scroll-body');
-      if (body) body.scrollTop = 0;
-
-      // ★ 再描画で古いdragEl要素はDOMから外れてしまったので、新しく描画された
-      //   同じ項目（data-keyで特定）を探し直し、そのままドラッグを継続する。
-      //   （ファイル名に特殊文字を含む可能性があるためCSSセレクタは使わずJSで探す）
-      const newEl = getItems().find(it => it.dataset.key === key) || null;
-      if (newEl) {
-        // ★ 新しく描画された要素は、開いたフォルダの一覧の中の「自然な位置」に
-        //   配置されている（＝指の位置とは無関係）。切り替え直前の見た目の位置
-        //   （oldVisualTop）との差分を初期オフセットとして与えることで、
-        //   カードが指の位置からずれずにそのまま連続して見えるようにする。
-        const newNaturalTop = newEl.getBoundingClientRect().top;
-        const initialDy = oldVisualTop - newNaturalTop;
-        beginDrag(newEl, resumeClientY, initialDy);
-        lastClientX = resumeClientX;
-        // ★ 重要：ここで新しい要素にポインターキャプチャを張り直す。
-        //   フォルダを開き直す際に元の要素をDOMごと作り直しているため、
-        //   長押し開始時に張ったキャプチャ（pressItem側）が外れてしまう。
-        //   張り直さないと、この後 指がパンくず付近（#deck-grid の外）に
-        //   出た瞬間から pointermove/pointerup が grid に届かなくなり、
-        //   endDrag() が一切呼ばれずに touch-action:none 等が要素に残り続けて
-        //   「スクロールも何もできなくなる」不具合の原因になる。
-        try { newEl.setPointerCapture(pressPointerId); } catch (_) {}
-      } else {
-        // 万一見つからなければドラッグ状態を安全に終了させる
-        dragEl = null;
-        cmListDragActive = false;
+      d.folderId = targetFolderId;
+      saveDecks(decks);
+      if (d.filename) {
+        queueSyncDeckToServer(d).then(ok => {
+          if (!ok) showBanner('サーバーへの移動の反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+        });
       }
-    } finally {
-      hoverOpenInProgress = false;
     }
+    return true;
   }
 
-  function endDrag() {
+  function endDrag(allowDrop = true) {
     if (!dragEl) return;
+    // ★ 変更（2026/11/25）：青枠が出ている（＝今まさにフォルダの上に重なっている）状態で
+    //   離したら、そのフォルダへ入れる。対象を見失って猶予待ち（hoverClearTimer）の間は対象外。
+    const dropKey = dragEl.dataset.key;
+    // allowDrop=false は pointercancel（システムジェスチャー等で中断）。この場合は移動しない。
+    const dropTarget = (allowDrop && hoverFolderEl && !hoverClearTimer) ? { id: hoverTargetId } : null;
     clearHoverFolder(); // ★ ドロップ時にフォルダのハイライト・自動オープン待ちタイマーを解除する
     clearBlockedHover(); // ★ 追加：赤枠（移動不可）が出たままだった場合も解除する
     if (autoScrollRAF !== null) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
@@ -3552,20 +3487,32 @@ function renderCreatedList() {
     cmListDragActive = false; // ★ 再描画スキップガードを解除（次のポーリングで最新状態に更新される）
 
     // ★ DOM上の最終的な並び順（data-key）をこのフォルダのスコープに保存する
-    const orderedKeys = getItems().map(it => it.dataset.key);
-    saveListOrder(currentFolderId, orderedKeys);
+    const orderedKeys = getItems().map(it => it.dataset.key).filter(k => !(dropTarget && k === dropKey));
+    const orderFolderId = currentFolderId;
+    const saveOrderNow = () => saveListOrder(orderFolderId, orderedKeys);
+    if (!dropTarget) saveOrderNow();  // 移動する場合は、移動が成功してから並び順を確定する
 
     // ★ フォルダ／公開済みデッキ（＝みんなに共有される項目）が含まれていれば、
     //   サーバーにも反映して他の人の一覧にも同じ並びを届ける。
     //   自分だけの下書きデッキしか含まれていない場合はサーバー通信自体を省略する。
-    if (orderedKeys.some(isSharedOrderKey)) {
-      pushSharedOrderToServer(currentFolderId, orderedKeys).then(ok => {
-        if (!ok) showBanner('並び替えのサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
-      });
-    }
+    const pushOrder = () => {
+      if (orderedKeys.some(isSharedOrderKey)) {
+        pushSharedOrderToServer(orderFolderId, orderedKeys).then(ok => {
+          if (!ok) showBanner('並び替えのサーバー反映に失敗しました（この端末には保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+        });
+      }
+    };
+    if (!dropTarget) pushOrder();
 
     // ★ 指を離した瞬間に発生するクリックで意図せずフォルダが開かないようにするガード
     cmDragJustEndedAt = Date.now();
+
+    if (dropTarget) {
+      dropDraggedIntoFolder(dropKey, dropTarget.id)
+        .then(moved => { if (moved) { saveOrderNow(); pushOrder(); } })
+        .catch(() => showBanner('フォルダへの移動に失敗しました', '#fffbeb', '#92400e', Icons.html('warning', {size:15})))
+        .finally(() => renderDeckListUI()); // 移動した項目を現在の一覧から取り除く
+    }
   }
 
   function cancelPress() {
@@ -3709,7 +3656,7 @@ function renderCreatedList() {
   }
 
   function onPointerUp(e) {
-    if (dragEl && e.pointerId === pressPointerId) { endDrag(); cancelPress(); resetTouchAction(); return; }
+    if (dragEl && e.pointerId === pressPointerId) { endDrag(e.type !== 'pointercancel'); cancelPress(); resetTouchAction(); return; }
     if (e.pointerId === pressPointerId) { cancelPress(); resetTouchAction(); return; }
     if (e.pointerId === manualScrollPointerId) { resetTouchAction(); }
   }
