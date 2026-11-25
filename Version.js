@@ -89,7 +89,9 @@
       if (document.querySelector('.modal-bg.open, .modal-overlay.open, .qz-modal-overlay.active')) return true;
       var a = document.activeElement;
       if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return true;
-      if (document.body && document.body.classList.contains('qz-fixed-screen')) return true;   // Quizの出題・途中経過画面
+      if (document.body && document.body.classList.contains('qz-fixed-screen')) return true;
+      // CardMakerのプレイ・編集・一覧表示・新規作成中は、戻ってきただけで読み込み直さない（進行状況が消えるため）
+      if (document.querySelector('#screen-study.active, #screen-edit.active, #screen-list-view.active, #screen-new.active')) return true;   // Quizの出題・途中経過画面
     } catch (e) {}
     return false;
   }
