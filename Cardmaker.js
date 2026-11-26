@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8127234d53";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="5ab0599dce";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -927,6 +927,14 @@ function readOrderEditorState(prefix) {
   return { items, distractors, style };
 }
 
+// 入力欄へフォーカスして、画面内（モーダルのスクロール領域を含む）に見える位置へスクロールする
+function focusOrderInput(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
 // 1列分（項目 or ダミー）の入力行を描く共通処理
 function renderOrderEditorList(containerId, values, opts) {
   const container = document.getElementById(containerId);
@@ -987,18 +995,18 @@ function renderOrderEditor(prefix, items, distractors, style) {
       const s = readOrderEditorState(prefix);
       // ★ 後ろに空の枠が残っていれば、新しく作らずそこへ移動する（初期の2枠など）
       const emptyAt = s.items.findIndex((v, k) => k > idx && !v.trim());
-      if (emptyAt >= 0) { document.getElementById(`${prefix}-item-${emptyAt}`).focus(); return; }
+      if (emptyAt >= 0) { focusOrderInput(`${prefix}-item-${emptyAt}`); return; }
       if (s.items.length >= ORDER_MAX) return;
       s.items.splice(idx + 1, 0, '');
       renderOrderEditor(prefix, s.items, s.distractors, s.style);
-      document.getElementById(`${prefix}-item-${idx + 1}`).focus();
+      focusOrderInput(`${prefix}-item-${idx + 1}`);
     },
     onAdd: () => {
       const s = readOrderEditorState(prefix);
       if (s.items.length >= ORDER_MAX) return;
       s.items.push('');
       renderOrderEditor(prefix, s.items, s.distractors, s.style);
-      document.getElementById(`${prefix}-item-${s.items.length - 1}`).focus();
+      focusOrderInput(`${prefix}-item-${s.items.length - 1}`);
     },
     onRemove: idx => {
       const s = readOrderEditorState(prefix);
@@ -1013,18 +1021,18 @@ function renderOrderEditor(prefix, items, distractors, style) {
     onEnter: idx => {
       const s = readOrderEditorState(prefix);
       const emptyAt = s.distractors.findIndex((v, k) => k > idx && !v.trim());
-      if (emptyAt >= 0) { document.getElementById(`${prefix}-dummy-${emptyAt}`).focus(); return; }
+      if (emptyAt >= 0) { focusOrderInput(`${prefix}-dummy-${emptyAt}`); return; }
       if (s.distractors.length >= ORDER_DISTRACTOR_MAX) return;
       s.distractors.splice(idx + 1, 0, '');
       renderOrderEditor(prefix, s.items, s.distractors, s.style);
-      document.getElementById(`${prefix}-dummy-${idx + 1}`).focus();
+      focusOrderInput(`${prefix}-dummy-${idx + 1}`);
     },
     onAdd: () => {
       const s = readOrderEditorState(prefix);
       if (s.distractors.length >= ORDER_DISTRACTOR_MAX) return;
       s.distractors.push('');
       renderOrderEditor(prefix, s.items, s.distractors, s.style);
-      document.getElementById(`${prefix}-dummy-${s.distractors.length - 1}`).focus();
+      focusOrderInput(`${prefix}-dummy-${s.distractors.length - 1}`);
     },
     onRemove: idx => {
       const s = readOrderEditorState(prefix);
