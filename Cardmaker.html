@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="8c33e2f64a">
-<script src="/Version.js?v=8c33e2f64a"></script>
+<meta name="app-version" content="a5a2a4a60f">
+<script src="/Version.js?v=a5a2a4a60f"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>CardMaker — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=8c33e2f64a">
-<link rel="stylesheet" href="/Cardmaker.css?v=8c33e2f64a">
+<link rel="stylesheet" href="/Style.css?v=a5a2a4a60f">
+<link rel="stylesheet" href="/Cardmaker.css?v=a5a2a4a60f">
 <!-- ★ 追加：数式（分数・ルートなど）をきれいに表示するためのKaTeX -->
 <!-- ★ 更新（2026/08/20）：0.16.11に出力エスケープ不備の既知脆弱性（Snyk:
      SNYK-JS-KATEX-8647963, Medium）があったため0.16.21以降へ更新。
@@ -343,10 +343,10 @@ window.addEventListener('error', function (e) {
           <button type="button" class="card-type-seg-btn" id="ta-order-style-list" aria-pressed="false">リストを並べる</button>
           <button type="button" class="card-type-seg-btn" id="ta-order-style-chips" aria-pressed="false">語句を選ぶ</button>
         </div>
-        <p class="csv-import-hint" style="margin-top:.25rem">正しい順番で上から入力してください（2〜10個）。プレイ時はシャッフルして出題されます。</p>
+        <p class="csv-import-hint" style="margin-top:.25rem">正しい順番で上から入力してください（2〜30個）。プレイ時はシャッフルして出題されます。</p>
         <div id="ta-order-rows"></div>
         <div id="ta-order-dummy-block" style="display:none">
-          <p class="csv-import-hint" style="margin-top:.5rem">ダミー語句（任意・5個まで）：正解には使わない、まぎらわしい語句を混ぜられます。</p>
+          <p class="csv-import-hint" style="margin-top:.5rem">ダミー語句（任意・15個まで）：正解には使わない、まぎらわしい語句を混ぜられます。</p>
           <div id="ta-order-dummy-rows"></div>
         </div>
       </div>
@@ -606,6 +606,12 @@ window.addEventListener('error', function (e) {
       <input type="checkbox" id="handwriting-checkbox" onchange="onHandwritingToggleChange()">
     </label>
 
+    <!-- ★ 英語の並び替えカードがあるときだけ表示。ONなら並び替えで、OFFなら項目を見せない通常カード（答えを見る）で出題する -->
+    <label class="reverse-toggle-row" id="order-mode-row" style="display:none" onclick="event.stopPropagation()">
+      <span>英語の並び替えを並び替えで解く（OFFで通常カード）</span>
+      <input type="checkbox" id="order-mode-checkbox" checked>
+    </label>
+
     <!-- ★ 続きから再開（前回途中で終えたデータがある時だけ表示） -->
     <div class="play-mode-item" id="play-mode-resume-item" onclick="startStudyMode('resume')" style="display:none">
       <span class="play-mode-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#0d9488"><path d="M7.5 4.8v14.4a1 1 0 0 0 1.5.87l11-7.2a1 1 0 0 0 0-1.74l-11-7.2a1 1 0 0 0-1.5.87Z" fill="currentColor" stroke="none"/></svg></span>
@@ -817,7 +823,7 @@ window.addEventListener('error', function (e) {
       </div>
       <div id="modal-edit-order-rows" style="margin-bottom:.5rem"></div>
       <div id="modal-edit-order-dummy-block" style="display:none">
-        <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">ダミー語句（任意・5個まで）</label>
+        <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">ダミー語句（任意・15個まで）</label>
         <div id="modal-edit-order-dummy-rows" style="margin-bottom:1rem"></div>
       </div>
     </div>
@@ -847,13 +853,13 @@ window.addEventListener('error', function (e) {
   <img id="img-lightbox-img" src="" alt="">
 </div>
 
-<script src="/Icons.js?v=8c33e2f64a"></script>
-<script src="/SwipeGuard.js?v=8c33e2f64a"></script>
-<script src="/Dropdown.js?v=8c33e2f64a"></script>
-<script src="/Common.js?v=8c33e2f64a"></script>
-<script src="/Cardmaker.js?v=8c33e2f64a"></script>
-<script src="/PendingDeleteCheck.js?v=8c33e2f64a"></script>
-<script src="/PendingShareCheck.js?v=8c33e2f64a"></script>
-<script src="/QuizRoomNotify.js?v=8c33e2f64a"></script>
+<script src="/Icons.js?v=a5a2a4a60f"></script>
+<script src="/SwipeGuard.js?v=a5a2a4a60f"></script>
+<script src="/Dropdown.js?v=a5a2a4a60f"></script>
+<script src="/Common.js?v=a5a2a4a60f"></script>
+<script src="/Cardmaker.js?v=a5a2a4a60f"></script>
+<script src="/PendingDeleteCheck.js?v=a5a2a4a60f"></script>
+<script src="/PendingShareCheck.js?v=a5a2a4a60f"></script>
+<script src="/QuizRoomNotify.js?v=a5a2a4a60f"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8c33e2f64a";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="a5a2a4a60f";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -826,13 +826,27 @@ function removeChoiceRow(prefix, idx) {
 const CARD_TYPES = ['normal', 'choice', 'order'];
 const CARD_TYPE_LABELS = { normal: '通常', choice: '選択式', order: '並び替え' };
 const ORDER_MIN = 2;              // 並び順の項目数の下限
-const ORDER_MAX = 10;             // 並び順の項目数の上限
-const ORDER_DISTRACTOR_MAX = 5;   // ダミー語句の上限（chips形式のみ）
+const ORDER_MAX = 30;             // 並び順の項目数の上限（サーバーの ORDER_ITEMS_MAX と揃える）
+const ORDER_DISTRACTOR_MAX = 15;  // ダミー語句の上限（chips形式のみ。サーバーの ORDER_DISTRACTORS_MAX と揃える）
 const ORDER_ITEM_MAXLEN = 80;     // 各項目・ダミーの最大文字数
 
 // ★ 項目が足りない書きかけの並び替えカードは採点できないので、通常カード扱いにする
 function isGradedOrderCard(c) {
+  if (studyOrderAsNormal && isEnglishOrderCard(c)) return false; // ★ 英語の並び替えは、ユーザーが選んだときだけ通常カード（答えを見る形式）で出す
   return !!c && c.type === 'order' && Array.isArray(c.order_items) && c.order_items.filter(x => String(x).trim()).length >= ORDER_MIN;
+}
+// 並び替えカードの項目が、記号・数字・空白を除いてすべて英字か（日本語の項目を含まないか）
+function isEnglishOrderCard(c) {
+  if (!c || c.type !== 'order' || !Array.isArray(c.order_items)) return false;
+  const letters = c.order_items.join('').match(/\p{L}/gu);
+  return !!letters && letters.every(ch => /[A-Za-z]/.test(ch));
+}
+// プレイ開始時のモーダルで、英語の並び替えカードがあるときだけ「並び替えで解く」トグルを出す
+function syncOrderModeRow(cards) {
+  const row = document.getElementById('order-mode-row');
+  if (!row) return;
+  document.getElementById('order-mode-checkbox').checked = true; // 既定は並び替え
+  row.style.display = (cards || []).some(isEnglishOrderCard) ? '' : 'none';
 }
 function isGradedCard(c) { return cardType(c) === 'choice' || isGradedOrderCard(c); }
 
@@ -931,6 +945,12 @@ function renderOrderEditorList(containerId, values, opts) {
     inp.placeholder = opts.placeholder(i);
     inp.style.marginBottom = '0';
     inp.value = val;
+    // ★ Enterで直後に新しい枠を作る（日本語入力の変換確定のEnterは除く）
+    inp.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      if (opts.onEnter) opts.onEnter(i);
+    });
     row.appendChild(num);
     row.appendChild(inp);
     if (values.length > opts.min) {
@@ -963,6 +983,13 @@ function renderOrderEditor(prefix, items, distractors, style) {
   renderOrderEditorList(`${prefix}-rows`, items, {
     idPrefix: `${prefix}-item`, numbered: true, min: ORDER_MIN, max: ORDER_MAX,
     placeholder: i => `${i + 1}番目`, removeTitle: 'この項目を削除', addLabel: '＋ 項目を追加',
+    onEnter: idx => {
+      const s = readOrderEditorState(prefix);
+      if (s.items.length >= ORDER_MAX) return;
+      s.items.splice(idx + 1, 0, '');
+      renderOrderEditor(prefix, s.items, s.distractors, s.style);
+      document.getElementById(`${prefix}-item-${idx + 1}`).focus();
+    },
     onAdd: () => {
       const s = readOrderEditorState(prefix);
       if (s.items.length >= ORDER_MAX) return;
@@ -980,6 +1007,13 @@ function renderOrderEditor(prefix, items, distractors, style) {
   renderOrderEditorList(`${prefix}-dummy-rows`, distractors, {
     idPrefix: `${prefix}-dummy`, numbered: false, min: 0, max: ORDER_DISTRACTOR_MAX,
     placeholder: () => 'ダミー語句（まぎらわしい語句）', removeTitle: 'このダミーを削除', addLabel: '＋ ダミー語句を追加',
+    onEnter: idx => {
+      const s = readOrderEditorState(prefix);
+      if (s.distractors.length >= ORDER_DISTRACTOR_MAX) return;
+      s.distractors.splice(idx + 1, 0, '');
+      renderOrderEditor(prefix, s.items, s.distractors, s.style);
+      document.getElementById(`${prefix}-dummy-${idx + 1}`).focus();
+    },
     onAdd: () => {
       const s = readOrderEditorState(prefix);
       if (s.distractors.length >= ORDER_DISTRACTOR_MAX) return;
@@ -1054,6 +1088,7 @@ let _fourChoiceAiRunToken = 0; // ★ 学習をやり直した際、古いAI問�
 //   choices/correct_indices を持っているためstudyChoicesMapは使わない
 //   （currentStudyChoiceEntry参照）。
 let studyIsQuizDeck = false;
+let studyOrderAsNormal = false; // ★ 英語の並び替えカードを通常カードとして出すか（startStudyModeで決定）
 // cardKey → isCorrect（そのカードの最新の正誤）。素点ではなく採点済みカードの
 // 集合として持つことで、「← 前へ」で戻って答え直しても二重加点しない
 // （最新の判定で上書きされるだけになる）。
@@ -5207,6 +5242,7 @@ async function openFolderPlayMode(folderId) {
 
   const allCount = folderPlayDecks.reduce((s, d) => s + d.cards.length, 0);
   document.getElementById('play-mode-all-sub').textContent = `${allCount} 問`;
+  syncOrderModeRow(folderPlayDecks.flatMap(d => d.cards));
 
   const unsureCount = folderPlayDecks.reduce((s, d) => {
     const unsure = getUnsureSet(d.id);
@@ -5334,6 +5370,7 @@ async function openPlayMode(deckId) {
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   setPlayModeDesc(deck.description); // ★ 追加：デッキの説明があれば表示する
   document.getElementById('play-mode-all-sub').textContent = `${deck.cards.length} 問`;
+  syncOrderModeRow(deck.cards);
   const unsure = getUnsureSet(deckId);
   const unsureCount = deck.cards.filter(c => unsure.has(cardKey(c))).length;
   const unsureItem = document.getElementById('play-mode-unsure-item');
@@ -5425,6 +5462,8 @@ async function startStudyMode(mode) {
   //   チェックボックスを読まず、下のstudyIsQuizDeck分岐で通常の学習画面をクイズモードで使う。
   const quizDeck = !studyIsFolder ? decks.find(d => d.id === studyDeckId) : null;
   studyIsQuizDeck = isQuizPlayDeck(quizDeck);
+  const orderRow = document.getElementById('order-mode-row');
+  studyOrderAsNormal = !!orderRow && orderRow.style.display !== 'none' && !document.getElementById('order-mode-checkbox').checked;
 
   if (!studyIsQuizDeck) {
     studyReverse = document.getElementById('reverse-mode-checkbox').checked;
