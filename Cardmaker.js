@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="f7b5109490";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8127234d53";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5847,7 +5847,7 @@ async function scheduleFourChoiceAiEnhancement(skipKeys) {
       res = await fetch(`${API_BASE}cardmaker_ai_distractors`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, items }),
-        signal: AbortSignal.timeout(25000 * items.length + 30000),
+        signal: AbortSignal.timeout(60000 * items.length + 40000), // ★ サーバーの待ち時間（max(90, 60×問数)秒）より長くする
       });
     } catch (e) { return; } // ★ 通信エラー等はここで静かに諦める（既存の4択のまま使える）
     if (myToken !== _fourChoiceAiRunToken) return;
