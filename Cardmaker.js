@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7b24bc851b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="820aad2279";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -721,7 +721,7 @@ function cardToServerPayload(c) {
 //   デッキ全体の保存を拒否するため、条件を満たさない（書きかけ・壊れた）カードは送らない。
 //   通常の作成・編集フォームでは保存時に必ず検証しているので、ここで弾かれるのは
 //   CSVや古いデータ由来の例外的なカードだけのはず。
-function serverPayloadCards(deck) {
+function serverPayloadCards(deck, quiet = false) {
   const out = [];
   let skipped = 0;
   for (const c of (deck.cards || [])) {
@@ -729,7 +729,7 @@ function serverPayloadCards(deck) {
     if (p.type === 'order' && (p.order_items.length < ORDER_MIN || p.order_items.length > ORDER_MAX)) { skipped++; continue; }
     out.push(p);
   }
-  if (skipped) {
+  if (skipped && !quiet) {
     console.warn(`[CardMaker] 並び順が未完成の並び替えカード ${skipped} 枚はサーバーへ送らずにスキップしました`);
     // ★ 利用者に黙って消えないよう通知する（書きかけカードは端末内には残る）
     if (typeof showBanner === 'function') showBanner(`並び順が未完成の並び替えカード${skipped}枚は、サーバーへ保存されていません。項目を2個以上にして保存し直してください`, '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
@@ -2214,7 +2214,9 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
   //     何らかの理由でサーバーへの同期がまだ済んでいない状態でも、
   //     「今ローカルにある枚数より減っている」場合は同じく異常とみなし、
   //     せっかく手元にあるカードを空／少ない件数で上書きしないようにする。
-  const knownCount = deck.cardsLoaded ? deck.cards.length : 0;
+  // ★ サーバーへ送れない書きかけの並び替えカードは端末にしか無く、サーバーの件数には含まれない。
+  //   数に入れると毎回「件数が少ない」と誤判定して読み込みが永久に失敗するため、送れる枚数だけで比べる
+  const knownCount = deck.cardsLoaded ? serverPayloadCards(deck, true).length : 0;
   const metaCount = typeof deck.count === 'number' ? deck.count : 0;
   const expectedCount = Math.max(knownCount, metaCount) || null;
   // ★ カード枚数が多い（＝データ量が大きい）デッキほどタイムアウトを延ばす

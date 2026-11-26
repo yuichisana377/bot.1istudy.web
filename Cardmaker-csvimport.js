@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-csvimport.js"]="7b24bc851b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-csvimport.js"]="820aad2279";/*@end*/// ============================================================
 //  Cardmaker-csvimport.js — CardMaker「CSV一括読み込み」機能（遅延読み込みチャンク）
 //  ─────────────────────────────────────────────
 //  ★ Cardmaker.js から分離。デッキ一覧・編集画面の初期表示には不要な
@@ -277,7 +277,7 @@ async function handleChoiceCsvImport(event) {
 //  列：種別, 問題, 解答, 解説, 選択肢1〜5, 正解, 並び順, ダミー（見出しの名前で列を探すので順不同でよい）
 //  ・種別は「通常／選択式／並び替え」（normal/choice/order も可）。空欄なら「通常」。
 //  ・並び順・ダミーは項目を「|」で区切る。項目内の「|」は「\|」、「\」は「\\」と書く。
-//  ・CSVは並び替えの形式（一覧／語句）を持たないので、ダミーがあれば「語句」、無ければ「一覧」とみなす。
+//  ・CSVに「形式」列（リスト／語句）があればそれに従う。無い古いCSVはダミー語句の有無で推定するので、ダミーがあれば「語句」、無ければ「一覧」とみなす。
 //  ・並び替えの項目数などが条件を満たさない行は取り込まずにスキップする（件数を最後に知らせる）。
 // ============================================================
 const UNIFIED_CSV_TYPE_ALIASES = {
@@ -375,7 +375,8 @@ async function importUnifiedCsvRows(deck, cols, dataRows) {
       dummies = dummies.filter(x => x);
       // 形式列があればそれを優先（語句=chips / リスト=list）。無い旧CSVはダミーの有無で推定
       const styleCell = cell(r, cols.styleIdx);
-      const style = styleCell ? (['語句', 'chips'].includes(styleCell.toLowerCase()) ? 'chips' : 'list') : (dummies.length ? 'chips' : 'list');
+      const sc = styleCell.toLowerCase();
+      const style = ['語句', 'chips'].includes(sc) ? 'chips' : (['リスト', '一覧', 'list'].includes(sc) ? 'list' : (dummies.length ? 'chips' : 'list'));
       const err = orderFieldsError(items, dummies, style);
       if (err) { skippedInvalid++; invalidReasons.push(err); continue; }
       applyCardTypeFields(card, 'order', { items, distractors: dummies, style });

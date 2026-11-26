@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="7b24bc851b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="820aad2279";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1528,6 +1528,9 @@ function renderQuizImages(container, qIndex, kind, count) {
       else {
         img.remove();
         if (!container.querySelector('img')) container.style.display = 'none';
+        // 一時的な通信エラーで画像が出ないままにならないよう、数秒後に最大2回だけ取り直す
+        const n = Number(container.dataset.retry || 0);
+        if (n < 2) setTimeout(() => { if (container.dataset.sig === sig) { container.dataset.retry = String(n + 1); container.dataset.sig = ''; } }, 3000);
       }
     });
   }
