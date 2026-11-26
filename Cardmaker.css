@@ -68,7 +68,7 @@ html, body {
   gap: .75rem;
   position: sticky; top: 0; z-index: 100; flex-shrink: 0;
 }
-.topbar-title { font-size: 16px; font-weight: 700; flex: 1; }
+.topbar-title { font-size: 16px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* ★ 長いデッキ名が右のボタンへはみ出さないよう、はみ出す分は「…」で省略する */
 .topbar-title-editable { cursor: pointer; text-decoration: underline dotted var(--text-secondary); text-underline-offset: 4px; }
 .topbar-back {
   width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
