@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="d7a7fb2dfc";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="b89a347695";/*@end*/// ============================================================
 //  Cardmaker-handwriting.js — 手書き解答パッド（漢字モード）
 //  ─────────────────────────────────────────────
 //  学習画面（screen-study）の自動採点で、解答入力欄の上に手書きキャンバスを出す。
@@ -138,6 +138,19 @@
     if (strokes.length) scheduleRecognize();
     else { setStatus(''); el('study-answer-input').value = ''; }
   };
+  // 書く場所の大きさ（普通／大きい）を切り替える。高さだけ変わるので、書いた線はそのまま残る。
+  function applySize(big) {
+    if (!canvas) return;
+    canvas.classList.toggle('big', big);
+    const b = el('hw-size-btn');
+    if (b) b.textContent = big ? '小さくする' : '大きくする';
+    redraw();
+  }
+  window.hwToggleSize = function () {
+    const big = !canvas.classList.contains('big');
+    applySize(big);
+    try { localStorage.setItem('cm-hw-big', big ? '1' : '0'); } catch (_) {}
+  };
   // 学習画面のカードが切り替わった時／手書きモードの表示を切り替える時に呼ぶ
   window.hwSetup = function (enabled) {
     const wrap = el('study-handwriting-wrap');
@@ -154,6 +167,9 @@
       window.addEventListener('resize', redraw);
     }
     window.hwClear();
+    let big = false;
+    try { big = localStorage.getItem('cm-hw-big') === '1'; } catch (_) {}
+    applySize(big);
     requestAnimationFrame(redraw);
   };
 })();
