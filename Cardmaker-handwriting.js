@@ -1,9 +1,9 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="e5b0396455";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="d7a7fb2dfc";/*@end*/// ============================================================
 //  Cardmaker-handwriting.js — 手書き解答パッド（漢字モード）
 //  ─────────────────────────────────────────────
 //  学習画面（screen-study）の自動採点で、解答入力欄の上に手書きキャンバスを出す。
 //  ・書き終えて少し待つと /handwriting（functions/handwriting.js）へストロークを送り、
-//    認識結果の第1候補を解答入力欄へ自動入力する（候補チップで差し替え可能）。
+//    認識結果の最も可能性の高い第1候補だけを解答入力欄へ自動入力する（他の候補は出さない）。
 //  ・入力欄は手で直せるので、認識が外れても／通信に失敗しても採点できる。
 //  ・採点そのものは既存のgradeCurrentAnswer（入力欄の文字と正解の一致判定）をそのまま使う。
 // ============================================================
@@ -96,20 +96,6 @@
 
   function setStatus(text) { const s = el('hw-status'); if (s) s.textContent = text; }
 
-  function renderCandidates(cands) {
-    const box = el('hw-candidates');
-    if (!box) return;
-    box.innerHTML = '';
-    cands.forEach(c => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'hw-cand';
-      b.textContent = c;
-      b.onclick = () => { el('study-answer-input').value = c; };
-      box.appendChild(b);
-    });
-  }
-
   async function recognize() {
     if (!strokes.length) return;
     const my = ++seq;
@@ -128,11 +114,9 @@
       if (my !== seq) return; // 認識中にさらに書き足された／消された
       if (!data.ok || !data.candidates || !data.candidates.length) throw new Error(data.error || 'no_result');
       el('study-answer-input').value = data.candidates[0];
-      renderCandidates(data.candidates.slice(0, 6));
-      setStatus('認識結果（違う時は下の候補か直接入力で直せます）');
+      setStatus('認識結果（違う時は書き直すか、下の欄で直接直せます）');
     } catch (e) {
       if (my !== seq) return;
-      renderCandidates([]);
       setStatus('認識できませんでした。もう一度書くか、下の欄に直接入力してください');
     }
   }
@@ -142,7 +126,6 @@
     clearTimeout(timer); seq++;
     strokes = []; cur = null;
     if (canvas) redraw();
-    renderCandidates([]);
     setStatus('');
     const input = el('study-answer-input');
     if (input) input.value = '';
@@ -153,7 +136,7 @@
     strokes.pop();
     redraw();
     if (strokes.length) scheduleRecognize();
-    else { renderCandidates([]); setStatus(''); el('study-answer-input').value = ''; }
+    else { setStatus(''); el('study-answer-input').value = ''; }
   };
   // 学習画面のカードが切り替わった時／手書きモードの表示を切り替える時に呼ぶ
   window.hwSetup = function (enabled) {
