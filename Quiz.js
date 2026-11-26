@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="aaa3da266c";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="3d3359f059";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -368,6 +368,8 @@ async function joinRoomByCode(code) {
   code = (code || '').trim().toUpperCase();
   if (!code) return;
   stopRoomListPolling();
+  // ★ このタブで「ゲストとして参加」済みなら、再読み込みしてもゲストとして復帰する（アカウント側に入り直して幽霊ゲストを残さない）
+  try { if (sessionStorage.getItem(guestStoreKey(code))) { startGuestFlow(code); return; } } catch (e) {}
   let data = await apiPost('quiz_join', withAuth({ code }));
   if (!data.ok && data.error === 'already_on_other_device') {
     // ★ 同じアカウントが別の端末で参加中：この端末に移るか、ゲストとして入るかを選ばせる
@@ -414,6 +416,7 @@ function quizErrorText(code) {
     room_not_found: 'そのコードのクイズは見つかりませんでした',
     quiz_already_started: 'このクイズはもう始まっています',
     not_logged_in: 'ログインが切れています。ログインし直してください',
+    moved_to_other_device: 'このアカウントは別の端末に移動しました。この端末では操作できません',
     invalid_nickname: 'ニックネームは1〜12文字で入力してください',
     nickname_taken: 'そのニックネームはこのクイズで既に使われています。別のものにしてください',
     room_full: 'このクイズのゲスト参加の人数がいっぱいです',
