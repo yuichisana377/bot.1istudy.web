@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="a071e6b95d";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="f7b5109490";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -985,6 +985,9 @@ function renderOrderEditor(prefix, items, distractors, style) {
     placeholder: i => `${i + 1}番目`, removeTitle: 'この項目を削除', addLabel: '＋ 項目を追加',
     onEnter: idx => {
       const s = readOrderEditorState(prefix);
+      // ★ 後ろに空の枠が残っていれば、新しく作らずそこへ移動する（初期の2枠など）
+      const emptyAt = s.items.findIndex((v, k) => k > idx && !v.trim());
+      if (emptyAt >= 0) { document.getElementById(`${prefix}-item-${emptyAt}`).focus(); return; }
       if (s.items.length >= ORDER_MAX) return;
       s.items.splice(idx + 1, 0, '');
       renderOrderEditor(prefix, s.items, s.distractors, s.style);
@@ -1009,6 +1012,8 @@ function renderOrderEditor(prefix, items, distractors, style) {
     placeholder: () => 'ダミー語句（まぎらわしい語句）', removeTitle: 'このダミーを削除', addLabel: '＋ ダミー語句を追加',
     onEnter: idx => {
       const s = readOrderEditorState(prefix);
+      const emptyAt = s.distractors.findIndex((v, k) => k > idx && !v.trim());
+      if (emptyAt >= 0) { document.getElementById(`${prefix}-dummy-${emptyAt}`).focus(); return; }
       if (s.distractors.length >= ORDER_DISTRACTOR_MAX) return;
       s.distractors.splice(idx + 1, 0, '');
       renderOrderEditor(prefix, s.items, s.distractors, s.style);
