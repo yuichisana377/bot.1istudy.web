@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="917c048d05";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="1ad3a0cb6f";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -932,7 +932,7 @@ function focusOrderInput(id) {
   const el = document.getElementById(id);
   if (!el) return;
   el.focus({ preventScroll: true });
-  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // 1列分（項目 or ダミー）の入力行を描く共通処理

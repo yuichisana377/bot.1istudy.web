@@ -447,9 +447,10 @@ html, body {
 .qp-choice-btn {
   width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r-md);
   border: 2px solid var(--border); background: var(--surface); color: var(--text);
-  font-size: 15px; font-weight: 600; cursor: pointer; white-space: pre-wrap; word-break: break-word;
+  font-size: 15px; font-weight: 600; cursor: pointer; word-break: break-word;
   transition: opacity .15s, border-color .15s, background .15s;
 }
+.qp-choice-btn span[id^="study-choice-text-"] { white-space: pre-wrap; }
 .qp-choice-btn:active:not(:disabled) { opacity: .85; }
 .qp-choice-btn:disabled { cursor: not-allowed; }
 .qp-choice-btn.qp-correct  { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
