@@ -783,6 +783,7 @@ let menuTargetId   = null;
 let imgBuf = { q:[], a:[], e:[] };
 let studyCards = [], studyIdx = 0;
 let studyReverse = false; // ★ 追加：問題と解答を逆にするモードかどうか
+let studyHandwriting = false; // ★ 追加：手書きで答える（文字認識で解答欄へ入力）モードかどうか
 let studyAutoGrade = false; // ★ 追加：解答入力欄で自動採点するモードかどうか（反転モード時は常にfalse）
 let studyMode = 'all'; // ★ 追加：'all' | 'unsure'（続きから再開時に同じ絞り込みを再現するため）
 // ★ 追加：自動採点＋「4択にする」モード（みんなでクイズと同じ形式で解答する）。
@@ -1834,6 +1835,8 @@ async function fetchAndMergeDecks() {
       cardsLoaded: !!keepLoadedCards,
       filename: s.filename,
       count: s.count,
+      // ★ 漢字デッキかどうか。サーバーが返さない場合は、この端末に残っている値を引き継ぐ
+      kanjiMode: s.kanji_mode || (existing && existing.kanjiMode) || null,
       choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（旧データの互換のため "single"/"multi" 文字列も truthy として扱う）
       // ★ 追加（2026/08/21）：クイズ過去問デッキかどうか。以前はフォルダの位置
       //   （isDeckInFolderScope）だけで判定していたが、外のフォルダへ移動できる
@@ -2655,9 +2658,11 @@ async function startEdit() {
   // ★ 追加：多肢選択デッキにするか（null=通常のフラッシュカードデッキ / true=選択式デッキ）。
   //   単一正解/複数正解はデッキ単位では決めず、問題ごとに正解チェックの数で自動的に決まる。
   const choiceMode = document.getElementById('new-choice-mode-enabled').checked ? true : null;
+  // ★ 追加：漢字デッキにするか（プレイ時に手書き解答がデフォルトになる。多肢選択とは排他）
+  const kanjiMode = !choiceMode && document.getElementById('new-kanji-mode-enabled').checked ? true : null;
   // ★ notYetPublished: まだ一度も「公開して保存」（完成／未完成の選択）を経ていないことを表す。
   //   これが true の間は、カードが何枚あっても常に「作成中」バッジとして扱う（プレイ不可・編集は可）。
-  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true, choiceMode };
+  const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true, choiceMode, kanjiMode };
   decks.push(deck); saveDecks(decks);
   // ★ 追加：公開予定なら、この時点（作成ボタンを押した直後）でサーバーにも
   //   「まだ中身は空・作成中」として登録し、他の人の一覧にもすぐ表示されるようにする。
@@ -2706,6 +2711,7 @@ async function announceNewDeckToServer(deckId) {
         publisher_nickname: session ? session.nickname : '匿名',
         silent: true,      // ★ 作成しただけなのでDiscord通知はしない
         incomplete: true,  // ★ まだ「保存して公開」を経ていないので「未完成（作成中）」扱いにする
+        kanji_mode: deck.kanjiMode || null, // ★ 漢字デッキかどうか
         choice_mode: deck.choiceMode || null, // ★ 多肢選択デッキかどうか
       }),
       signal: controller.signal,
@@ -3002,7 +3008,8 @@ async function publishDeck(deckId, isComplete = true) {
     silent: !isComplete, // ★ 未完成として公開する場合は通知しない
     incomplete: !isComplete, // ★ 未完成フラグをサーバーに保存し、他の人の端末にも表示させる
     first_publish: isFirstPublish, // ★ 追加：通知文言を「公開」/「更新」どちらにするか判定するためのヒント
-    choice_mode: deck.choiceMode || null, // ★ 追加：多肢選択デッキかどうか
+    kanji_mode: deck.kanjiMode || null, // ★ 漢字デッキかどうか
+        choice_mode: deck.choiceMode || null, // ★ 追加：多肢選択デッキかどうか
   };
   if (deck.filename) body.filename = deck.filename;
   try {
@@ -4170,6 +4177,7 @@ async function syncDeckToServer(deck) {
         publisher_nickname: deck.published_by || (session ? session.nickname : '匿名'),
         silent: true, // ★ 通知しない
         incomplete: !!deck.incomplete, // ★ 未完成フラグを維持したままサーバーへ反映する
+        kanji_mode: deck.kanjiMode || null, // ★ 漢字デッキかどうか
         choice_mode: deck.choiceMode || null, // ★ 多肢選択デッキかどうかを維持したまま反映する
       }),
       signal: AbortSignal.timeout(10000),
@@ -4707,6 +4715,7 @@ function saveStudyProgress() {
     mode: studyMode,
     reverse: studyReverse,
     autoGrade: studyAutoGrade, // ★ 追加：自動採点モードだったかどうかを保存し、再開時に復元する
+    handwriting: studyHandwriting, // ★ 手書きモードだったかどうか
     fourChoice: studyFourChoice, // ★ 追加：「4択にする」設定だったかどうかを保存し、再開時に復元する
     shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
     // ★ 追加：クイズ過去問・多肢選択デッキをプレイ中なら、ここまでの各問題の正誤も
@@ -4820,6 +4829,7 @@ async function openFolderPlayMode(folderId) {
   document.getElementById('reverse-mode-checkbox').checked = false;
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：モーダルを開くたびに未チェックへリセット
   document.getElementById('four-choice-checkbox').checked = false; // ★ 追加：「4択にする」も未チェックへリセット
+  document.getElementById('handwriting-checkbox').checked = false; // ★ 手書きも未チェックへリセット（漢字デッキは下で自動ON）
   onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点・4択にするトグルを表示状態にする
   onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
   setIconText(document.getElementById('play-mode-deck-name'), folder ? Icons.cmHtml('folder', {size:15}) : '', folder ? folder.name : 'フォルダ');
@@ -4911,6 +4921,7 @@ async function openPlayMode(deckId) {
   document.getElementById('reverse-mode-checkbox').checked = false; // ★ プレイモード選択のたびに未チェックへリセット
   document.getElementById('auto-grade-checkbox').checked = false; // ★ 追加：自動採点トグルも未チェックへリセット
   document.getElementById('four-choice-checkbox').checked = false; // ★ 追加：「4択にする」も未チェックへリセット
+  document.getElementById('handwriting-checkbox').checked = false; // ★ 手書きも未チェックへリセット（漢字デッキは下で自動ON）
   // ★ 追加：クイズ過去問・多肢選択デッキは反転モード・自動採点系のトグル自体を出さない
   const isQuizDeck = isQuizPlayDeck(deck);
   document.getElementById('reverse-toggle-row').style.display = isQuizDeck ? 'none' : '';
@@ -4920,6 +4931,12 @@ async function openPlayMode(deckId) {
   } else {
     onReverseModeToggleChange(); // ★ 追加：反転OFFなので自動採点・4択にするトグルを表示状態にする
     onAutoGradeToggleChange(); // ★ 追加：自動採点OFFなので「4択にする」も未チェックのまま揃えておく
+  }
+  if (isQuizDeck) document.getElementById('handwriting-toggle-row').style.display = 'none';
+  // ★ 漢字デッキは、最初から「手書きで答える」（＋自動採点）をONにしておく
+  if (!isQuizDeck && deck.kanjiMode) {
+    document.getElementById('handwriting-checkbox').checked = true;
+    onHandwritingToggleChange();
   }
   document.getElementById('play-mode-deck-name').textContent = deck.name;
   setPlayModeDesc(deck.description); // ★ 追加：デッキの説明があれば表示する
@@ -4956,13 +4973,31 @@ async function openPlayMode(deckId) {
 // ★ 追加：反転モードのON/OFFに応じて自動採点トグルの表示を切り替える。
 //   反転モード（問題と解答を逆にする）中は自動採点の対象がずれてしまうため、
 //   反転ONの間はトグル自体を隠し、内部的にもOFFへ強制的に戻しておく。
+// ★ 追加：新規デッキ作成画面で「多肢選択」と「漢字」は同時にONにできない
+function onNewDeckModeToggle(which) {
+  const choice = document.getElementById('new-choice-mode-enabled');
+  const kanji = document.getElementById('new-kanji-mode-enabled');
+  if (which === 'choice' && choice.checked) kanji.checked = false;
+  if (which === 'kanji' && kanji.checked) choice.checked = false;
+}
+
+// ★ 追加：「手書きで答える」をONにしたら自動採点もONにし、「4択にする」はOFFにする
+function onHandwritingToggleChange() {
+  if (!document.getElementById('handwriting-checkbox').checked) return;
+  const autoGrade = document.getElementById('auto-grade-checkbox');
+  if (!autoGrade.checked) autoGrade.checked = true;
+  document.getElementById('four-choice-checkbox').checked = false;
+}
+
 function onReverseModeToggleChange() {
   const reversed = document.getElementById('reverse-mode-checkbox').checked;
   document.getElementById('auto-grade-toggle-row').style.display = reversed ? 'none' : '';
   document.getElementById('four-choice-toggle-row').style.display = reversed ? 'none' : ''; // ★ 4択にするも反転モード中は他と同様に隠す
+  document.getElementById('handwriting-toggle-row').style.display = reversed ? 'none' : ''; // ★ 手書きも同様
   if (reversed) {
     document.getElementById('auto-grade-checkbox').checked = false;
     document.getElementById('four-choice-checkbox').checked = false; // ★ 4択も強制OFF
+    document.getElementById('handwriting-checkbox').checked = false; // ★ 手書きも強制OFF
   }
 }
 
@@ -4970,7 +5005,10 @@ function onReverseModeToggleChange() {
 //   チェックだけ残ると見た目と実際の挙動（studyFourChoiceの判定）がズレてしまう）。
 function onAutoGradeToggleChange() {
   const on = document.getElementById('auto-grade-checkbox').checked;
-  if (!on) document.getElementById('four-choice-checkbox').checked = false;
+  if (!on) {
+    document.getElementById('four-choice-checkbox').checked = false;
+    document.getElementById('handwriting-checkbox').checked = false;
+  }
 }
 
 // ★ 追加：「4択にする」を折りたたまず常に表示するようにしたのに伴い、ONにした瞬間に
@@ -4980,6 +5018,7 @@ function onFourChoiceToggleChange() {
   if (!document.getElementById('four-choice-checkbox').checked) return;
   const autoGrade = document.getElementById('auto-grade-checkbox');
   if (!autoGrade.checked) { autoGrade.checked = true; onAutoGradeToggleChange(); }
+  document.getElementById('handwriting-checkbox').checked = false; // ★ 手書きとは同時に使えない
 }
 
 // ★ クイズ過去問・多肢選択デッキのカードのうち、選択式として遊べるものだけに絞り、
@@ -5007,10 +5046,12 @@ async function startStudyMode(mode) {
     // ★ 追加：自動採点は反転モードでない場合のみ有効にする（反転中はトグル自体を隠しているが念のため二重に保険）
     studyAutoGrade = !studyReverse && document.getElementById('auto-grade-checkbox').checked;
     studyFourChoice = studyAutoGrade && document.getElementById('four-choice-checkbox').checked;
+    studyHandwriting = studyAutoGrade && !studyFourChoice && document.getElementById('handwriting-checkbox').checked;
   } else {
     studyReverse = false;
     studyAutoGrade = false;
     studyFourChoice = false;
+    studyHandwriting = false;
   }
 
   // ★ 追加：「すべてのカード」「わからないカードだけ」を選んだ場合、
@@ -5031,6 +5072,9 @@ async function startStudyMode(mode) {
 
   closeModal('modal-play-mode');
 
+  // ★ 手書きパッド（別ファイル）は、使う時にだけ読み込む（続きから再開の場合は復元後に下で読む）
+  if (studyHandwriting) await loadChunkWithFeedback('handwriting', '/Cardmaker-handwriting.js');
+
   if (mode === 'resume') {
     // ★ 保存された進捗（カードキーの並び順・位置・モード・反転設定・シャッフル済みか）を復元する。
     //   カード本体は常に最新の decks / folderPlayDecks から引き直すので、
@@ -5040,6 +5084,8 @@ async function startStudyMode(mode) {
     studyReverse = studyIsQuizDeck ? false : saved.reverse;
     studyAutoGrade = studyIsQuizDeck ? false : (!saved.reverse && !!saved.autoGrade); // ★ 追加：保存されていた自動採点設定を復元
     studyFourChoice = studyIsQuizDeck ? false : (studyAutoGrade && !!saved.fourChoice); // ★ 追加：保存されていた「4択にする」設定を復元
+    studyHandwriting = studyIsQuizDeck ? false : (studyAutoGrade && !studyFourChoice && !!saved.handwriting); // ★ 手書きモードも復元
+    if (studyHandwriting) await loadChunkWithFeedback('handwriting', '/Cardmaker-handwriting.js');
     studyMode = saved.mode || 'all';
     studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
     // ★ 追加：クイズ過去問デッキは、保存されていた「これまでの各問題の正誤」も復元する
@@ -5632,6 +5678,8 @@ function renderStudyCard() {
   const choiceWrap = document.getElementById('study-choice-wrap');
   answerInputWrap.style.display = choiceEntry ? 'none' : '';
   answerInput.value = '';
+  // ★ 手書きモード：選択式にならないカードでは手書きパッドを出す（入力欄は認識結果の表示・修正用）
+  if (typeof hwSetup === 'function') hwSetup(studyHandwriting && !choiceEntry);
   choiceWrap.style.display = choiceEntry ? '' : 'none';
   document.getElementById('reveal-answer-btn').style.display = choiceEntry ? 'none' : '';
   if (choiceEntry) {
@@ -6068,6 +6116,7 @@ async function loadChunksInBackground() {
     ['listview', '/Cardmaker-listview.js'],
     ['csvimport', '/Cardmaker-csvimport.js'],
     ['cardreorder', '/Cardmaker-cardreorder.js'],
+    ['handwriting', '/Cardmaker-handwriting.js'],
   ];
   for (const [name, src] of chunks) {
     try { await loadChunk(name, src); } catch (e) { console.warn('[cardmaker]', e); }

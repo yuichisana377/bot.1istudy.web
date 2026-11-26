@@ -257,7 +257,14 @@ window.addEventListener('error', function (e) {
            （デッキ全体では統一しない）。 -->
       <label class="reverse-toggle-row" style="width:100%;max-width:360px" onclick="event.stopPropagation()">
         <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#db2777"><circle cx="12" cy="12" r="8" fill="currentColor" fill-opacity=".16" stroke-width="2"/><circle cx="12" cy="12" r="3.6" fill="currentColor" stroke="none"/></svg> 多肢選択デッキにする</span>
-        <input type="checkbox" id="new-choice-mode-enabled">
+        <input type="checkbox" id="new-choice-mode-enabled" onchange="onNewDeckModeToggle('choice')">
+      </label>
+      <!-- ★ 追加：漢字デッキにするかどうか。問題（読み・意味・文など）と解答（漢字）を
+           通常どおり入力して作る。プレイする人は、自動採点で解答を「手書き」で書くと
+           文字認識（OCR）して採点してもらえる。多肢選択デッキとは同時にできない。 -->
+      <label class="reverse-toggle-row" style="width:100%;max-width:360px" onclick="event.stopPropagation()">
+        <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg> 漢字デッキにする（手書きで採点）</span>
+        <input type="checkbox" id="new-kanji-mode-enabled" onchange="onNewDeckModeToggle('kanji')">
       </label>
       <input class="set-name-input" id="new-set-name" type="text"
              placeholder="セット名を入力" maxlength="60"
@@ -416,6 +423,20 @@ window.addEventListener('error', function (e) {
           <div class="expl-text" id="study-e-text"></div>
         </div>
       </div>
+      <!-- ★ 追加：手書きで答えるモード（漢字デッキ等）の時だけ表示する手書きパッド。
+           書いた文字は文字認識して、すぐ下の解答入力欄へ自動で入力する（Cardmaker-handwriting.js） -->
+      <div class="study-hw-wrap" id="study-handwriting-wrap" style="display:none">
+        <div class="hw-canvas-box">
+          <canvas id="hw-canvas" class="hw-canvas"></canvas>
+          <div class="hw-hint" id="hw-hint">ここに指やペンで解答を書いてください</div>
+        </div>
+        <div class="hw-tools">
+          <button type="button" class="btn btn-ghost hw-tool-btn" onclick="hwUndo()">1画戻す</button>
+          <button type="button" class="btn btn-ghost hw-tool-btn" onclick="hwClear()">全部消す</button>
+        </div>
+        <div class="hw-candidates" id="hw-candidates"></div>
+        <div class="hw-status" id="hw-status"></div>
+      </div>
       <!-- ★ 追加：自動採点モードの時だけ表示する解答入力欄 -->
       <div class="study-answer-input-wrap" id="study-answer-input-wrap" style="display:none">
         <input type="text" class="study-answer-input" id="study-answer-input"
@@ -556,6 +577,12 @@ window.addEventListener('error', function (e) {
     <label class="reverse-toggle-row" id="four-choice-toggle-row" onclick="event.stopPropagation()">
       <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M8.4 14.6l2 2 4.2-4.6"/></svg> 4択にする（みんなでクイズと同じ形式）</span>
       <input type="checkbox" id="four-choice-checkbox" onchange="onFourChoiceToggleChange()">
+    </label>
+    <!-- ★ 追加：手書きで答える（文字認識で解答欄へ入力して自動採点）。漢字デッキでは最初からON。
+         ONにすると自動採点も自動でONになり、「4択にする」とは同時に使えない。 -->
+    <label class="reverse-toggle-row" id="handwriting-toggle-row" onclick="event.stopPropagation()">
+      <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg> 手書きで答える（漢字など）</span>
+      <input type="checkbox" id="handwriting-checkbox" onchange="onHandwritingToggleChange()">
     </label>
 
     <!-- ★ 続きから再開（前回途中で終えたデータがある時だけ表示） -->
