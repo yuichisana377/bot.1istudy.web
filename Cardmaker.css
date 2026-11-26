@@ -291,7 +291,7 @@ html, body {
   flex: 0 0 auto; width: 190px; background: var(--surface);
   border-radius: var(--r-lg); box-shadow: var(--shadow);
   padding: .9rem .95rem; cursor: pointer;
-  border-left: 4px solid var(--accent);
+  border-left: 4px solid var(--warn);
 }
 .inprogress-card:active { background: var(--bg); }
 .inprogress-subject {
@@ -425,7 +425,7 @@ html, body {
    下の方にある「学習画面の完走演出」用の`.study-done`（centerレイアウト・大きい文字）と
    名前が衝突し、デッキ一覧の完了済みデッキカードがその見た目（中央寄せ・特大表示）に
    化けてしまっていた。他の既存クラスと衝突しない専用名（deck-status-*）に変更した。 */
-.deck-card.deck-status-doing { border-left: 4px solid var(--accent); }
+.deck-card.deck-status-doing { border-left: 4px solid var(--warn); }
 .deck-card.deck-status-done  { border-left: 4px solid var(--ok); }
 
 /* ── カード編集/作成フォームの選択式入力欄（choice-mode） ── */
