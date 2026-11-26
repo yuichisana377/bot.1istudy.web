@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="d223ed585d";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="aaa3da266c";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -97,8 +97,16 @@ async function apiPost(path, body = {}, timeoutMs = 8000) {
     clearTimeout(timer);
   }
 }
+// ★ 端末(タブ)ごとの識別子。同じアカウントで別端末から同じルームに入ったときの判定に使う。
+const QUIZ_DEVICE_ID = (function () {
+  try {
+    let d = sessionStorage.getItem('quizDeviceId');
+    if (!d) { d = Math.random().toString(36).slice(2) + Date.now().toString(36); sessionStorage.setItem('quizDeviceId', d); }
+    return d;
+  } catch (e) { return Math.random().toString(36).slice(2); }
+})();
 function withAuth(extra = {}) {
-  return { guild_id: GUILD_ID, session_token: STUDENT.sessionToken, ...extra };
+  return { guild_id: GUILD_ID, session_token: STUDENT.sessionToken, device: QUIZ_DEVICE_ID, ...extra };
 }
 
 // ── 画面切り替え ──────────────────────────
@@ -360,7 +368,20 @@ async function joinRoomByCode(code) {
   code = (code || '').trim().toUpperCase();
   if (!code) return;
   stopRoomListPolling();
-  const data = await apiPost('quiz_join', withAuth({ code }));
+  let data = await apiPost('quiz_join', withAuth({ code }));
+  if (!data.ok && data.error === 'already_on_other_device') {
+    // ★ 同じアカウントが別の端末で参加中：この端末に移るか、ゲストとして入るかを選ばせる
+    const move = await showConfirm({
+      title: '別の端末で参加中です', desc: 'このアカウントは別の端末でこのクイズに参加しています。この端末に移動しますか？（移動すると、もう一方の端末では操作できなくなります）',
+      okLabel: 'はい（この端末に移動）', cancelLabel: 'ゲストとして参加',
+    });
+    if (move) {
+      data = await apiPost('quiz_join', withAuth({ code, takeover: true }));
+    } else {
+      startGuestFlow(code);
+      return;
+    }
+  }
   if (!data.ok && LINK_GUILD && (data.error === 'not_logged_in' || data.error === 'guild_membership_required')) {
     // ★ 参加URLから来たが、ログインが切れている／このサーバーのメンバーではない場合はゲスト参加へ
     startGuestFlow(code);
@@ -799,6 +820,11 @@ async function pollOnce() {
     if (data.error === 'room_not_found') {
       stopPolling();
       await showConfirm({ title: 'このクイズは終了しました', desc: 'ホストが退出したか、時間が経ちすぎたため終了しました。', okLabel: 'ホームに戻る', cancelLabel: '閉じる' });
+      backToHomeFromResult();
+    } else if (data.error === 'moved_to_other_device') {
+      stopPolling();
+      roomCode = null;
+      await showConfirm({ title: '別の端末に移動しました', desc: 'このクイズは別の端末で続けています。この端末では操作できません。', okLabel: 'ホームに戻る', cancelLabel: '閉じる' });
       backToHomeFromResult();
     } else if (isGuest && (data.error === 'not_logged_in' || data.error === 'guild_membership_required')) {
       // ゲストトークンの有効期限切れ（ルームとは別）
