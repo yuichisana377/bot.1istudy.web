@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="1ad3a0cb6f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="c2d7908f26";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -4994,11 +4994,16 @@ function hasAutoTimerPending() {
 function studyScreenActive() {
   return !!document.getElementById('screen-study')?.classList.contains('active');
 }
+let hiddenAtMs = null; // 画面が隠れた時刻（戻ったとき離席時間をサーバーへ伝えて、一時停止の通知遅れによる過大計上を補正する）
 document.addEventListener('visibilitychange', async () => {
   try {
     const session = getLoginSession();
     if (!session || !session.session_token || !GUILD_ID) return;
-    const body = JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, timer_id: autoTimerIdFromMarker() });
+    const awayMs = (document.visibilityState === 'visible' && hiddenAtMs != null) ? Date.now() - hiddenAtMs : 0;
+    const hideTs = hiddenAtMs; // 今回の一時停止／再開が対応する「隠れた時刻」（サーバーが照合に使う）
+    if (document.visibilityState === 'hidden') { if (hiddenAtMs == null) hiddenAtMs = Date.now(); } else hiddenAtMs = null;
+    const hideTsNow = document.visibilityState === 'hidden' ? hiddenAtMs : hideTs;
+    const body = JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, timer_id: autoTimerIdFromMarker(), away_ms: awayMs > 0 ? awayMs : undefined, hide_ts: hideTsNow != null ? hideTsNow : undefined });
     const post = (ep) => fetch(`${API_BASE}${ep}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true,
     }).then(r => r.json());
@@ -5028,9 +5033,10 @@ window.addEventListener('pagehide', () => {
     if (!session || !session.session_token || !GUILD_ID) return;
     if (!studyScreenActive() || !hasAutoTimerPending() || autoPausedByHide) return;
     autoPausedByHide = true;
+    if (hiddenAtMs == null) hiddenAtMs = Date.now();
     fetch(`${API_BASE}timer_pause`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
-      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, timer_id: autoTimerIdFromMarker() }),
+      body: JSON.stringify({ guild_id: GUILD_ID, session_token: session.session_token, timer_id: autoTimerIdFromMarker(), hide_ts: hiddenAtMs }),
     }).catch(() => {});
   } catch (e) {}
 });
