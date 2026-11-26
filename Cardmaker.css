@@ -447,7 +447,7 @@ html, body {
 .qp-choice-btn {
   width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r-md);
   border: 2px solid var(--border); background: var(--surface); color: var(--text);
-  font-size: 15px; font-weight: 600; cursor: pointer;
+  font-size: 15px; font-weight: 600; cursor: pointer; white-space: pre-wrap; word-break: break-word;
   transition: opacity .15s, border-color .15s, background .15s;
 }
 .qp-choice-btn:active:not(:disabled) { opacity: .85; }
@@ -1076,7 +1076,7 @@ html, body {
 }
 .study-order-chip.is-correct .study-order-chip-num { background: var(--ok); }
 .study-order-chip.is-wrong   .study-order-chip-num { background: var(--danger); }
-.study-order-chip-text { min-width: 0; word-break: break-word; }
+.study-order-chip-text { min-width: 0; word-break: break-word; white-space: pre-wrap; }
 .study-order-ghost {
   position: fixed; z-index: 600; pointer-events: none; margin: 0;
   box-shadow: 0 6px 20px rgba(0,0,0,.18); opacity: .95;
