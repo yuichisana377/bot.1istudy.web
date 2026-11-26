@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="aad8208d73";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="c0751e50eb";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6305,7 +6305,8 @@ function renderStudyCard() {
   //   選択式にできる場合は、解答入力欄の代わりに選択肢欄を表示する（currentStudyChoiceEntry参照）。
   //   できない場合は通常の解答入力欄のままにする。
   const choiceEntry = currentStudyChoiceEntry(c);
-  const isOrder = cType === 'order'; // ★ 並び替えカードは専用の解答欄（renderStudyOrder）で答える
+  // ★ 項目が2つ未満の書きかけ並び替えカードは採点できない（常に正解になる）ので、通常カードとして答えを見せる
+  const isOrder = cType === 'order' && Array.isArray(c.order_items) && c.order_items.length >= ORDER_MIN; // ★ 並び替えカードは専用の解答欄（renderStudyOrder）で答える
   const answerInputWrap = document.getElementById('study-answer-input-wrap');
   const answerInput = document.getElementById('study-answer-input');
   const choiceWrap = document.getElementById('study-choice-wrap');
