@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="b89a347695";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="20e8b0806d";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5725,6 +5725,8 @@ function revealAnswer() {
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
   if (studyAutoGrade) gradeCurrentAnswer(); // ★ 追加：自動採点モードなら○×判定を行う
+  // ★ 採点後は手書きパッドを畳む（大きい状態だと解答パネルと「次へ」が画面外に押し出されるため）
+  if (studyHandwriting && typeof hwHide === 'function') hwHide();
   updateUnsureBtn();
 }
 

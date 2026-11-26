@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="b89a347695";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="20e8b0806d";/*@end*/// ============================================================
 //  Cardmaker-handwriting.js — 手書き解答パッド（漢字モード）
 //  ─────────────────────────────────────────────
 //  学習画面（screen-study）の自動採点で、解答入力欄の上に手書きキャンバスを出す。
@@ -137,6 +137,12 @@
     redraw();
     if (strokes.length) scheduleRecognize();
     else { setStatus(''); el('study-answer-input').value = ''; }
+  };
+  // 採点が済んだら手書きパッドを隠す（次のカードでhwSetupが再び出す）。入力欄の値は残る。
+  window.hwHide = function () {
+    clearTimeout(timer); seq++;
+    const wrap = el('study-handwriting-wrap');
+    if (wrap) wrap.style.display = 'none';
   };
   // 書く場所の大きさ（普通／大きい）を切り替える。高さだけ変わるので、書いた線はそのまま残る。
   function applySize(big) {
