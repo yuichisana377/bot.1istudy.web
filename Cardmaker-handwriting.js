@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="2edb319f62";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="c2d8ffd316";/*@end*/// ============================================================
 //  Cardmaker-handwriting.js — 手書き解答パッド（漢字モード）
 //  ─────────────────────────────────────────────
 //  学習画面（screen-study）の自動採点で、解答入力欄の上に手書きキャンバスを出す。
@@ -9,7 +9,8 @@
 // ============================================================
 (function () {
   const RECOGNIZE_DELAY_MS = 700;
-  let canvas = null, ctx = null;
+  let canvas = null, ctx = null, scroller = null, bar = null;
+  const WIDTH_FACTOR = 3;   // 書く場所の横幅＝表示幅の何倍か
   let strokes = [];          // [{xs:[], ys:[], ts:[]}]
   let cur = null;            // 書いている最中のストローク
   let t0 = 0;
@@ -25,6 +26,18 @@
     return v || fallback;
   }
 
+  // 書く場所の横幅を表示幅の約3倍にし、下のスライダーの範囲を合わせる
+  function layoutWidth() {
+    const vw = scroller.clientWidth;
+    if (vw > 0) canvas.style.width = Math.round(vw * WIDTH_FACTOR) + 'px';
+    syncBar();
+  }
+  function syncBar() {
+    if (!bar) return;
+    bar.max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    bar.value = scroller.scrollLeft;
+  }
+
   function sizeCanvas() {
     const r = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -37,6 +50,7 @@
 
   function redraw() {
     if (!canvas) return;
+    layoutWidth();
     sizeCanvas();
     const r = canvas.getBoundingClientRect();
     ctx.clearRect(0, 0, r.width, r.height);
@@ -85,8 +99,14 @@
       const pick = a => a.filter((_, i) => i % step === 0);
       cur = { xs: pick(cur.xs), ys: pick(cur.ys), ts: pick(cur.ts) };
     }
+    const lastX = cur.xs[cur.xs.length - 1];
     strokes.push(cur); cur = null;
     redraw();
+    // 表示の右端近くまで書き進めたら、続きが書けるよう少し右へスクロールする
+    const vis = lastX - scroller.scrollLeft;
+    if (vis > scroller.clientWidth * 0.7) {
+      scroller.scrollTo({ left: Math.min(lastX - scroller.clientWidth * 0.35, scroller.scrollWidth), behavior: 'smooth' });
+    }
     scheduleRecognize();
   }
 
@@ -106,13 +126,18 @@
     if (!strokes.length) return;
     const my = ++seq;
     const r = canvas.getBoundingClientRect();
+    // 書いた範囲に合わせて左の空白を詰め、その幅を送る（空白の多い横長のままだと認識しにくいため）
+    let minX = Infinity, maxX = 0;
+    strokes.forEach(s => s.xs.forEach(x => { if (x < minX) minX = x; if (x > maxX) maxX = x; }));
+    const offX = Math.max(0, Math.round(minX) - 10);
+    const sendW = Math.max(60, Math.min(4000, Math.round(maxX) - offX + 30));
     setStatus('認識中…');
     try {
       const res = await fetch('/handwriting', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          width: Math.round(r.width), height: Math.round(r.height),
-          ink: strokes.map(s => [s.xs.map(Math.round), s.ys.map(Math.round), s.ts]),
+          width: sendW, height: Math.round(r.height),
+          ink: strokes.map(s => [s.xs.map(x => Math.round(x) - offX), s.ys.map(Math.round), s.ts]),
         }),
         signal: AbortSignal.timeout(10000),
       });
@@ -131,6 +156,7 @@
   window.hwClear = function () {
     cancelTimer(); seq++;
     strokes = []; cur = null;
+    if (scroller) scroller.scrollLeft = 0;
     if (canvas) redraw();
     setStatus('');
     const input = el('study-answer-input');
@@ -178,7 +204,11 @@
     if (!enabled) { window.hwClear(); return; }
     if (!canvas) {
       canvas = el('hw-canvas');
+      scroller = el('hw-scroll');
+      bar = el('hw-scrollbar');
       ctx = canvas.getContext('2d');
+      bar.addEventListener('input', () => { scroller.scrollLeft = Number(bar.value); });
+      scroller.addEventListener('scroll', syncBar);
       canvas.addEventListener('pointerdown', onDown);
       canvas.addEventListener('pointermove', onMove);
       canvas.addEventListener('pointerup', onUp);

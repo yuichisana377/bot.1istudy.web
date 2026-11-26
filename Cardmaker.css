@@ -982,13 +982,18 @@ html, body {
 /* ★ 追加：手書き解答パッド（漢字モード）。Cardmaker-handwriting.js参照 */
 .study-hw-wrap { padding: 0 1rem .5rem; flex-shrink: 0; }
 .hw-canvas-box { position: relative; }
-.hw-canvas {
-  display: block; width: 100%; height: 150px; box-sizing: border-box;
+.hw-scroll {
+  overflow-x: auto; overflow-y: hidden; box-sizing: border-box;
   border: 2px solid var(--border); border-radius: var(--r-md);
-  background: var(--surface); touch-action: none; cursor: crosshair;
+  background: var(--surface); scrollbar-width: none;
 }
+.hw-scroll::-webkit-scrollbar { display: none; }
+/* 横幅はJS（Cardmaker-handwriting.js）が表示幅の約3倍に設定する */
+.hw-canvas { display: block; height: 150px; touch-action: none; cursor: crosshair; }
+/* 左右にスクロールするための下のバー（スマホではネイティブのバーが出ないため自前のスライダー） */
+.hw-scrollbar { display: block; width: 100%; margin: .45rem 0 0; accent-color: var(--accent); }
 .hw-hint {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  position: absolute; inset: 2px; display: flex; align-items: center; justify-content: center;
   color: var(--text-secondary); font-size: 13px; pointer-events: none;
 }
 .hw-tools { display: flex; gap: .5rem; margin-top: .4rem; }

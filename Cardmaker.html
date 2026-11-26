@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="2edb319f62">
-<script src="/Version.js?v=2edb319f62"></script>
+<meta name="app-version" content="c2d8ffd316">
+<script src="/Version.js?v=c2d8ffd316"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>CardMaker — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=2edb319f62">
-<link rel="stylesheet" href="/Cardmaker.css?v=2edb319f62">
+<link rel="stylesheet" href="/Style.css?v=c2d8ffd316">
+<link rel="stylesheet" href="/Cardmaker.css?v=c2d8ffd316">
 <!-- ★ 追加：数式（分数・ルートなど）をきれいに表示するためのKaTeX -->
 <!-- ★ 更新（2026/08/20）：0.16.11に出力エスケープ不備の既知脆弱性（Snyk:
      SNYK-JS-KATEX-8647963, Medium）があったため0.16.21以降へ更新。
@@ -427,9 +427,11 @@ window.addEventListener('error', function (e) {
            書いた文字は文字認識して、すぐ下の解答入力欄へ自動で入力する（Cardmaker-handwriting.js） -->
       <div class="study-hw-wrap" id="study-handwriting-wrap" style="display:none">
         <div class="hw-canvas-box">
-          <canvas id="hw-canvas" class="hw-canvas"></canvas>
-          <div class="hw-hint" id="hw-hint">ここに指やペンで解答を書いてください</div>
+          <!-- 横長の書く場所（画面の約3倍）。下のバーで左右にスクロールして続きを書ける -->
+          <div class="hw-scroll" id="hw-scroll"><canvas id="hw-canvas" class="hw-canvas"></canvas></div>
+          <div class="hw-hint" id="hw-hint">ここに指やペンで解答を書いてください（右に書き進められます）</div>
         </div>
+        <input type="range" class="hw-scrollbar" id="hw-scrollbar" min="0" max="0" value="0" step="1" aria-label="書く場所を左右にスクロール">
         <div class="hw-tools">
           <button type="button" class="btn btn-ghost hw-tool-btn" id="hw-size-btn" onclick="hwToggleSize()">大きくする</button>
           <button type="button" class="btn btn-ghost hw-tool-btn" onclick="hwUndo()">1画戻す</button>
@@ -806,13 +808,13 @@ window.addEventListener('error', function (e) {
   <img id="img-lightbox-img" src="" alt="">
 </div>
 
-<script src="/Icons.js?v=2edb319f62"></script>
-<script src="/SwipeGuard.js?v=2edb319f62"></script>
-<script src="/Dropdown.js?v=2edb319f62"></script>
-<script src="/Common.js?v=2edb319f62"></script>
-<script src="/Cardmaker.js?v=2edb319f62"></script>
-<script src="/PendingDeleteCheck.js?v=2edb319f62"></script>
-<script src="/PendingShareCheck.js?v=2edb319f62"></script>
-<script src="/QuizRoomNotify.js?v=2edb319f62"></script>
+<script src="/Icons.js?v=c2d8ffd316"></script>
+<script src="/SwipeGuard.js?v=c2d8ffd316"></script>
+<script src="/Dropdown.js?v=c2d8ffd316"></script>
+<script src="/Common.js?v=c2d8ffd316"></script>
+<script src="/Cardmaker.js?v=c2d8ffd316"></script>
+<script src="/PendingDeleteCheck.js?v=c2d8ffd316"></script>
+<script src="/PendingShareCheck.js?v=c2d8ffd316"></script>
+<script src="/QuizRoomNotify.js?v=c2d8ffd316"></script>
 </body>
 </html>
