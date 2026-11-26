@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="c0751e50eb";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="8c33e2f64a";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -829,6 +829,12 @@ const ORDER_MIN = 2;              // 並び順の項目数の下限
 const ORDER_MAX = 10;             // 並び順の項目数の上限
 const ORDER_DISTRACTOR_MAX = 5;   // ダミー語句の上限（chips形式のみ）
 const ORDER_ITEM_MAXLEN = 80;     // 各項目・ダミーの最大文字数
+
+// ★ 項目が足りない書きかけの並び替えカードは採点できないので、通常カード扱いにする
+function isGradedOrderCard(c) {
+  return !!c && c.type === 'order' && Array.isArray(c.order_items) && c.order_items.filter(x => String(x).trim()).length >= ORDER_MIN;
+}
+function isGradedCard(c) { return cardType(c) === 'choice' || isGradedOrderCard(c); }
 
 function cardType(c) {
   if (!c) return 'normal';
@@ -2093,7 +2099,7 @@ async function fetchAndMergeDecks() {
       || (existing.id === currentDeckId
           && document.querySelector('.screen.active')?.id === 'screen-edit'));
     const cachedIsStale = existing && existing.cardsLoaded && !hasUnsyncedLocal
-      && typeof s.count === 'number' && s.count < existing.cards.length;
+      && typeof s.count === 'number' && s.count < serverPayloadCards(existing, true).length;
     const keepLoadedCards = existing && existing.cardsLoaded && !cachedIsStale;
     return {
       id: existing ? existing.id : genId(),
@@ -2250,8 +2256,9 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
     }
 
     // ★ サーバーへ送れない書きかけの並び替えカードは端末にしか無いので、取得結果の後ろに残す（黙って消さない）
+    const fetchedIds = new Set(fetchedCards.map(c => c && c.id).filter(Boolean));
     const localOnly = deck.cardsLoaded ? (deck.cards || []).filter(c => {
-      if (cardType(c) !== 'order') return false;
+      if (cardType(c) !== 'order' || (c.id && fetchedIds.has(c.id))) return false;
       const p = cardToServerPayload(c);
       return p.order_items.length < ORDER_MIN || p.order_items.length > ORDER_MAX;
     }) : [];
@@ -4546,7 +4553,7 @@ async function syncDeckToServer(deck) {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '不明なエラー');
-    deck.count = deck.cards.length;
+    deck.count = cards.length; // ★ サーバーへ実際に送った枚数（書きかけの並び替えカードは含めない）
     saveDecks(decks);
     return true;
   } catch (e) {
@@ -5491,7 +5498,7 @@ async function startStudyMode(mode) {
     studyIdx = Math.min(saved.idx, studyCards.length - 1);
     // ★ 追加：正誤の記録は「今も採点対象（選択式・並び替え）として残っているカード」の分だけにする
     //   （中断中にカードが消えた・通常カードへ種別が変わった場合に、スコアの母数とずれないように）。
-    const gradedKeys = new Set(studyCards.filter(c => cardType(c) !== 'normal').map(cardKey));
+    const gradedKeys = new Set(studyCards.filter(isGradedCard).map(cardKey));
     for (const k of [...studyQuizAnswers.keys()]) if (!gradedKeys.has(k)) studyQuizAnswers.delete(k);
   } else {
     studyMode = mode;
@@ -6253,9 +6260,9 @@ function renderStudyCard() {
     //   ★ 2026/08/27：他の人との順位比較（ランキング）は「消してほしい」との
     //   要望で撤去済み。自分の正解数だけを見せる。
     //   ★ 変更：母数は「採点するカード（選択式・並び替え）」の枚数。通常カードしか無ければ従来どおり。
-    const gradedCount = studyCards.filter(sc => cardType(sc) !== 'normal').length;
+    const gradedCount = studyCards.filter(isGradedCard).length;
     if (gradedCount) {
-      const gradedKeys = new Set(studyCards.filter(sc => cardType(sc) !== 'normal').map(cardKey));
+      const gradedKeys = new Set(studyCards.filter(isGradedCard).map(cardKey));
       const scoreCount = [...studyQuizAnswers.entries()].filter(([k, v]) => v && gradedKeys.has(k)).length;
       document.getElementById('study-done-sub').textContent = gradedCount === studyCards.length
         ? `${scoreCount} / ${gradedCount} 問正解！`
@@ -6306,7 +6313,7 @@ function renderStudyCard() {
   //   できない場合は通常の解答入力欄のままにする。
   const choiceEntry = currentStudyChoiceEntry(c);
   // ★ 項目が2つ未満の書きかけ並び替えカードは採点できない（常に正解になる）ので、通常カードとして答えを見せる
-  const isOrder = cType === 'order' && Array.isArray(c.order_items) && c.order_items.length >= ORDER_MIN; // ★ 並び替えカードは専用の解答欄（renderStudyOrder）で答える
+  const isOrder = isGradedOrderCard(c); // ★ 並び替えカードは専用の解答欄（renderStudyOrder）で答える
   const answerInputWrap = document.getElementById('study-answer-input-wrap');
   const answerInput = document.getElementById('study-answer-input');
   const choiceWrap = document.getElementById('study-choice-wrap');
@@ -6475,7 +6482,7 @@ document.addEventListener('keydown', e => {
   //   を行わない。選択肢はボタンをクリックして答える（answerStudyChoice）ため。
   const curCard = studyCards[studyIdx];
   //   ★ 並び替えカードもチップのタップで答えるので同じ扱いにする。
-  const inChoiceMode = !!(curCard && (currentStudyChoiceEntry(curCard) || cardType(curCard) === 'order'));
+  const inChoiceMode = !!(curCard && (currentStudyChoiceEntry(curCard) || isGradedOrderCard(curCard)));
   if (e.key===' ' && !inChoiceMode) { e.preventDefault(); revealAnswer(); }
 });
 
