@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="20e8b0806d";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="2edb319f62";/*@end*/// ============================================================
 //  Cardmaker-handwriting.js — 手書き解答パッド（漢字モード）
 //  ─────────────────────────────────────────────
 //  学習画面（screen-study）の自動採点で、解答入力欄の上に手書きキャンバスを出す。
@@ -14,6 +14,8 @@
   let cur = null;            // 書いている最中のストローク
   let t0 = 0;
   let timer = null;
+  let waiting = false;       // 書き終えて認識の開始待ち（タイマー中）
+  let inflight = null;       // 認識リクエスト中のPromise
   let seq = 0;               // 古い認識結果で新しい結果を上書きしないための連番
 
   function el(id) { return document.getElementById(id); }
@@ -62,7 +64,7 @@
     if (e.button !== undefined && e.button > 0) return;
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-    clearTimeout(timer);
+    cancelTimer();
     if (!strokes.length) t0 = Date.now();
     const [x, y] = pos(e);
     cur = { xs: [x], ys: [y], ts: [Date.now() - t0] };
@@ -88,10 +90,14 @@
     scheduleRecognize();
   }
 
+  function cancelTimer() { clearTimeout(timer); waiting = false; }
+  function startRecognize() { inflight = recognize().finally(() => { inflight = null; }); return inflight; }
+
   function scheduleRecognize() {
-    clearTimeout(timer);
+    cancelTimer();
     if (!strokes.length) return;
-    timer = setTimeout(recognize, RECOGNIZE_DELAY_MS);
+    waiting = true;
+    timer = setTimeout(() => { waiting = false; startRecognize(); }, RECOGNIZE_DELAY_MS);
   }
 
   function setStatus(text) { const s = el('hw-status'); if (s) s.textContent = text; }
@@ -123,7 +129,7 @@
 
   // ── 公開関数（Cardmaker.js / Cardmaker.html から呼ぶ） ──
   window.hwClear = function () {
-    clearTimeout(timer); seq++;
+    cancelTimer(); seq++;
     strokes = []; cur = null;
     if (canvas) redraw();
     setStatus('');
@@ -132,15 +138,22 @@
   };
   window.hwUndo = function () {
     if (!strokes.length) return;
-    clearTimeout(timer); seq++;
+    cancelTimer(); seq++;
     strokes.pop();
     redraw();
     if (strokes.length) scheduleRecognize();
     else { setStatus(''); el('study-answer-input').value = ''; }
   };
+  // 認識待ち／認識中か。採点ボタンがスピナーを出して待つかの判定に使う
+  window.hwPending = function () { return waiting || !!inflight; };
+  // 認識が終わるまで待つ（待機中なら待たずにすぐ認識を始める）
+  window.hwFlush = async function () {
+    if (waiting) { cancelTimer(); await startRecognize(); }
+    else if (inflight) { try { await inflight; } catch (_) {} }
+  };
   // 採点が済んだら手書きパッドを隠す（次のカードでhwSetupが再び出す）。入力欄の値は残る。
   window.hwHide = function () {
-    clearTimeout(timer); seq++;
+    cancelTimer(); seq++;
     const wrap = el('study-handwriting-wrap');
     if (wrap) wrap.style.display = 'none';
   };

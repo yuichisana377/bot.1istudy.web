@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="20e8b0806d";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="2edb319f62";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5720,7 +5720,18 @@ function renderStudyCard() {
   saveStudyProgress(); // ★ カードを表示するたびに現在位置を保存し、次回「続きから」を出せるようにする
 }
 
-function revealAnswer() {
+let revealWaiting = false; // 手書きの認識待ち中の二重押し防止
+async function revealAnswer() {
+  // ★ 手書きモードで認識が済んでいなければ、終わるまで「採点する」にスピナーを出して待つ
+  if (studyHandwriting && typeof hwPending === 'function' && hwPending()) {
+    if (revealWaiting) return;
+    revealWaiting = true;
+    const idx = studyIdx;
+    const btn = document.getElementById('reveal-answer-btn');
+    setBtnLoading(btn, true, '認識中…');
+    try { await hwFlush(); } catch (e) {} finally { setBtnLoading(btn, false); revealWaiting = false; }
+    if (idx !== studyIdx) return; // 待っている間に別のカードへ移っていたら採点しない
+  }
   document.getElementById('study-answer-panel').classList.add('show');
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
