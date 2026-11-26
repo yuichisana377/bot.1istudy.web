@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="c2d8ffd316">
-<script src="/Version.js?v=c2d8ffd316"></script>
+<meta name="app-version" content="7b24bc851b">
+<script src="/Version.js?v=7b24bc851b"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>CardMaker — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=c2d8ffd316">
-<link rel="stylesheet" href="/Cardmaker.css?v=c2d8ffd316">
+<link rel="stylesheet" href="/Style.css?v=7b24bc851b">
+<link rel="stylesheet" href="/Cardmaker.css?v=7b24bc851b">
 <!-- ★ 追加：数式（分数・ルートなど）をきれいに表示するためのKaTeX -->
 <!-- ★ 更新（2026/08/20）：0.16.11に出力エスケープ不備の既知脆弱性（Snyk:
      SNYK-JS-KATEX-8647963, Medium）があったため0.16.21以降へ更新。
@@ -251,20 +251,12 @@ window.addEventListener('error', function (e) {
         <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#0891b2"><circle cx="12" cy="12" r="8.3" fill="currentColor" fill-opacity=".16" stroke-width="1.8"/><path d="M3.7 12h16.6" stroke-width="1.6"/><path d="M12 3.7a12.7 12.7 0 0 1 0 16.6" stroke-width="1.6"/><path d="M12 3.7a12.7 12.7 0 0 0 0 16.6" stroke-width="1.6"/></svg> 公開予定のデッキにする</span>
         <input type="checkbox" id="new-plan-publish" checked>
       </label>
-      <!-- ★ 追加：多肢選択（選択式）デッキにするかどうか。ONの場合、中の問題は
-           問題文＋解答/解説ではなく、問題文＋選択肢（2〜5個）＋正解の形式で作る。
-           単一正解/複数正解は問題ごとに正解チェックの数で自動的に決まる
-           （デッキ全体では統一しない）。 -->
-      <label class="reverse-toggle-row" style="width:100%;max-width:360px" onclick="event.stopPropagation()">
-        <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true" color="#db2777"><circle cx="12" cy="12" r="8" fill="currentColor" fill-opacity=".16" stroke-width="2"/><circle cx="12" cy="12" r="3.6" fill="currentColor" stroke="none"/></svg> 多肢選択デッキにする</span>
-        <input type="checkbox" id="new-choice-mode-enabled" onchange="onNewDeckModeToggle('choice')">
-      </label>
       <!-- ★ 追加：漢字デッキにするかどうか。問題（読み・意味・文など）と解答（漢字）を
            通常どおり入力して作る。プレイする人は、自動採点で解答を「手書き」で書くと
-           文字認識（OCR）して採点してもらえる。多肢選択デッキとは同時にできない。 -->
+           文字認識（OCR）して採点してもらえる（手書きは「通常」のカードにだけ使われる）。 -->
       <label class="reverse-toggle-row" style="width:100%;max-width:360px" onclick="event.stopPropagation()">
         <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg> 漢字デッキにする（手書きで採点）</span>
-        <input type="checkbox" id="new-kanji-mode-enabled" onchange="onNewDeckModeToggle('kanji')">
+        <input type="checkbox" id="new-kanji-mode-enabled">
       </label>
       <input class="set-name-input" id="new-set-name" type="text"
              placeholder="セット名を入力" maxlength="60"
@@ -287,6 +279,14 @@ window.addEventListener('error', function (e) {
       <!-- ★ 追加：デッキに説明が設定されていれば表示する（編集は「デッキを編集」モーダルから） -->
       <div class="edit-deck-desc" id="edit-deck-desc" style="display:none"></div>
 
+      <!-- ★ 追加：作るカードの種別（通常／選択式／並び替え）。1つのデッキに混ぜて作れる。
+           選んだ種別は次のカードにも引き継がれる（currentFormType）。 -->
+      <div class="card-type-seg" id="ta-type-seg" role="group" aria-label="カードの種別">
+        <button type="button" class="card-type-seg-btn" data-type="normal" aria-pressed="false" onclick="applyCardFormType('normal')">通常</button>
+        <button type="button" class="card-type-seg-btn" data-type="choice" aria-pressed="false" onclick="applyCardFormType('choice')">選択式</button>
+        <button type="button" class="card-type-seg-btn" data-type="order" aria-pressed="false" onclick="applyCardFormType('order')">並び替え</button>
+      </div>
+
       <div class="card-block" id="qa-csv-block">
         <div class="block-header">
           <span class="block-label">CSVから読み込む <span class="block-label-sub">Import</span></span>
@@ -295,7 +295,7 @@ window.addEventListener('error', function (e) {
           <button class="block-action-btn" onclick="document.getElementById('csv-file-input').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M7 3.5h7l4 4v13H7Z"/><path d="M14 3.5v4h4"/></svg> CSVファイルを選ぶ</button>
         </div>
         <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none" onchange="handleCsvImport(event)">
-        <p class="csv-import-hint">1行目に見出し（例：問題,解答,解説）があれば自動で認識します。見出しが無い場合は「問題,解答,解説」の順として読み込みます（解説は省略可）。まとめて末尾に追加され、内容が重複するカードは自動でスキップされます。</p>
+        <p class="csv-import-hint">1行目に見出し（例：問題,解答,解説）があれば自動で認識します。見出しが無い場合は「問題,解答,解説」の順として読み込みます（解説は省略可）。まとめて末尾に追加され、内容が重複するカードは自動でスキップされます。<br>種別を混ぜる場合は、1行目を「種別,問題,解答,解説,選択肢1〜5,正解,並び順,ダミー」とし、種別の列に「通常」「選択式」「並び替え」を入れてください（並び順・ダミーは「|」区切り）。</p>
       </div>
 
       <!-- ★ 追加：多肢選択デッキ用のCSV読み込み（通常デッキ用のqa-csv-blockとは別物・通常時は非表示）。
@@ -332,6 +332,23 @@ window.addEventListener('error', function (e) {
         <!-- ★ 単一正解/複数正解は問題ごとにチェック数で自動的に決まる（1個＝択一、2個以上＝複数回答） -->
         <p class="csv-import-hint" style="margin-top:-.25rem">左のチェックボックスで正解を選んでください。1つだけ選べば択一問題、2つ以上選べば複数回答問題になります。</p>
         <div id="ta-choice-rows"></div>
+      </div>
+
+      <!-- ★ 追加：並び替えカード用の入力欄（並び替え以外では非表示） -->
+      <div class="card-block" id="qa-order-block" style="display:none">
+        <div class="block-header">
+          <span class="block-label">並び順 <span class="block-label-sub">Order</span></span>
+        </div>
+        <div class="card-type-seg order-style-seg" role="group" aria-label="並び替えの形式">
+          <button type="button" class="card-type-seg-btn" id="ta-order-style-list" aria-pressed="false">リストを並べる</button>
+          <button type="button" class="card-type-seg-btn" id="ta-order-style-chips" aria-pressed="false">語句を選ぶ</button>
+        </div>
+        <p class="csv-import-hint" style="margin-top:.25rem">正しい順番で上から入力してください（2〜10個）。プレイ時はシャッフルして出題されます。</p>
+        <div id="ta-order-rows"></div>
+        <div id="ta-order-dummy-block" style="display:none">
+          <p class="csv-import-hint" style="margin-top:.5rem">ダミー語句（任意・5個まで）：正解には使わない、まぎらわしい語句を混ぜられます。</p>
+          <div id="ta-order-dummy-rows"></div>
+        </div>
       </div>
 
       <div class="card-block" id="qa-answer-block">
@@ -448,6 +465,8 @@ window.addEventListener('error', function (e) {
       <!-- ★ 追加：自動採点＋4択モード、およびクイズ過去問・多肢選択デッキ（studyIsQuizDeck）の
            時に表示する選択肢欄。選んだ瞬間に採点まで行う（下のreveal-answer-btnはJS側で
            非表示にし、study-reveal-bar自体は「← 前へ」ボタンのぶんだけ表示したままにする）。 -->
+      <!-- ★ 追加：並び替えカードの解答欄（中身は renderStudyOrder() がDOM APIで組み立てる） -->
+      <div id="study-order-wrap" class="study-order-wrap" style="display:none"></div>
       <div id="study-choice-wrap" style="display:none">
         <div class="qp-choices" id="study-choices"></div>
         <!-- ★ 追加：複数正解モードだけ、選び終えてから確定するための送信ボタンを出す -->
@@ -754,6 +773,12 @@ window.addEventListener('error', function (e) {
   <div class="modal-sheet" style="padding-bottom:1.5rem">
     <div class="modal-handle"></div>
     <div class="modal-title">カードを編集</div>
+    <!-- ★ 追加：カードの種別（編集時に種別を変えることもできる） -->
+    <div class="card-type-seg" id="modal-edit-type-seg" role="group" aria-label="カードの種別">
+      <button type="button" class="card-type-seg-btn" data-type="normal" aria-pressed="false" onclick="applyModalEditType('normal')">通常</button>
+      <button type="button" class="card-type-seg-btn" data-type="choice" aria-pressed="false" onclick="applyModalEditType('choice')">選択式</button>
+      <button type="button" class="card-type-seg-btn" data-type="order" aria-pressed="false" onclick="applyModalEditType('order')">並び替え</button>
+    </div>
     <div id="card-edit-ok"  style="display:none;background:#dcfce7;color:#166534;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg> 保存しました！</div>
     <div id="card-edit-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:10px"></div>
 
@@ -783,6 +808,20 @@ window.addEventListener('error', function (e) {
       <div id="modal-edit-choice-rows" style="margin-bottom:1rem"></div>
     </div>
 
+    <!-- ★ 追加：並び替えカードを編集する場合はこちらを使う -->
+    <div id="modal-edit-order-block" style="display:none">
+      <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">並び順（正しい順番で上から入力）</label>
+      <div class="card-type-seg order-style-seg" role="group" aria-label="並び替えの形式">
+        <button type="button" class="card-type-seg-btn" id="modal-edit-order-style-list" aria-pressed="false">リストを並べる</button>
+        <button type="button" class="card-type-seg-btn" id="modal-edit-order-style-chips" aria-pressed="false">語句を選ぶ</button>
+      </div>
+      <div id="modal-edit-order-rows" style="margin-bottom:.5rem"></div>
+      <div id="modal-edit-order-dummy-block" style="display:none">
+        <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">ダミー語句（任意・5個まで）</label>
+        <div id="modal-edit-order-dummy-rows" style="margin-bottom:1rem"></div>
+      </div>
+    </div>
+
     <div id="modal-edit-explanation-block">
       <label style="font-size:12px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px">解説（任意）</label>
       <textarea class="modal-input" id="modal-edit-e" style="min-height:60px;resize:none;margin-bottom:.5rem" oninput="autoResize(this)"></textarea>
@@ -808,13 +847,13 @@ window.addEventListener('error', function (e) {
   <img id="img-lightbox-img" src="" alt="">
 </div>
 
-<script src="/Icons.js?v=c2d8ffd316"></script>
-<script src="/SwipeGuard.js?v=c2d8ffd316"></script>
-<script src="/Dropdown.js?v=c2d8ffd316"></script>
-<script src="/Common.js?v=c2d8ffd316"></script>
-<script src="/Cardmaker.js?v=c2d8ffd316"></script>
-<script src="/PendingDeleteCheck.js?v=c2d8ffd316"></script>
-<script src="/PendingShareCheck.js?v=c2d8ffd316"></script>
-<script src="/QuizRoomNotify.js?v=c2d8ffd316"></script>
+<script src="/Icons.js?v=7b24bc851b"></script>
+<script src="/SwipeGuard.js?v=7b24bc851b"></script>
+<script src="/Dropdown.js?v=7b24bc851b"></script>
+<script src="/Common.js?v=7b24bc851b"></script>
+<script src="/Cardmaker.js?v=7b24bc851b"></script>
+<script src="/PendingDeleteCheck.js?v=7b24bc851b"></script>
+<script src="/PendingShareCheck.js?v=7b24bc851b"></script>
+<script src="/QuizRoomNotify.js?v=7b24bc851b"></script>
 </body>
 </html>

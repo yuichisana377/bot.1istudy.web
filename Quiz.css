@@ -510,3 +510,73 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 @media (min-width:600px){
   .qz-choice-grid{ grid-template-columns:1fr 1fr; }
 }
+
+
+/* ── ★ 追加：問題・解答・解説の画像（Quiz.js renderQuizImages） ─────────────────
+   出題画面は100dvhに収めてスクロールさせない設計のため、画像は高さに上限を付けて
+   object-fit:contain で縮める（大きな画像でも選択肢・解答欄が押し出されないように）。 */
+.qz-q-images, .qz-extra-images{
+  display:flex; gap:8px; justify-content:center; flex-wrap:wrap; flex-shrink:0;
+}
+.qz-q-images .qz-img{ max-height:22dvh; }
+.qz-extra-images .qz-img{ max-height:18dvh; }
+.qz-img{
+  max-width:100%; min-width:48px; min-height:48px; object-fit:contain;
+  border-radius:var(--r-md); border:1px solid var(--border); background:var(--bg);
+}
+.qz-img.qz-img-loaded{ min-width:0; min-height:0; }
+
+/* ── ★ 追加：並び替え問題（Quiz.js renderOrderUI） ───────────────────────────
+   項目部分（.qz-order-scroll）だけを内部スクロールにし、「やり直す／決定」の行は
+   常に見えるようにする（ページ自体は従来どおりスクロールさせない）。 */
+.qz-order{
+  display:flex; flex-direction:column; gap:10px; min-height:0; flex-shrink:1;
+}
+.qz-order-scroll{
+  display:flex; flex-direction:column; gap:10px;
+  min-height:0; overflow-y:auto; touch-action:pan-y; -webkit-overflow-scrolling:touch;
+}
+.qz-order-label{ margin:0; font-size:.78rem; font-weight:700; color:var(--text-secondary); }
+.qz-order-row{ display:flex; gap:6px; }
+.qz-order-row-chips{ flex-wrap:wrap; }
+.qz-order-row-list{ flex-direction:column; }
+.qz-order-answer{
+  min-height:52px; padding:8px; border:2px dashed var(--border);
+  border-radius:var(--r-lg); background:var(--surface); align-content:flex-start;
+}
+.qz-order-placeholder{ margin:auto; font-size:.85rem; color:var(--text-secondary); text-align:center; }
+.qz-order-pool{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+.qz-order-li{ display:flex; align-items:center; gap:8px; }
+.qz-order-li .qz-order-chip{ flex:1; text-align:left; }
+.qz-order-num{
+  flex-shrink:0; width:24px; height:24px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--accent-soft); color:var(--accent); font-size:.8rem; font-weight:800;
+}
+.qz-order-chip{
+  appearance:none; font:inherit; font-size:.95rem; font-weight:700; color:var(--text);
+  padding:9px 14px; border-radius:var(--r-md); border:1.5px solid var(--border);
+  background:var(--surface); box-shadow:var(--shadow); cursor:pointer;
+  word-break:break-word; touch-action:manipulation; transition:transform .12s ease;
+}
+.qz-order-chip:active:not(:disabled){ transform:scale(.96); }
+.qz-order-chip:disabled{ cursor:default; }
+.qz-order-picked{ border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
+.qz-order-ok{ border-color:var(--good); background:var(--good-soft); color:var(--good); box-shadow:none; }
+.qz-order-ng{ border-color:var(--bad); background:var(--bad-soft); color:var(--bad); box-shadow:none; }
+.qz-order-actions{ display:flex; gap:8px; flex-shrink:0; }
+.qz-order-reset, .qz-order-submit{
+  appearance:none; font:inherit; font-weight:800; border-radius:var(--r-md);
+  padding:12px 14px; cursor:pointer; touch-action:manipulation;
+}
+.qz-order-reset{ background:var(--surface); color:var(--text-secondary); border:1.5px solid var(--border); }
+.qz-order-submit{ flex:1; background:var(--accent); color:#fff; border:none; }
+.qz-order-reset:disabled, .qz-order-submit:disabled{ opacity:.45; cursor:default; }
+
+/* ── ★ 追加：正解発表時の解答の画像・解説（Quiz.js renderRevealExtra） ────────── */
+.qz-reveal-extra{
+  display:flex; flex-direction:column; gap:6px; margin-bottom:8px;
+  max-height:30dvh; overflow-y:auto; touch-action:pan-y;
+  padding:10px; border-radius:var(--r-md); background:var(--surface); border:1px solid var(--border);
+}
+.qz-extra-text{ margin:0; font-size:.9rem; line-height:1.6; white-space:pre-wrap; word-break:break-word; }

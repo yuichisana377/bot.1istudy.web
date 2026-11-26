@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="c2d8ffd316";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="7b24bc851b";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -399,7 +399,8 @@ function quizErrorText(code) {
     too_many_attempts: '試行回数が多すぎます。しばらくしてからもう一度お試しください',
     network: '通信に失敗しました。もう一度お試しください',
     deck_not_found: '選んだデッキが見つかりませんでした。デッキを選び直してください',
-    deck_too_small: '選んだデッキ（合計）に、答えの種類が4つ以上ありません。デッキを追加するか選び直してください',
+    deck_too_small: '選んだデッキ（合計）に、答えの種類が4つ以上なく、並び替えカードもありません。デッキを追加するか選び直してください',
+    invalid_order: '並び替えの解答を送れませんでした。もう一度並べ直してください',
     too_many_decks: '一度に選べるデッキの数が多すぎます。選ぶデッキを減らしてください',
   }[code] || (code ? `エラー: ${code}` : '不明なエラーが発生しました');
 }
@@ -923,7 +924,10 @@ const CHOICE_CLASSES = ['qz-choice-a', 'qz-choice-b', 'qz-choice-c', 'qz-choice-
 //   自動的に正解発表(reveal)へ、発表からしばらくすると自動的に次の問題へ
 //   進むので、ここでは「今の room の状態をそのまま描画する」だけでよい）
 function renderPlayScreen(room, opts) {
-  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, timerbarId, answeredCountId, revealPanelId, firstBadgeId, leaderboardId, spectateNoteId, bonusBadgeId } = opts;
+  const { progressId, scoreId, questionId, choicesId, feedbackId, waitingNoteId, timerbarId, answeredCountId, revealPanelId, firstBadgeId, leaderboardId, spectateNoteId, bonusBadgeId, orderId, qImagesId, revealExtraId } = opts;
+  const orderEl = orderId ? document.getElementById(orderId) : null;
+  const qImagesEl = qImagesId ? document.getElementById(qImagesId) : null;
+  const revealExtraEl = revealExtraId ? document.getElementById(revealExtraId) : null;
   const qChanged = room.current_q !== renderedQIndex;
   const stateChanged = room.state !== renderedState;
   if (qChanged) hasAnsweredThisQ = false;
@@ -946,6 +950,10 @@ function renderPlayScreen(room, opts) {
     document.getElementById(revealPanelId).style.display = 'none';
     document.getElementById(answeredCountId).textContent = '';
     if (bonusBadgeId) document.getElementById(bonusBadgeId).style.display = 'none';
+    // ★ 追加：並び替えの解答欄・画像も見学中は出さない
+    if (orderEl) { orderEl.style.display = 'none'; orderEl.replaceChildren(); orderEl.dataset.sig = ''; }
+    if (qImagesEl) { qImagesEl.style.display = 'none'; qImagesEl.replaceChildren(); qImagesEl.dataset.sig = ''; }
+    if (revealExtraEl) { revealExtraEl.style.display = 'none'; revealExtraEl.replaceChildren(); revealExtraEl.dataset.sig = ''; }
     const timerEl = document.getElementById(timerbarId);
     delete timerEl.dataset.startedAt; delete timerEl.dataset.limit;
     timerEl.style.transform = 'scaleX(0)';
@@ -963,7 +971,20 @@ function renderPlayScreen(room, opts) {
   const answered = (yourAnswer !== undefined) || hasAnsweredThisQ;
 
   const choicesEl = document.getElementById(choicesId);
-  if (qChanged || stateChanged || !choicesEl.dataset.built || Number(choicesEl.dataset.built) !== room.current_q) {
+  // ★ 追加：並び替え問題（kind:"order"）は4択の選択肢欄を使わず、専用の解答欄（orderEl）を出す。
+  //   選択肢欄は空にして隠す（委譲ハンドラ・下の forEach は子要素が無いので何もしない）。
+  const isOrder = room.question.kind === 'order';
+  if (qImagesEl) renderQuizImages(qImagesEl, room.current_q, 'q', room.question.img_counts?.q || 0);
+  if (isOrder) {
+    choicesEl.style.display = 'none';
+    if (choicesEl.childElementCount) choicesEl.replaceChildren();
+    choicesEl.dataset.built = '';
+    if (orderEl) { orderEl.style.display = ''; renderOrderUI(room, orderEl, { choicesId, waitingNoteId }); }
+  } else {
+    choicesEl.style.display = '';
+    if (orderEl && orderEl.style.display !== 'none') { orderEl.style.display = 'none'; orderEl.replaceChildren(); orderEl.dataset.sig = ''; }
+  }
+  if (!isOrder && (qChanged || stateChanged || !choicesEl.dataset.built || Number(choicesEl.dataset.built) !== room.current_q)) {
     choicesEl.innerHTML = room.question.choices.map((c, i) => `
       <button class="qz-choice-btn ${CHOICE_CLASSES[i]}" data-idx="${i}">${escapeHtml(c)}</button>`).join('');
     choicesEl.dataset.built = room.current_q;
@@ -1058,6 +1079,7 @@ function renderPlayScreen(room, opts) {
   //   ミニ順位表を表示していた。参加者にはホストと同じ情報を見せていなかった
   //   ため、ホスト・参加者共通のこの関数から両方の画面を描画するようにする。
   const revealPanel = document.getElementById(revealPanelId);
+  if (revealExtraEl) renderRevealExtra(revealExtraEl, room);
   if (room.state === 'reveal') {
     revealPanel.style.display = '';
     document.getElementById(firstBadgeId).innerHTML = room.first_correct_nickname
@@ -1178,6 +1200,7 @@ function renderHostPlay(room) {
     timerbarId: 'hp-timerbar', answeredCountId: 'hp-answered',
     revealPanelId: 'hp-reveal', firstBadgeId: 'hp-first-badge', leaderboardId: 'hp-leaderboard',
     bonusBadgeId: 'hp-bonus-badge',
+    orderId: 'hp-order', qImagesId: 'hp-qimages', revealExtraId: 'hp-reveal-extra',
   });
 }
 
@@ -1189,6 +1212,7 @@ function renderPlayerPlay(room) {
     timerbarId: 'pp-timerbar', answeredCountId: 'pp-answered',
     revealPanelId: 'pp-reveal', firstBadgeId: 'pp-first-badge', leaderboardId: 'pp-leaderboard',
     spectateNoteId: 'pp-spectate-note', bonusBadgeId: 'pp-bonus-badge',
+    orderId: 'pp-order', qImagesId: 'pp-qimages', revealExtraId: 'pp-reveal-extra',
   });
 }
 
@@ -1259,13 +1283,7 @@ async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId
   if (waitingNote) waitingNote.style.display = '';
   // ★ 押された瞬間の時刻（サーバー時計換算のms）も送る。通信が遅れても回答時間が不利にならない。
   const sentQ = renderedQIndex;
-  let res = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    res = await apiPost('quiz_answer', withAuth({ code: roomCode, choice_index: choiceIndex, pressed_at_ms: pressedAtMs, q_index: sentQ }));
-    if (res && res.ok) break;
-    if (res && res.error && res.error !== 'network') break; // サーバーが明確に拒否した（回答済み等）→再送しない
-    await new Promise(r => setTimeout(r, 400)); // 通信失敗のみ自動再送
-  }
+  const res = await postQuizAnswer({ choice_index: choiceIndex }, pressedAtMs, sentQ);
   if (renderedQIndex === sentQ && (!res || (!res.ok && res.error === 'network'))) {
     // 送れなかった：押し直せるように戻す
     hasAnsweredThisQ = false;
@@ -1273,6 +1291,275 @@ async function submitAnswer(choiceIndex, choicesId = 'pp-choices', waitingNoteId
     if (waitingNote) waitingNote.style.display = 'none';
   }
   pollOnce();
+}
+
+// ★ 追加：quiz_answer を送る共通処理（4択・並び替えの両方で使う）。
+//   通信失敗（network）のときだけ最大3回まで自動再送し、サーバーが明確に
+//   拒否した（回答済み等）ときは再送しない（以前 submitAnswer 内にあった処理をそのまま切り出した）。
+async function postQuizAnswer(answerFields, pressedAtMs, sentQ) {
+  let res = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await apiPost('quiz_answer', withAuth({ code: roomCode, ...answerFields, pressed_at_ms: pressedAtMs, q_index: sentQ }));
+    if (res && res.ok) break;
+    if (res && res.error && res.error !== 'network') break;
+    await new Promise(r => setTimeout(r, 400));
+  }
+  return res;
+}
+
+// ============================================================
+//  並び替え問題（kind:"order"）
+// ============================================================
+// ★ 追加：下に並んだ項目（チップ）をタップすると上の解答欄へ順に入り、解答欄の項目を
+//   タップすると下へ戻る。全部並べたら「この順で決定」で送信する。
+//   ・選んだ順（orderPickState.picks、items の id の列）はルームコード＋問題番号ごとに持ち、
+//     問題が変わったら自動で空に戻る。
+//   ・DOMは0.4秒ごとのポーリングのたびに作り直さず、表示内容（sig）が変わったときと
+//     タップしたときだけ作り直す（4択で起きた「押す前に作り直されて押しが消える」対策と同じ考え方）。
+//   ・項目の文字列はすべて textContent で入れる（デッキ作成者が入力した文字列のため）。
+//   ・正しい順はサーバーが正解発表(reveal)まで送ってこない（room.question.correct_order）。
+let orderPickState = { key: null, picks: [] };
+let lastOrderCtx = null;
+
+function orderSmallLabel(text) {
+  const p = document.createElement('p');
+  p.className = 'qz-order-label';
+  p.textContent = text;
+  return p;
+}
+function orderRowEl(chips) {
+  const d = document.createElement('div');
+  d.className = 'qz-order-row ' + (chips ? 'qz-order-row-chips' : 'qz-order-row-list');
+  return d;
+}
+function orderChipEl(text, cls) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'qz-order-chip' + (cls ? ' ' + cls : '');
+  b.textContent = text;
+  return b;
+}
+// リスト形式は「1. 項目」のように番号を付ける（チップ形式は文として横に並べるので付けない）
+function orderNumbered(chipEl, n) {
+  if (n == null) return chipEl;
+  const wrap = document.createElement('div');
+  wrap.className = 'qz-order-li';
+  const num = document.createElement('span');
+  num.className = 'qz-order-num';
+  num.textContent = String(n);
+  wrap.append(num, chipEl);
+  return wrap;
+}
+
+function renderOrderUI(room, orderEl, ctx, force = false) {
+  const key = `${roomCode}:${room.current_q}`;
+  if (orderPickState.key !== key) orderPickState = { key, picks: [] };
+  lastOrderCtx = { room, orderEl, ctx };
+  const q = room.question || {};
+  const items = Array.isArray(q.items) ? q.items : [];
+  const byId = new Map(items.map(it => [it.id, it]));
+  const revealed = room.state === 'reveal';
+  const yourAnswer = Array.isArray(room.your_answer) ? room.your_answer : null;
+  const answered = !!yourAnswer || hasAnsweredThisQ;
+  const picks = yourAnswer || orderPickState.picks;
+  const chips = q.style === 'chips';
+  const pickCount = Number(q.pick_count) || 0;
+  const sig = [key, room.state, answered ? 1 : 0, picks.join(','), revealed ? JSON.stringify(q.correct_order || []) : ''].join('|');
+  if (!force && orderEl.dataset.sig === sig) return;
+  orderEl.dataset.sig = sig;
+  orderEl.replaceChildren();
+
+  // 項目が多い場合でも決定ボタンが画面外へ押し出されないよう、項目部分だけを内部スクロールにする
+  const scroll = document.createElement('div');
+  scroll.className = 'qz-order-scroll';
+  orderEl.appendChild(scroll);
+
+  if (revealed) {
+    const correct = Array.isArray(q.correct_order) ? q.correct_order : [];
+    if (yourAnswer) {
+      scroll.appendChild(orderSmallLabel('あなたの解答'));
+      const row = orderRowEl(chips);
+      yourAnswer.forEach((id, i) => {
+        const it = byId.get(id);
+        const ok = !!it && it.text === correct[i];
+        const chip = orderChipEl(it ? it.text : '?', ok ? 'qz-order-ok' : 'qz-order-ng');
+        chip.disabled = true;
+        row.appendChild(orderNumbered(chip, chips ? null : i + 1));
+      });
+      scroll.appendChild(row);
+    }
+    scroll.appendChild(orderSmallLabel('正しい順'));
+    const row2 = orderRowEl(chips);
+    correct.forEach((t, i) => {
+      const chip = orderChipEl(t, 'qz-order-ok');
+      chip.disabled = true;
+      row2.appendChild(orderNumbered(chip, chips ? null : i + 1));
+    });
+    scroll.appendChild(row2);
+    return;
+  }
+
+  const area = orderRowEl(chips);
+  area.classList.add('qz-order-answer');
+  if (!picks.length) {
+    const ph = document.createElement('p');
+    ph.className = 'qz-order-placeholder';
+    ph.textContent = chips ? '下の語句をタップして文を作ってください' : '下の項目を、正しい順にタップしてください';
+    area.appendChild(ph);
+  }
+  picks.forEach((id, i) => {
+    const it = byId.get(id);
+    const chip = orderChipEl(it ? it.text : '?', 'qz-order-picked');
+    if (answered) {
+      chip.disabled = true;
+    } else {
+      chip.addEventListener('click', () => {
+        if (hasAnsweredThisQ) return;
+        orderPickState.picks = orderPickState.picks.filter(x => x !== id);
+        refreshOrderUI();
+      });
+    }
+    area.appendChild(orderNumbered(chip, chips ? null : i + 1));
+  });
+  scroll.appendChild(area);
+  if (answered) return; // 送信済み：自分の並びだけ見せて発表を待つ（「ほかの人の解答を待っています…」は呼び出し元が出す）
+
+  const pool = document.createElement('div');
+  pool.className = 'qz-order-pool';
+  items.forEach(it => {
+    if (picks.includes(it.id)) return;
+    const chip = orderChipEl(it.text, '');
+    chip.addEventListener('click', () => {
+      if (hasAnsweredThisQ || orderPickState.picks.length >= pickCount) return;
+      orderPickState.picks = [...orderPickState.picks, it.id];
+      refreshOrderUI();
+    });
+    pool.appendChild(chip);
+  });
+  scroll.appendChild(pool);
+
+  const actions = document.createElement('div');
+  actions.className = 'qz-order-actions';
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'qz-order-reset';
+  reset.textContent = 'やり直す';
+  reset.disabled = !picks.length;
+  reset.addEventListener('click', () => { if (hasAnsweredThisQ) return; orderPickState.picks = []; refreshOrderUI(); });
+  const submit = document.createElement('button');
+  submit.type = 'button';
+  submit.className = 'qz-order-submit';
+  submit.textContent = picks.length >= pickCount ? 'この順で決定' : `あと${pickCount - picks.length}つ選んでください`;
+  submit.disabled = picks.length !== pickCount;
+  submit.addEventListener('click', () => submitOrderAnswer(Date.now() + quizClockOffsetMs));
+  actions.append(reset, submit);
+  orderEl.appendChild(actions);
+}
+
+function refreshOrderUI() {
+  if (!lastOrderCtx) return;
+  renderOrderUI(lastOrderCtx.room, lastOrderCtx.orderEl, lastOrderCtx.ctx, true);
+}
+
+async function submitOrderAnswer(pressedAtMs) {
+  if (hasAnsweredThisQ || !lastOrderCtx) return;
+  const { room, ctx } = lastOrderCtx;
+  const picks = orderPickState.picks.slice();
+  if (picks.length !== Number(room.question?.pick_count)) return;
+  const key = orderPickState.key;
+  hasAnsweredThisQ = true;
+  refreshOrderUI();
+  const waitingNote = document.getElementById(ctx.waitingNoteId);
+  if (waitingNote) waitingNote.style.display = '';
+  const sentQ = renderedQIndex;
+  const res = await postQuizAnswer({ order: picks }, pressedAtMs, sentQ);
+  const failed = !res || (!res.ok && (res.error === 'network' || res.error === 'invalid_order'));
+  if (failed && renderedQIndex === sentQ && orderPickState.key === key) {
+    // 送れなかった（または形式エラー）：並べ直して押し直せるように戻す
+    hasAnsweredThisQ = false;
+    refreshOrderUI();
+    if (waitingNote) waitingNote.style.display = 'none';
+    if (res && res.error === 'invalid_order') showAppAlert({ title: 'エラー', desc: quizErrorText('invalid_order') });
+  }
+  pollOnce();
+}
+
+// ============================================================
+//  問題・解答・解説の画像
+// ============================================================
+// ★ 追加：デッキのカードに付いた画像を表示する。スナップショットには枚数
+//   （room.question.img_counts）しか来ないので、本体は /quiz_question_image から1枚ずつ取得し、
+//   ルームコード・問題番号・種別・添字ごとにキャッシュする（ポーリングのたびに取り直さない）。
+//   サーバー側で「今の問題」「解答・解説の画像は正解発表中だけ」に制限している。
+//   画像は img.src への代入（DOM）で入れ、data:image/ で始まるもの以外は使わない。
+const quizImageCache = new Map(); // key → Promise<src|null>
+function fetchQuizImage(qIndex, kind, i) {
+  const key = `${roomCode}:${qIndex}:${kind}:${i}`;
+  const cached = quizImageCache.get(key);
+  if (cached) return cached;
+  const p = apiGet('quiz_question_image', withAuth({ code: roomCode, q: qIndex, kind, i }), 20000).then(d => {
+    if (d && d.ok && typeof d.src === 'string' && d.src.startsWith('data:image/')) return d.src;
+    quizImageCache.delete(key); // 失敗は覚えない（別の問題・次の表示で取り直せるように）
+    return null;
+  });
+  quizImageCache.set(key, p);
+  return p;
+}
+function pruneQuizImageCache(qIndex) {
+  const prefix = `${roomCode}:${qIndex}:`;
+  for (const k of [...quizImageCache.keys()]) if (!k.startsWith(prefix)) quizImageCache.delete(k);
+}
+function renderQuizImages(container, qIndex, kind, count) {
+  const sig = `${roomCode}:${qIndex}:${kind}:${count}`;
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
+  container.replaceChildren();
+  if (kind === 'q') pruneQuizImageCache(qIndex);
+  container.style.display = count > 0 ? '' : 'none';
+  for (let i = 0; i < count; i++) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.className = 'qz-img';
+    img.decoding = 'async';
+    container.appendChild(img);
+    fetchQuizImage(qIndex, kind, i).then(src => {
+      if (container.dataset.sig !== sig) return; // もう別の問題に変わっていたら捨てる
+      if (src) { img.src = src; img.classList.add('qz-img-loaded'); }
+      else {
+        img.remove();
+        if (!container.querySelector('img')) container.style.display = 'none';
+      }
+    });
+  }
+}
+// 正解発表中だけ：解答の画像・解説（文字）・解説の画像
+function renderRevealExtra(el, room) {
+  const revealed = room.state === 'reveal';
+  const q = room.question || {};
+  const ca = revealed ? (Number(q.img_counts?.a) || 0) : 0;
+  const ce = revealed ? (Number(q.img_counts?.e) || 0) : 0;
+  const expl = revealed && typeof q.explanation === 'string' ? q.explanation : '';
+  const sig = revealed ? `${roomCode}:${room.current_q}:${ca}:${ce}:${expl}` : '';
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig;
+  el.replaceChildren();
+  if (!revealed || (!ca && !ce && !expl)) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const addImages = (label, kind, count) => {
+    if (!count) return;
+    const box = document.createElement('div');
+    box.className = 'qz-extra-images';
+    el.append(orderSmallLabel(label), box);
+    renderQuizImages(box, room.current_q, kind, count);
+  };
+  addImages('解答の画像', 'a', ca);
+  if (expl) {
+    const p = document.createElement('p');
+    p.className = 'qz-extra-text';
+    p.textContent = expl;
+    el.append(orderSmallLabel('解説'), p);
+  }
+  addImages('解説の画像', 'e', ce);
 }
 
 // ============================================================

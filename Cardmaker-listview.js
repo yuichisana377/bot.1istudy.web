@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-listview.js"]="c2d8ffd316";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-listview.js"]="7b24bc851b";/*@end*/// ============================================================
 //  Cardmaker-listview.js — CardMaker「一覧で見る」機能（遅延読み込みチャンク）
 //  ─────────────────────────────────────────────
 //  ★ Cardmaker.js から分離。一覧画面（デッキ一覧）の初期表示には不要な
@@ -23,11 +23,10 @@ let listViewSearchQuery = ''; // ★ 追加：この一覧内で絞り込むキ�
 let pendingListViewScrollKey = null;
 
 function openListView() {
-  // ★ 選択式デッキ（クイズ過去問含む）には反転モードの概念が無い（プレイモード選択
-  //   モーダル自体を経由せずここへ来るため、チェックボックスの値も無関係）ため常にfalse。
-  //   通常デッキはこれまで通りプレイモード選択モーダルの反転チェックボックスを引き継ぐ。
-  const relevantDeck = studyIsFolder ? null : decks.find(d => d.id === studyDeckId);
-  listViewReverse = (relevantDeck && relevantDeck.choiceMode) ? false : document.getElementById('reverse-mode-checkbox').checked;
+  // ★ 変更：反転はカード単位で判定する（renderListView 内で「通常」カードにだけ効かせる）。
+  //   選択式・並び替えカードには反転の概念が無いので、チェックボックスがONでも
+  //   それらのカードはそのまま表示される（デッキ単位の choiceMode では判定しない）。
+  listViewReverse = document.getElementById('reverse-mode-checkbox').checked;
   listViewFilter = 'all';
   listViewSearchQuery = ''; // ★ 追加：前回開いたときの検索キーワードを持ち越さない
   const searchInput = document.getElementById('list-view-search-input');
@@ -122,10 +121,12 @@ function renderListView() {
 
   cards.forEach((c, i) => {
     const deckId = c.__deckId || studyDeckId;
-    const qText  = listViewReverse ? c.answer   : c.question;
-    const qImgs  = listViewReverse ? c.imgs_a   : c.imgs_q;
-    const aText  = listViewReverse ? c.question : c.answer;
-    const aImgs  = listViewReverse ? c.imgs_q   : c.imgs_a;
+    const cType  = cardType(c); // ★ 追加：カードの種別（通常／選択式／並び替え）
+    const rev    = listViewReverse && cType === 'normal'; // ★ 反転は通常カードだけ
+    const qText  = rev ? c.answer   : c.question;
+    const qImgs  = rev ? c.imgs_a   : c.imgs_q;
+    const aText  = rev ? c.question : c.answer;
+    const aImgs  = rev ? c.imgs_q   : c.imgs_a;
 
     const item = document.createElement('div');
     item.className = 'list-view-item';
@@ -147,6 +148,14 @@ function renderListView() {
         tag.textContent = d.name;
         head.appendChild(tag);
       }
+    }
+
+    // ★ 追加：通常以外のカードには種別の小さなラベルを付ける
+    if (cType !== 'normal') {
+      const typeTag = document.createElement('span');
+      typeTag.className = 'list-view-type-tag';
+      typeTag.textContent = CARD_TYPE_LABELS[cType] || '';
+      head.appendChild(typeTag);
     }
 
     if (listViewIsUnsure(c)) {
@@ -192,10 +201,22 @@ function renderListView() {
     aTag.textContent = '解答';
     item.appendChild(aTag);
 
-    const aEl = document.createElement('div');
-    aEl.className = 'list-view-a-text';
-    item.appendChild(aEl);
-    setMathText(aEl, aText);
+    // ★ 変更：並び替えカードは、連結した解答文字列の代わりに番号付きの正しい順を並べる
+    if (cType === 'order') {
+      const ol = document.createElement('ol');
+      ol.className = 'list-view-order-list';
+      (Array.isArray(c.order_items) ? c.order_items : []).forEach(t => {
+        const li = document.createElement('li');
+        setMathText(li, String(t));
+        ol.appendChild(li);
+      });
+      item.appendChild(ol);
+    } else {
+      const aEl = document.createElement('div');
+      aEl.className = 'list-view-a-text';
+      item.appendChild(aEl);
+      setMathText(aEl, aText);
+    }
 
     if (aImgs && aImgs.length) {
       const aImgWrap = document.createElement('div');
@@ -219,7 +240,7 @@ function renderListView() {
     // ★ 追加：選択式デッキ（クイズ過去問含む）は、正解以外の選択肢も小さく添える。
     //   正解の判定は correct_indices（新形式・複数対応）／correct_index（旧形式・単数）の
     //   どちらでも拾えるようにしておく。
-    if (Array.isArray(c.choices) && c.choices.length) {
+    if (cType === 'choice' && Array.isArray(c.choices) && c.choices.length) {
       const correctSet = new Set(
         Array.isArray(c.correct_indices) ? c.correct_indices
           : (typeof c.correct_index === 'number' ? [c.correct_index] : [])
@@ -236,6 +257,19 @@ function renderListView() {
         chEl.textContent = otherChoices.join(' ／ ');
         item.appendChild(chEl);
       }
+    }
+
+    // ★ 追加：並び替え（語句）カードのダミー語句は、選択肢と同じく控えめに添える
+    if (cType === 'order' && c.order_style === 'chips'
+        && Array.isArray(c.order_distractors) && c.order_distractors.length) {
+      const dTag = document.createElement('div');
+      dTag.className = 'list-view-choices-tag';
+      dTag.textContent = 'ダミーの語句';
+      item.appendChild(dTag);
+      const dEl = document.createElement('div');
+      dEl.className = 'list-view-choices-text';
+      dEl.textContent = c.order_distractors.join(' ／ ');
+      item.appendChild(dEl);
     }
 
     wrap.appendChild(item);

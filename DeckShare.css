@@ -73,3 +73,32 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ★ 追加：種別混在デッキ（カード単位の type）で使う並び替え・ナビの補助スタイル
+   （並び替えの解答欄・チップ自体は Cardmaker.css の .study-order-* を流用） */
+.ds-qp-nav-row {
+  display: flex;
+  gap: 8px;
+}
+.ds-order-correct {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: .7rem .9rem;
+  margin-bottom: .85rem;
+}
+.ds-order-correct-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: .3rem;
+}
+.ds-order-correct .list-view-order-list { margin: 0; }
+.ds-order-correct-chips {
+  font-size: 15px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+.ds-qp-expl {
+  margin-bottom: .85rem;
+}

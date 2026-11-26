@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="c2d8ffd316">
-<script src="/Version.js?v=c2d8ffd316"></script>
+<meta name="app-version" content="7b24bc851b">
+<script src="/Version.js?v=7b24bc851b"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>みんなでクイズ</title>
 <!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
      共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
-<link rel="stylesheet" href="/Style.css?v=c2d8ffd316">
-<link rel="stylesheet" href="Quiz.css?v=c2d8ffd316">
+<link rel="stylesheet" href="/Style.css?v=7b24bc851b">
+<link rel="stylesheet" href="Quiz.css?v=7b24bc851b">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -320,11 +320,17 @@ window.addEventListener('error', function (e) {
     <div class="qz-answered-count" id="hp-answered"></div>
     <span class="qz-bonus-badge" id="hp-bonus-badge" style="display:none">ボーナス問題！得点2倍</span>
     <h2 class="qz-question-text" id="hp-question"></h2>
+    <!-- ★ 追加：デッキのカードに付いている問題の画像（Quiz.js renderQuizImages） -->
+    <div class="qz-q-images" id="hp-qimages" style="display:none"></div>
     <div class="qz-choice-spacer" aria-hidden="true"></div>
     <div class="qz-choice-grid" id="hp-choices"></div>
+    <!-- ★ 追加：並び替え問題の解答欄（4択の .qz-choice-grid の代わりに使う。Quiz.js renderOrderUI） -->
+    <div class="qz-order" id="hp-order" style="display:none"></div>
     <div class="qz-answer-feedback" id="hp-feedback" style="display:none"></div>
     <p class="qz-waiting-note" id="hp-waiting-note" style="display:none">ほかの人の解答を待っています…</p>
     <div class="qz-reveal-panel" id="hp-reveal" style="display:none">
+      <!-- ★ 追加：正解発表時の解答の画像・解説・解説の画像（Quiz.js renderRevealExtra） -->
+      <div class="qz-reveal-extra" id="hp-reveal-extra" style="display:none"></div>
       <div class="qz-first-badge" id="hp-first-badge"></div>
       <div class="qz-mini-leaderboard" id="hp-leaderboard"></div>
       <p class="qz-waiting-note">まもなく次の問題です…</p>
@@ -388,14 +394,17 @@ window.addEventListener('error', function (e) {
     <div class="qz-answered-count" id="pp-answered"></div>
     <span class="qz-bonus-badge" id="pp-bonus-badge" style="display:none">ボーナス問題！得点2倍</span>
     <h2 class="qz-question-text" id="pp-question"></h2>
+    <div class="qz-q-images" id="pp-qimages" style="display:none"></div>
     <div class="qz-choice-spacer" aria-hidden="true"></div>
     <div class="qz-choice-grid" id="pp-choices"></div>
+    <div class="qz-order" id="pp-order" style="display:none"></div>
     <div class="qz-answer-feedback" id="pp-feedback" style="display:none"></div>
     <p class="qz-waiting-note" id="pp-waiting-note" style="display:none">ほかの人の解答を待っています…</p>
     <!-- ★ 追加：途中参加でこの問題はまだ見学中の人向け（Quiz.js renderPlayScreen の spectating 分岐） -->
     <p class="qz-waiting-note" id="pp-spectate-note" style="display:none">待機中…（次の問題から参加します）</p>
     <!-- ★ 追加：正解発表中、ホストと同じ「一番早く正解した人」「ミニ順位表」を参加者にも見せる -->
     <div class="qz-reveal-panel" id="pp-reveal" style="display:none">
+      <div class="qz-reveal-extra" id="pp-reveal-extra" style="display:none"></div>
       <div class="qz-first-badge" id="pp-first-badge"></div>
       <div class="qz-mini-leaderboard" id="pp-leaderboard"></div>
       <p class="qz-waiting-note">まもなく次の問題です…</p>
@@ -415,11 +424,11 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=c2d8ffd316"></script>
-<script src="/SwipeGuard.js?v=c2d8ffd316"></script>
-<script src="/Dialog.js?v=c2d8ffd316"></script>
-<script src="/Dropdown.js?v=c2d8ffd316"></script>
-<script src="/Common.js?v=c2d8ffd316"></script>
-<script src="Quiz.js?v=c2d8ffd316"></script>
+<script src="/Icons.js?v=7b24bc851b"></script>
+<script src="/SwipeGuard.js?v=7b24bc851b"></script>
+<script src="/Dialog.js?v=7b24bc851b"></script>
+<script src="/Dropdown.js?v=7b24bc851b"></script>
+<script src="/Common.js?v=7b24bc851b"></script>
+<script src="Quiz.js?v=7b24bc851b"></script>
 </body>
 </html>

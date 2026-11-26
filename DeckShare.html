@@ -2,17 +2,17 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="c2d8ffd316">
-<script src="/Version.js?v=c2d8ffd316"></script>
+<meta name="app-version" content="7b24bc851b">
+<script src="/Version.js?v=7b24bc851b"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>共有デッキ — 学生勉強会web</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/Style.css?v=c2d8ffd316">
-<link rel="stylesheet" href="/Cardmaker.css?v=c2d8ffd316">
-<link rel="stylesheet" href="/DeckShare.css?v=c2d8ffd316">
+<link rel="stylesheet" href="/Style.css?v=7b24bc851b">
+<link rel="stylesheet" href="/Cardmaker.css?v=7b24bc851b">
+<link rel="stylesheet" href="/DeckShare.css?v=7b24bc851b">
 <!-- ★ 数式（分数・ルートなど）をきれいに表示するためのKaTeX（Cardmaker.htmlと同じバージョン） -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
@@ -128,12 +128,13 @@
       </div>
     </div>
 
-    <!-- 選択式クイズ（choice_modeデッキ用） -->
+    <!-- 選択式クイズ（choice_modeデッキ用）／種別混在デッキの選択式・並び替えカード -->
     <div id="ds-quiz" class="cm-scroll-body" style="display:none;flex:1;min-height:0">
       <div class="inner">
         <div id="ds-quiz-done" style="display:none;text-align:center">
           <div class="study-done-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M12 3v3.4"/><path d="M12 17.6V21"/><path d="M3 12h3.4"/><path d="M17.6 12H21"/><path d="M5.8 5.8l2.4 2.4"/><path d="M15.8 15.8l2.4 2.4"/><path d="M18.2 5.8l-2.4 2.4"/><path d="M8.2 15.8l-2.4 2.4"/></svg></div>
           <div class="study-done-title" id="ds-quiz-score"></div>
+          <div class="study-done-sub" id="ds-quiz-done-sub" style="display:none"></div>
           <button class="btn btn-outline" style="width:100%;margin-top:1rem" onclick="shuffleDeckShare()">もう一度挑戦する</button>
           <button class="btn btn-ghost" style="width:100%;margin-top:.5rem" onclick="dsGoIntro()">案内画面に戻る</button>
         </div>
@@ -145,8 +146,23 @@
           <div class="study-q-text" id="ds-qp-q-text" style="margin-top:1rem"></div>
           <div class="study-q-imgs" id="ds-qp-q-imgs"></div>
           <div class="qp-choices" id="ds-qp-choices"></div>
+          <!-- ★ 追加：並び替えカードの解答欄（中身は DeckShare.js の dsDrawOrder() がDOM APIで組み立てる） -->
+          <div class="study-order-wrap" id="ds-qp-order" style="display:none"></div>
+          <!-- ★ 追加：並び替えカードの判定結果と、不正解時の正しい順 -->
+          <div class="study-grade-result" id="ds-qp-result" style="display:none">
+            <div class="grade-mark" id="ds-qp-result-mark"></div>
+          </div>
+          <div class="ds-order-correct" id="ds-qp-order-correct" style="display:none"></div>
+          <!-- ★ 追加：カード単位の種別が混在するデッキだけ、回答後に解説を出す -->
+          <div class="ds-qp-expl" id="ds-qp-expl-wrap" style="display:none">
+            <div class="expl-tag">解説</div>
+            <div class="expl-text" id="ds-qp-e-text"></div>
+          </div>
           <div class="qp-next-wrap" id="ds-qp-next-wrap" style="display:none">
-            <button class="btn btn-blue" style="width:100%" onclick="dsQuizNext()" id="ds-qp-next-btn">次へ →</button>
+            <div class="ds-qp-nav-row">
+              <button class="btn btn-ghost" id="ds-qp-prev-btn" onclick="dsMove(-1)" style="display:none">← 前へ</button>
+              <button class="btn btn-blue" style="flex:1" onclick="dsQuizNext()" id="ds-qp-next-btn">次へ →</button>
+            </div>
           </div>
         </div>
       </div>
@@ -161,7 +177,7 @@
   </div>
 </div>
 
-<script src="/Icons.js?v=c2d8ffd316"></script>
-<script src="/DeckShare.js?v=c2d8ffd316"></script>
+<script src="/Icons.js?v=7b24bc851b"></script>
+<script src="/DeckShare.js?v=7b24bc851b"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["DeckShare.js"]="c2d8ffd316";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["DeckShare.js"]="7b24bc851b";/*@end*/// ============================================================
 //  DeckShare.js — 共有リンク専用の閲覧ビューア（DeckShare.html）用スクリプト
 //  ─────────────────────────────
 //  CardMakerのデッキ作成者が発行した「共有リンク」（?token=...）を開いた、
@@ -17,13 +17,16 @@
 //    textContent / DOM APIのsrcプロパティ経由でのみ描画する
 //    （innerHTML+テンプレート文字列での組み立ては禁止）。
 //  ★ 画面の流れ：読み込み → 案内画面（デッキ名・反転トグル・はじめる／
-//    一覧で見る）→ 暗記カード or 選択式クイズ／一覧。開いていきなり
+//    一覧で見る）→ 暗記カード or 選択式クイズ or 種別混在（カード単位）／一覧。開いていきなり
 //    カードが始まらないよう、必ずこの案内画面を経由する。
 // ============================================================
 
 const API_BASE = "/api/";
 const CHOICE_LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const CHOICE_MIN = 2;
+// ★ 追加：カード単位の種別（Cardmaker.js の CARD_TYPES / cardType と同じ基準）
+const CARD_TYPES = ['normal', 'choice', 'order'];
+const ORDER_MIN = 2;
 
 function qs(id) { return document.getElementById(id); }
 
@@ -238,7 +241,12 @@ function setMathText(el, raw) {
 //  読み込み
 // ============================================================
 let deckShare = null;   // /deck_share_info のレスポンス
-let dsMode = 'flash';    // 'flash' | 'quiz'（choice_modeかつ選択式で遊べる問題があるか）
+// 'flash' | 'quiz' | 'mixed'
+//   flash：全カードが通常（従来の暗記カード）
+//   quiz ：従来の選択式デッキ（choice_mode=true で、どのカードにも type が無い）→ 挙動は従来のまま
+//   mixed：カード単位の種別（type）で振り分ける。通常=暗記カード、choice=選択式、order=並び替え
+let dsMode = 'flash';
+let dsResults = new Map(); // mixed 用：出題順の位置 → 正誤（戻って答え直しても上書きなので二重加点しない）
 let dsCards = [];        // 暗記カードモードで使う順番（シャッフル可）
 let dsIdx = 0;
 let dsReverse = false;   // 暗記カードの問題/解答を逆にするか（案内画面のチェックボックスから）
@@ -261,9 +269,19 @@ async function init() {
     }
     deckShare = data;
     document.title = `${deckShare.name || '共有デッキ'} — 共有デッキ`;
+    const allCards = data.cards || [];
+    const hasTyped = allCards.some(c => c && CARD_TYPES.includes(c.type));
     const playable = getPlayableChoiceCards();
-    dsMode = (data.choice_mode && playable.length) ? 'quiz' : 'flash';
-    qs('ds-reverse-row').style.display = (dsMode === 'quiz') ? 'none' : '';
+    if (!hasTyped && data.choice_mode && playable.length) {
+      dsMode = 'quiz'; // ★ 従来の選択式デッキ（type無し）は今まで通りの選択式クイズ
+    } else if (allCards.some(c => dsCardType(c) !== 'normal')) {
+      dsMode = 'mixed';
+    } else {
+      dsMode = 'flash';
+    }
+    // 「問題と解答を逆にする」は通常カードにしか効かないので、通常カードがある時だけ出す
+    const hasNormal = allCards.some(c => dsCardType(c) === 'normal');
+    qs('ds-reverse-row').style.display = (dsMode === 'quiz' || (dsMode === 'mixed' && !hasNormal)) ? 'none' : '';
     renderIntroMeta();
     showDsStep('intro');
   } catch (e) {
@@ -276,12 +294,37 @@ function getPlayableChoiceCards() {
   const cards = (deckShare && deckShare.cards) || [];
   return cards
     .filter(c => Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN)
-    .map(c => ({
-      ...c,
-      correct_indices: Array.isArray(c.correct_indices) ? c.correct_indices
-        : (typeof c.correct_index === 'number' ? [c.correct_index] : []),
-    }))
+    .map(c => normalizeChoiceCard(c))
     .filter(c => c.correct_indices.length >= 1);
+}
+
+// 選択式カードの correct_indices を配列に揃える（旧形式の correct_index 単数にも対応）
+function normalizeChoiceCard(c) {
+  return {
+    ...c,
+    correct_indices: Array.isArray(c.correct_indices) ? c.correct_indices
+      : (typeof c.correct_index === 'number' ? [c.correct_index] : []),
+  };
+}
+
+// ★ 追加：カード1枚の種別（DeckShare での出題方法）を決める。
+//   type が無ければ choices が CHOICE_MIN 個以上で choice、それ以外は normal（Cardmaker.js の cardType と同じ）。
+//   ただし出題に必要な情報が欠けているカード（正解の無い選択式・項目が足りない並び替え）は、
+//   遊べないので通常カード（問題と解答を見るだけ）として扱う。
+function dsCardType(c) {
+  if (!c) return 'normal';
+  const t = CARD_TYPES.includes(c.type) ? c.type
+    : ((Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN) ? 'choice' : 'normal');
+  if (t === 'choice') {
+    const ok = Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN
+      && normalizeChoiceCard(c).correct_indices.length >= 1;
+    return ok ? 'choice' : 'normal';
+  }
+  if (t === 'order') {
+    const items = Array.isArray(c.order_items) ? c.order_items : [];
+    return items.length >= ORDER_MIN ? 'order' : 'normal';
+  }
+  return 'normal';
 }
 
 function renderIntroMeta() {
@@ -300,6 +343,13 @@ function renderIntroMeta() {
   if (deckShare.subject) badges.push(deckShare.subject);
   badges.push(`${cardCount}問`);
   if (dsMode === 'quiz') badges.push('選択式クイズ');
+  if (dsMode === 'mixed') {
+    const cards = deckShare.cards || [];
+    const nChoice = cards.filter(c => dsCardType(c) === 'choice').length;
+    const nOrder = cards.filter(c => dsCardType(c) === 'order').length;
+    if (nChoice) badges.push(`選択式 ${nChoice}問`);
+    if (nOrder) badges.push(`並び替え ${nOrder}問`);
+  }
   if (deckShare.incomplete) badges.push('作成中のデッキ');
   if (deckShare.shared_by) badges.push(`${deckShare.shared_by}さんが共有`);
   badges.forEach(t => {
@@ -324,6 +374,8 @@ function dsStart() {
   dsReverse = qs('ds-reverse-checkbox').checked;
   if (dsMode === 'quiz') {
     startQuizMode(getPlayableChoiceCards());
+  } else if (dsMode === 'mixed') {
+    startMixedMode((deckShare.cards || []).slice());
   } else {
     startFlashMode((deckShare.cards || []).slice());
   }
@@ -335,6 +387,12 @@ function shuffleDeckShare() {
     qs('ds-quiz-done').style.display = 'none';
     qs('ds-quiz-play').style.display = '';
     startQuizMode(getPlayableChoiceCards());
+  } else if (dsMode === 'mixed') {
+    for (let i = dsCards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [dsCards[i], dsCards[j]] = [dsCards[j], dsCards[i]];
+    }
+    startMixedMode(dsCards);
   } else {
     qs('ds-done').style.display = 'none';
     qs('ds-flash-content').style.display = 'flex';
@@ -402,7 +460,280 @@ function dsReveal() {
 
 function dsMove(dir) {
   dsIdx += dir;
-  renderFlashCard();
+  if (dsIdx < 0) dsIdx = 0;
+  if (dsMode === 'mixed') renderMixedCard();
+  else renderFlashCard();
+}
+
+// ============================================================
+//  ★ 追加：種別混在モード（カード単位の type で振り分け）
+//  ─────────────────────────────
+//  出題順（dsCards / dsIdx）は1本で、カードごとに表示する画面を切り替える。
+//   ・normal → 暗記カード画面（#ds-flash、renderFlashCard をそのまま使う）
+//   ・choice → 選択式画面（#ds-quiz、従来の選択式UIと同じボタン）
+//   ・order  → 選択式画面の中の並び替え欄（#ds-qp-order）
+//  採点結果は dsResults（出題順の位置 → 正誤）に上書き保存し、完了画面で集計する。
+// ============================================================
+function startMixedMode(cards) {
+  dsCards = cards;
+  dsIdx = 0;
+  dsResults = new Map();
+  qs('ds-done').style.display = 'none';
+  qs('ds-flash-content').style.display = 'flex';
+  qs('ds-quiz-done').style.display = 'none';
+  qs('ds-quiz-play').style.display = '';
+  renderMixedCard();
+}
+
+function renderMixedCard() {
+  const flash = qs('ds-flash');
+  const quiz = qs('ds-quiz');
+  if (dsIdx >= dsCards.length) {
+    // 完了：選択式・並び替えの正解数を出す
+    flash.style.display = 'none';
+    quiz.style.display = 'flex';
+    qs('ds-quiz-play').style.display = 'none';
+    qs('ds-quiz-done').style.display = '';
+    const graded = dsCards.reduce((n, c) => n + (dsCardType(c) !== 'normal' ? 1 : 0), 0);
+    let correct = 0;
+    dsResults.forEach((v, k) => { if (v && k < dsCards.length) correct++; });
+    qs('ds-quiz-score').textContent = `${correct} / ${graded} 問正解`;
+    const sub = qs('ds-quiz-done-sub');
+    sub.textContent = `全${dsCards.length}問を確認しました（正解数は選択式・並び替えの問題のみ）`;
+    sub.style.display = '';
+    return;
+  }
+  const card = dsCards[dsIdx];
+  const type = dsCardType(card);
+  if (type === 'normal') {
+    quiz.style.display = 'none';
+    flash.style.display = 'flex';
+    qs('ds-done').style.display = 'none';
+    qs('ds-flash-content').style.display = 'flex';
+    renderFlashCard();
+    return;
+  }
+  flash.style.display = 'none';
+  quiz.style.display = 'flex';
+  qs('ds-quiz-done').style.display = 'none';
+  qs('ds-quiz-play').style.display = '';
+  quiz.scrollTop = 0;
+  renderQuizCardCommon(card, dsIdx, dsCards.length);
+  // mixed では回答前でも「← 前へ」を押せるよう、ナビ行は常に出す（次へは回答後に有効化）
+  qs('ds-qp-next-wrap').style.display = '';
+  qs('ds-qp-prev-btn').style.display = '';
+  qs('ds-qp-prev-btn').disabled = dsIdx === 0;
+  const nextBtn = qs('ds-qp-next-btn');
+  nextBtn.disabled = true;
+  nextBtn.textContent = dsIdx === dsCards.length - 1 ? '結果を見る →' : '次へ →';
+  if (type === 'choice') {
+    const nc = normalizeChoiceCard(card);
+    buildChoiceButtons(nc, idx => {
+      if (dsQuizAnswered) return;
+      dsQuizAnswered = true;
+      const isCorrect = markChoiceResult(nc, idx);
+      dsResults.set(dsIdx, isCorrect);
+      dsShowQuizExplanation(card);
+      nextBtn.disabled = false;
+    });
+  } else {
+    dsRenderOrder(card);
+  }
+}
+
+function dsShowQuizExplanation(card) {
+  if (dsMode !== 'mixed' || !card.explanation) return;
+  setMathText(qs('ds-qp-e-text'), card.explanation);
+  qs('ds-qp-expl-wrap').style.display = '';
+}
+
+// ============================================================
+//  ★ 追加：並び替えカード（タップのみ。ドラッグは無し）
+//  ─────────────────────────────
+//  ・下の置き場（シャッフル済み）のチップをタップ → 解答欄の末尾に入る
+//  ・解答欄のチップをタップ → 置き場へ戻る
+//  ・chips 形式は order_distractors（ダミー語句）も置き場に混ざる
+//  ・採点は「並べた語句の文字列の並び」が order_items と完全一致したときだけ正解
+//    （添字ではなく文字列で比較するので、同じ文字列の語句が複数あっても正しく判定できる）
+//  ・位置ごとに正誤を色分けし、不正解なら正しい順を表示する
+//  ・語句は利用者の入力なので innerHTML には入れず setMathText / textContent で描画する
+//  ・見た目は Cardmaker.css の .study-order-* を流用（DeckShare.html で読み込み済み）
+// ============================================================
+let dsOrderState = null; // { idx, items, style, pieces:[{id,text}], placed:[id], answered }
+
+function dsShuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function dsRenderOrder(card) {
+  const style = card.order_style === 'chips' ? 'chips' : 'list';
+  const items = (Array.isArray(card.order_items) ? card.order_items : []).map(x => String(x));
+  const distractors = (style === 'chips' && Array.isArray(card.order_distractors))
+    ? card.order_distractors.map(x => String(x)) : [];
+  const pieces = [...items, ...distractors].map((text, i) => ({ id: i, text }));
+  // シャッフル（偶然正しい並びのままになった場合は並べ直す）
+  for (let tries = 0; tries < 5; tries++) {
+    dsShuffleInPlace(pieces);
+    const asIs = pieces.slice(0, items.length).map(p => p.text);
+    if (distractors.length || items.length < 2 || asIs.some((t, i) => t !== items[i])) break;
+  }
+  dsOrderState = { idx: dsIdx, items, style, pieces, placed: [], answered: false };
+  qs('ds-qp-order').style.display = '';
+  dsDrawOrder();
+}
+
+function dsOrderPiece(id) {
+  return dsOrderState.pieces.find(p => p.id === id);
+}
+
+function dsDrawOrder(perPos) {
+  const st = dsOrderState;
+  const wrap = qs('ds-qp-order');
+  if (!st || !wrap) return;
+  wrap.replaceChildren();
+  wrap.classList.toggle('is-list', st.style === 'list');
+  wrap.classList.toggle('is-chips', st.style === 'chips');
+
+  if (!st.answered) {
+    const hint = document.createElement('div');
+    hint.className = 'study-order-hint';
+    hint.textContent = st.style === 'list'
+      ? '下の項目をタップして、正しい順に並べてください'
+      : (st.pieces.length > st.items.length
+        ? '語句を正しい順にタップしてください（使わない語句も混ざっています）'
+        : '語句を正しい順にタップしてください');
+    wrap.appendChild(hint);
+  }
+
+  // ── 解答欄 ──
+  const answer = document.createElement('div');
+  answer.className = 'study-order-answer';
+  if (!st.placed.length) {
+    const ph = document.createElement('div');
+    ph.className = 'study-order-placeholder';
+    ph.textContent = st.style === 'list' ? 'ここに順番に並びます' : 'ここに語句が並びます';
+    answer.appendChild(ph);
+  }
+  st.placed.forEach((id, pos) => {
+    const btn = dsMakeOrderChip(dsOrderPiece(id), 'answer', pos);
+    if (perPos) btn.classList.add(perPos[pos] ? 'is-correct' : 'is-wrong');
+    answer.appendChild(btn);
+  });
+  wrap.appendChild(answer);
+
+  if (st.answered) return;
+
+  // ── 置き場（まだ使っていない語句） ──
+  const bank = document.createElement('div');
+  bank.className = 'study-order-bank';
+  st.pieces.filter(p => !st.placed.includes(p.id)).forEach(p => bank.appendChild(dsMakeOrderChip(p, 'bank')));
+  wrap.appendChild(bank);
+
+  const actions = document.createElement('div');
+  actions.className = 'study-order-actions';
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.className = 'btn btn-ghost';
+  resetBtn.textContent = 'やり直す';
+  resetBtn.disabled = !st.placed.length;
+  resetBtn.addEventListener('click', () => { if (!st.answered) { st.placed = []; dsDrawOrder(); } });
+  const giveUpBtn = document.createElement('button');
+  giveUpBtn.type = 'button';
+  giveUpBtn.className = 'btn btn-ghost';
+  giveUpBtn.textContent = '答えを見る';
+  giveUpBtn.addEventListener('click', () => dsGradeOrder(true));
+  const submitBtn = document.createElement('button');
+  submitBtn.type = 'button';
+  submitBtn.className = 'btn btn-blue study-order-submit';
+  submitBtn.textContent = `採点する（${st.placed.length} / ${st.items.length}）`;
+  submitBtn.disabled = st.placed.length !== st.items.length;
+  submitBtn.addEventListener('click', () => dsGradeOrder(false));
+  actions.append(resetBtn, giveUpBtn, submitBtn);
+  wrap.appendChild(actions);
+}
+
+// 語句チップ1個を作る（where: 'answer' | 'bank'）
+function dsMakeOrderChip(piece, where, pos) {
+  const st = dsOrderState;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'study-order-chip' + (where === 'answer' ? ' in-answer' : '');
+  if (where === 'answer' && st.style === 'list') {
+    const num = document.createElement('span');
+    num.className = 'study-order-chip-num';
+    num.textContent = String(pos + 1);
+    btn.appendChild(num);
+  }
+  const label = document.createElement('span');
+  label.className = 'study-order-chip-text';
+  setMathText(label, piece.text);
+  btn.appendChild(label);
+  if (st.answered) { btn.disabled = true; return btn; }
+  btn.addEventListener('click', () => {
+    if (dsOrderState !== st || st.answered) return;
+    if (where === 'bank') {
+      if (st.placed.length >= st.items.length) return; // 正しい項目数より多くは置けない
+      st.placed.push(piece.id);
+    } else {
+      st.placed = st.placed.filter(id => id !== piece.id);
+    }
+    dsDrawOrder();
+  });
+  return btn;
+}
+
+// 採点する（giveUp=true は「答えを見る」＝並べた途中のまま不正解として扱う）
+function dsGradeOrder(giveUp) {
+  const st = dsOrderState;
+  if (!st || st.answered || st.idx !== dsIdx) return;
+  if (!giveUp && st.placed.length !== st.items.length) return;
+  const texts = st.placed.map(id => dsOrderPiece(id).text);
+  const perPos = texts.map((t, i) => t === st.items[i]);
+  const isCorrect = !giveUp && texts.length === st.items.length && perPos.every(Boolean);
+  st.answered = true;
+  dsDrawOrder(perPos);
+
+  const result = qs('ds-qp-result');
+  result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
+  result.style.display = 'flex';
+  // Icons.html はこのファイル内で固定のSVG文字列を返すだけ（利用者の入力を含まない）
+  qs('ds-qp-result-mark').innerHTML = isCorrect ? '○ 正解'
+    : ((window.Icons ? Icons.html('close', { size: 14 }) + ' ' : '✕ ') + '不正解');
+
+  const correctBox = qs('ds-qp-order-correct');
+  correctBox.replaceChildren();
+  if (!isCorrect) {
+    const label = document.createElement('div');
+    label.className = 'ds-order-correct-label';
+    label.textContent = '正しい順';
+    correctBox.appendChild(label);
+    if (st.style === 'list') {
+      const ol = document.createElement('ol');
+      ol.className = 'list-view-order-list';
+      st.items.forEach(t => {
+        const li = document.createElement('li');
+        setMathText(li, t);
+        ol.appendChild(li);
+      });
+      correctBox.appendChild(ol);
+    } else {
+      const line = document.createElement('div');
+      line.className = 'ds-order-correct-chips';
+      setMathText(line, st.items.join(' '));
+      correctBox.appendChild(line);
+    }
+    correctBox.style.display = '';
+  } else {
+    correctBox.style.display = 'none';
+  }
+
+  dsResults.set(dsIdx, isCorrect);
+  dsShowQuizExplanation(dsCards[dsIdx]);
+  qs('ds-qp-next-btn').disabled = false;
 }
 
 // ============================================================
@@ -428,15 +759,36 @@ function startQuizMode(playable) {
   renderQuizQuestion();
 }
 
-function renderQuizQuestion() {
-  const card = dsQuizCards[dsQuizIdx];
+// 選択式画面の共通部分（進捗・問題文・画像）を描き、選択肢／並び替え／結果欄を空に戻す。
+//   従来の選択式クイズ（quiz）と種別混在（mixed）の両方から使う。
+function renderQuizCardCommon(card, idx, total) {
   dsQuizAnswered = false;
-  const pct = dsQuizCards.length > 1 ? (dsQuizIdx / dsQuizCards.length) * 100 : 0;
+  const pct = total > 1 ? (idx / total) * 100 : 0;
   qs('ds-qp-prog-fill').style.width = pct + '%';
-  qs('ds-qp-prog-label').textContent = `${dsQuizIdx + 1} / ${dsQuizCards.length}`;
+  qs('ds-qp-prog-label').textContent = `${idx + 1} / ${total}`;
   setMathText(qs('ds-qp-q-text'), card.question);
   renderImgList(qs('ds-qp-q-imgs'), card.imgs_q);
+  qs('ds-qp-choices').replaceChildren();
+  dsOrderState = null;
+  const orderWrap = qs('ds-qp-order');
+  orderWrap.replaceChildren();
+  orderWrap.style.display = 'none';
+  qs('ds-qp-result').style.display = 'none';
+  qs('ds-qp-order-correct').style.display = 'none';
+  qs('ds-qp-expl-wrap').style.display = 'none';
+  qs('ds-qp-next-btn').disabled = false;
+}
 
+function renderQuizQuestion() {
+  const card = dsQuizCards[dsQuizIdx];
+  renderQuizCardCommon(card, dsQuizIdx, dsQuizCards.length);
+  buildChoiceButtons(card, i => dsAnswerQuiz(i));
+  qs('ds-qp-prev-btn').style.display = 'none';
+  qs('ds-qp-next-wrap').style.display = 'none';
+}
+
+// 選択肢ボタンを並べる（onPick(i) は押された選択肢の番号を受け取る）
+function buildChoiceButtons(card, onPick) {
   const choicesEl = qs('ds-qp-choices');
   choicesEl.innerHTML = '';
   card.choices.forEach((c, i) => {
@@ -450,37 +802,42 @@ function renderQuizQuestion() {
     const span = document.createElement('span');
     btn.appendChild(span);
     setMathText(span, c);
-    btn.addEventListener('click', () => dsAnswerQuiz(i));
+    btn.addEventListener('click', () => onPick(i));
     choicesEl.appendChild(btn);
   });
-
-  qs('ds-qp-next-wrap').style.display = 'none';
 }
 
-function dsAnswerQuiz(idx) {
-  if (dsQuizAnswered) return;
-  dsQuizAnswered = true;
-  const card = dsQuizCards[dsQuizIdx];
+// 押された選択肢の正誤を色分けして、正解だったかを返す
+function markChoiceResult(card, idx) {
   const isCorrect = card.correct_indices.includes(idx);
-  if (isCorrect) dsQuizScore++;
-
   [...document.querySelectorAll('#ds-qp-choices .qp-choice-btn')].forEach((btn, i) => {
     btn.disabled = true;
     if (card.correct_indices.includes(i)) btn.classList.add('qp-correct');
     else if (i === idx) btn.classList.add('qp-wrong');
     else btn.classList.add('qp-dim');
   });
+  return isCorrect;
+}
+
+function dsAnswerQuiz(idx) {
+  if (dsQuizAnswered) return;
+  dsQuizAnswered = true;
+  const card = dsQuizCards[dsQuizIdx];
+  const isCorrect = markChoiceResult(card, idx);
+  if (isCorrect) dsQuizScore++;
 
   qs('ds-qp-next-wrap').style.display = '';
   qs('ds-qp-next-btn').textContent = dsQuizIdx === dsQuizCards.length - 1 ? '結果を見る →' : '次へ →';
 }
 
 function dsQuizNext() {
+  if (dsMode === 'mixed') { dsMove(1); return; }
   dsQuizIdx++;
   if (dsQuizIdx >= dsQuizCards.length) {
     qs('ds-quiz-play').style.display = 'none';
     qs('ds-quiz-done').style.display = '';
     qs('ds-quiz-score').textContent = `${dsQuizScore} / ${dsQuizCards.length} 問正解`;
+    qs('ds-quiz-done-sub').style.display = 'none';
   } else {
     renderQuizQuestion();
   }
@@ -512,10 +869,13 @@ function renderDsListView() {
     return;
   }
   cards.forEach((c, i) => {
-    const qText = dsListReverse ? c.answer : c.question;
-    const qImgs = dsListReverse ? c.imgs_a : c.imgs_q;
-    const aText = dsListReverse ? c.question : c.answer;
-    const aImgs = dsListReverse ? c.imgs_q : c.imgs_a;
+    // ★ 反転は通常カードにだけ効かせる（選択式・並び替えは問題→解答の向きのまま）
+    const isOrder = dsCardType(c) === 'order';
+    const rev = dsListReverse && dsCardType(c) === 'normal';
+    const qText = rev ? c.answer : c.question;
+    const qImgs = rev ? c.imgs_a : c.imgs_q;
+    const aText = rev ? c.question : c.answer;
+    const aImgs = rev ? c.imgs_q : c.imgs_a;
 
     const item = document.createElement('div');
     item.className = 'list-view-item';
@@ -547,10 +907,22 @@ function renderDsListView() {
     aTag.className = 'list-view-a-tag';
     aTag.textContent = '解答';
     item.appendChild(aTag);
-    const aEl = document.createElement('div');
-    aEl.className = 'list-view-a-text';
-    item.appendChild(aEl);
-    setMathText(aEl, aText);
+    if (isOrder && c.order_style !== 'chips') {
+      // 並び替え（list形式）は正しい順を番号付きリストで見せる
+      const ol = document.createElement('ol');
+      ol.className = 'list-view-order-list';
+      c.order_items.forEach(t => {
+        const li = document.createElement('li');
+        setMathText(li, String(t));
+        ol.appendChild(li);
+      });
+      item.appendChild(ol);
+    } else {
+      const aEl = document.createElement('div');
+      aEl.className = 'list-view-a-text';
+      item.appendChild(aEl);
+      setMathText(aEl, isOrder ? c.order_items.map(x => String(x)).join(' ') : aText);
+    }
     if (aImgs && aImgs.length) {
       const aImgWrap = document.createElement('div');
       aImgWrap.className = 'list-view-imgs';

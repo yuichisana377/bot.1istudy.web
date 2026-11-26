@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="c2d8ffd316";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="7b24bc851b";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -691,16 +691,59 @@ function resolveDeckIdFromDragKey(key) {
 //   choices/correct_indices（選択式デッキのカード）が存在する場合はそれも含めて送る。
 //   これを含めずに固定7フィールドだけ送ってしまうと、選択式デッキを1回でも
 //   同期した瞬間に選択肢データがサーバー側から失われてしまう。
+//   ★ カード種別（type: normal/choice/order）は常に送る。choices は選択式カードだけ、
+//   order_* は並び替えカードだけに付ける（種別と無関係な古いフィールドは送らない）。
 function cardToServerPayload(c) {
+  const t = cardType(c);
   const base = {
-    id: c.id, question: c.question, answer: c.answer, explanation: c.explanation || '',
+    id: c.id, type: t, question: c.question, answer: c.answer, explanation: c.explanation || '',
     imgs_q: c.imgs_q || [], imgs_a: c.imgs_a || [], imgs_e: c.imgs_e || [],
   };
-  if (Array.isArray(c.choices)) {
-    base.choices = c.choices;
-    base.correct_indices = Array.isArray(c.correct_indices) ? c.correct_indices : [];
+  if (t === 'choice') {
+    base.choices = Array.isArray(c.choices) ? c.choices : [];
+    base.correct_indices = Array.isArray(c.correct_indices) ? c.correct_indices
+      : (typeof c.correct_index === 'number' ? [c.correct_index] : []);
+  } else if (t === 'order') {
+    // ★ サーバーは項目の空欄・空白のみをエラーにする（自動保存でもデッキ全体が保存失敗する）ため、
+    //   送る前に前後の空白を除き、空欄を取り除いておく。ダミーは chips のときだけ送る。
+    const style = c.order_style === 'chips' ? 'chips' : 'list';
+    const clean = arr => (Array.isArray(arr) ? arr : []).map(x => String(x == null ? '' : x).trim()).filter(x => x);
+    base.order_items = clean(c.order_items);
+    base.order_distractors = style === 'chips' ? clean(c.order_distractors) : [];
+    base.order_style = style;
+    base.answer = orderAnswerText(base.order_items, style);
   }
   return base;
+}
+
+// ★ 追加：デッキのカードをサーバー送信用の配列にする（save_cards を叩く全経路で使う）。
+//   並び替えカードは空欄を除いた項目数が ORDER_MIN〜ORDER_MAX でないとサーバーが
+//   デッキ全体の保存を拒否するため、条件を満たさない（書きかけ・壊れた）カードは送らない。
+//   通常の作成・編集フォームでは保存時に必ず検証しているので、ここで弾かれるのは
+//   CSVや古いデータ由来の例外的なカードだけのはず。
+function serverPayloadCards(deck) {
+  const out = [];
+  let skipped = 0;
+  for (const c of (deck.cards || [])) {
+    const p = cardToServerPayload(c);
+    if (p.type === 'order' && (p.order_items.length < ORDER_MIN || p.order_items.length > ORDER_MAX)) { skipped++; continue; }
+    out.push(p);
+  }
+  if (skipped) {
+    console.warn(`[CardMaker] 並び順が未完成の並び替えカード ${skipped} 枚はサーバーへ送らずにスキップしました`);
+    // ★ 利用者に黙って消えないよう通知する（書きかけカードは端末内には残る）
+    if (typeof showBanner === 'function') showBanner(`並び順が未完成の並び替えカード${skipped}枚は、サーバーへ保存されていません。項目を2個以上にして保存し直してください`, '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
+  }
+  return out;
+}
+
+// ★ サーバーへ送る choice_mode（多肢選択デッキかどうか）。サーバー側も
+//   「全カードが選択式なら true」と自動決定するので、クライアントも同じ基準で送る。
+//   カードが1枚も無い（作成直後など）場合だけ、これまでの deck.choiceMode を維持する。
+function deckChoiceModeForServer(deck) {
+  const cards = (deck && deck.cards) || [];
+  if (!cards.length) return (deck && deck.choiceMode) || null;
+  return cards.every(c => cardType(c) === 'choice') ? true : null;
 }
 
 // ============================================================
@@ -771,6 +814,211 @@ function removeChoiceRow(prefix, idx) {
   choices.splice(idx, 1);
   const newCorrect = correct.filter(i => i !== idx).map(i => i > idx ? i - 1 : i);
   renderChoiceEditorRows(prefix, choices, newCorrect);
+}
+
+// ============================================================
+//  ★ カード種別（通常／選択式／並び替え）
+//  ─────────────────────────────────────────────
+//  カードに type: "normal" | "choice" | "order" を持たせる。
+//  type が無い旧カードは「選択肢が CHOICE_MIN 個以上あれば選択式、それ以外は通常」とみなす。
+//  種別の判定は必ずこの cardType() を通すこと（各所で choices の有無を直接見ない）。
+// ============================================================
+const CARD_TYPES = ['normal', 'choice', 'order'];
+const CARD_TYPE_LABELS = { normal: '通常', choice: '選択式', order: '並び替え' };
+const ORDER_MIN = 2;              // 並び順の項目数の下限
+const ORDER_MAX = 10;             // 並び順の項目数の上限
+const ORDER_DISTRACTOR_MAX = 5;   // ダミー語句の上限（chips形式のみ）
+const ORDER_ITEM_MAXLEN = 80;     // 各項目・ダミーの最大文字数
+
+function cardType(c) {
+  if (!c) return 'normal';
+  if (CARD_TYPES.includes(c.type)) return c.type;
+  return (Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN) ? 'choice' : 'normal';
+}
+
+// 並び替えカードの answer 文字列（検索・一覧・CSVなど既存コードが answer を使うため必ず入れる）。
+//   list形式は「 → 」、chips形式は半角スペースで連結する。
+function orderAnswerText(items, style) {
+  return (items || []).join(style === 'chips' ? ' ' : ' → ');
+}
+
+// 並び替えカードの入力内容をチェックする。問題なければ null、あればエラー文を返す。
+//   フォーム・編集モーダル・CSV読み込みの3か所で同じ基準を使う。
+function validateOrderFields(items, distractors, style) {
+  if (!Array.isArray(items) || items.length < ORDER_MIN) return `並び順の項目は${ORDER_MIN}個以上必要です`;
+  if (items.length > ORDER_MAX) return `並び順の項目は${ORDER_MAX}個までです`;
+  if (items.some(s => !s)) return '並び順の項目に空欄があります';
+  if (items.some(s => s.length > ORDER_ITEM_MAXLEN)) return `並び順の項目は1つ${ORDER_ITEM_MAXLEN}文字までです`;
+  const ds = style === 'chips' ? (distractors || []) : [];
+  if (ds.length > ORDER_DISTRACTOR_MAX) return `ダミー語句は${ORDER_DISTRACTOR_MAX}個までです`;
+  if (ds.some(s => !s)) return 'ダミー語句に空欄があります';
+  if (ds.some(s => s.length > ORDER_ITEM_MAXLEN)) return `ダミー語句は1つ${ORDER_ITEM_MAXLEN}文字までです`;
+  return null;
+}
+
+// validateOrderFields に加えて、ダミー語句が正解の項目と同じ文字列になっていないかも見る
+//   （同じ文字列のチップは見分けがつかず、正しく並べても不正解に見えることがあるため）。
+function orderFieldsError(items, distractors, style) {
+  const err = validateOrderFields(items, distractors, style);
+  if (err) return err;
+  if (style === 'chips' && (distractors || []).some(d => items.includes(d))) return 'ダミー語句に、並び順の項目と同じ語句が含まれています';
+  return null;
+}
+
+// カードの種別を type に設定し、種別ごとのフィールドを data から書き込む。
+//   旧種別のフィールド（選択肢・並び順など）はここで必ず片付ける。answer も種別に応じて設定する。
+//   data: normal → { answer } / choice → { choices, correct } / order → { items, distractors, style }
+function applyCardTypeFields(card, type, data) {
+  card.type = type;
+  if (type !== 'choice') { delete card.choices; delete card.correct_indices; delete card.correct_index; }
+  if (type !== 'order') { delete card.order_items; delete card.order_distractors; delete card.order_style; }
+  if (type === 'choice') {
+    card.choices = data.choices.slice();
+    card.correct_indices = data.correct.slice().sort((x, y) => x - y);
+    delete card.correct_index; // 旧形式（単数）のフィールドが残っていれば片付ける
+    // answer は正解の選択肢文言（検索・一覧表示など既存コードのため）
+    card.answer = card.correct_indices.map(i => card.choices[i]).join(' / ');
+    card.imgs_a = [];
+  } else if (type === 'order') {
+    const style = data.style === 'chips' ? 'chips' : 'list';
+    card.order_items = data.items.slice();
+    card.order_style = style;
+    card.order_distractors = style === 'chips' ? (data.distractors || []).slice() : [];
+    card.answer = orderAnswerText(card.order_items, style);
+    card.imgs_a = [];
+  } else {
+    card.answer = data.answer;
+  }
+  return card;
+}
+
+// ============================================================
+//  ★ 並び替えカードの入力欄ウィジェット（選択肢ウィジェットと同じ prefix 方式）
+//  ─────────────────────────────────────────────
+//  #${prefix}-rows（並び順の項目）・#${prefix}-dummy-rows（ダミー語句）・
+//  #${prefix}-style-list / -style-chips（形式の切替ボタン）を使う。
+//  形式（list/chips）は #${prefix}-rows の data-style に保持する。
+// ============================================================
+function readOrderEditorState(prefix) {
+  const container = document.getElementById(`${prefix}-rows`);
+  const style = container && container.dataset.style === 'chips' ? 'chips' : 'list';
+  const items = [...document.querySelectorAll(`#${prefix}-rows .order-item-input`)].map(el => el.value);
+  const distractors = [...document.querySelectorAll(`#${prefix}-dummy-rows .order-item-input`)].map(el => el.value);
+  return { items, distractors, style };
+}
+
+// 1列分（項目 or ダミー）の入力行を描く共通処理
+function renderOrderEditorList(containerId, values, opts) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  values.forEach((val, i) => {
+    const row = document.createElement('div');
+    row.className = 'modal-choice-row order-editor-row';
+    const num = document.createElement('span');
+    num.className = 'order-editor-num';
+    num.textContent = opts.numbered ? String(i + 1) : '×';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'modal-input order-item-input';
+    inp.id = `${opts.idPrefix}-${i}`;
+    inp.maxLength = ORDER_ITEM_MAXLEN;
+    inp.placeholder = opts.placeholder(i);
+    inp.style.marginBottom = '0';
+    inp.value = val;
+    row.appendChild(num);
+    row.appendChild(inp);
+    if (values.length > opts.min) {
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'choice-remove-btn';
+      rm.title = opts.removeTitle;
+      rm.innerHTML = Icons.html('close', {size:14}); // 固定のアイコンSVGのみ
+      rm.addEventListener('click', () => opts.onRemove(i));
+      row.appendChild(rm);
+    }
+    container.appendChild(row);
+  });
+  if (values.length < opts.max) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'block-action-btn';
+    add.style.marginTop = '.25rem';
+    add.textContent = opts.addLabel;
+    add.addEventListener('click', opts.onAdd);
+    container.appendChild(add);
+  }
+}
+
+// items/distractors/style の内容で並び替え入力欄全体を描き直す
+function renderOrderEditor(prefix, items, distractors, style) {
+  const st = style === 'chips' ? 'chips' : 'list';
+  const rowsEl = document.getElementById(`${prefix}-rows`);
+  rowsEl.dataset.style = st;
+  renderOrderEditorList(`${prefix}-rows`, items, {
+    idPrefix: `${prefix}-item`, numbered: true, min: ORDER_MIN, max: ORDER_MAX,
+    placeholder: i => `${i + 1}番目`, removeTitle: 'この項目を削除', addLabel: '＋ 項目を追加',
+    onAdd: () => {
+      const s = readOrderEditorState(prefix);
+      if (s.items.length >= ORDER_MAX) return;
+      s.items.push('');
+      renderOrderEditor(prefix, s.items, s.distractors, s.style);
+      document.getElementById(`${prefix}-item-${s.items.length - 1}`).focus();
+    },
+    onRemove: idx => {
+      const s = readOrderEditorState(prefix);
+      if (s.items.length <= ORDER_MIN) return;
+      s.items.splice(idx, 1);
+      renderOrderEditor(prefix, s.items, s.distractors, s.style);
+    },
+  });
+  renderOrderEditorList(`${prefix}-dummy-rows`, distractors, {
+    idPrefix: `${prefix}-dummy`, numbered: false, min: 0, max: ORDER_DISTRACTOR_MAX,
+    placeholder: () => 'ダミー語句（まぎらわしい語句）', removeTitle: 'このダミーを削除', addLabel: '＋ ダミー語句を追加',
+    onAdd: () => {
+      const s = readOrderEditorState(prefix);
+      if (s.distractors.length >= ORDER_DISTRACTOR_MAX) return;
+      s.distractors.push('');
+      renderOrderEditor(prefix, s.items, s.distractors, s.style);
+      document.getElementById(`${prefix}-dummy-${s.distractors.length - 1}`).focus();
+    },
+    onRemove: idx => {
+      const s = readOrderEditorState(prefix);
+      s.distractors.splice(idx, 1);
+      renderOrderEditor(prefix, s.items, s.distractors, s.style);
+    },
+  });
+  // ダミー語句は chips 形式のときだけ使う
+  const dummyBlock = document.getElementById(`${prefix}-dummy-block`);
+  if (dummyBlock) dummyBlock.style.display = st === 'chips' ? '' : 'none';
+  ['list', 'chips'].forEach(k => {
+    const b = document.getElementById(`${prefix}-style-${k}`);
+    if (!b) return;
+    b.classList.toggle('active', k === st);
+    b.setAttribute('aria-pressed', k === st ? 'true' : 'false');
+    b.onclick = () => {
+      const s = readOrderEditorState(prefix);
+      renderOrderEditor(prefix, s.items, s.distractors, k);
+    };
+  });
+}
+
+// 入力欄から読み出した値を前後の空白を除いて整える
+function readOrderEditorTrimmed(prefix) {
+  const s = readOrderEditorState(prefix);
+  return {
+    items: s.items.map(x => x.trim()),
+    distractors: s.style === 'chips' ? s.distractors.map(x => x.trim()).filter(x => x) : [],
+    style: s.style,
+  };
+}
+
+// 種別切替のセグメントボタン（#${groupId} 内の [data-type]）の見た目を合わせる
+function syncCardTypeSegment(groupId, type) {
+  document.querySelectorAll(`#${groupId} [data-type]`).forEach(b => {
+    const on = b.dataset.type === type;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 
 // ── ログインセッション ─────────────────────
@@ -851,7 +1099,10 @@ function findDuplicateCardIndex(deck, q, a, excludeIdx = -1) {
 
 // 保存前に呼び出す：問題があれば確認ダイアログを出し、
 // ユーザーが「やめる」を選んだ場合は true（＝保存を中断すべき）を返す。
-async function warnIfDuplicateOrSameCard(deck, q, a, e, excludeIdx = -1) {
+// ★ cardTypeHint：'order' のときは「解答」が並び順を連結した文字列になるため、
+//   問題文・解説との一致チェック（②③。解答欄を前提にした警告）は行わず、重複チェック（①）だけにする。
+//   選択式も解説欄を使わないので③は実質発生しない。
+async function warnIfDuplicateOrSameCard(deck, q, a, e, excludeIdx = -1, cardTypeHint = 'normal') {
   const nq = normalizeForDupCheck(q), na = normalizeForDupCheck(a), ne = normalizeForDupCheck(e);
 
   // ① 同じ問題・答えの組み合わせが既にある
@@ -864,6 +1115,8 @@ async function warnIfDuplicateOrSameCard(deck, q, a, e, excludeIdx = -1) {
     });
     if (!proceed) return true;
   }
+
+  if (cardTypeHint === 'order') return false;
 
   // ② 解答が問題文と完全一致
   if (na && nq && na === nq) {
@@ -1155,8 +1408,22 @@ function renderDeckListUI() {
     //   （「クイズ過去問」フォルダの中でなくてもプレイ時は一人用選択式モードになるため）
     //   ★ quizArchiveBadge と意味が重複するため、そちらが出る場合はこちらは出さない。
     //   ★ 単一/複数は問題ごとに違いうるためデッキ単位では区別せず、常に「選択式」とだけ表示する。
-    const choiceModeBadge = (!quizArchiveBadge && d.choiceMode)
-      ? `<span class="pub-badge archive">${Icons.html('dot', {size:13})} 選択式</span>` : '';
+    //   ★ 変更：カードの種別ごとの枚数（deckCardTypeCounts。未読み込みならサーバー索引の card_types）から
+    //   「選択式」（全部が選択式）／「並び替え」（全部が並び替え）／「並び替えあり」（通常・選択式に混ざる）／
+    //   「混在」（通常と選択式が混ざる）を出し分ける。枚数が分からない旧データは従来どおり choiceMode で判定する。
+    const typeCounts = deckCardTypeCounts(d);
+    let typeBadgeLabel = '';
+    if (typeCounts) {
+      const kinds = ['normal', 'choice', 'order'].filter(k => typeCounts[k] > 0);
+      if (kinds.length === 1 && kinds[0] === 'choice') typeBadgeLabel = '選択式';
+      else if (kinds.length === 1 && kinds[0] === 'order') typeBadgeLabel = '並び替え';
+      else if (kinds.includes('order')) typeBadgeLabel = '並び替えあり';
+      else if (kinds.length > 1) typeBadgeLabel = '混在';
+    } else if (d.choiceMode) {
+      typeBadgeLabel = '選択式';
+    }
+    const choiceModeBadge = (!quizArchiveBadge && typeBadgeLabel)
+      ? `<span class="pub-badge archive">${Icons.html('dot', {size:13})} ${typeBadgeLabel}</span>` : '';
     // ★ カード本体が未読み込みの間、プレイ／編集ボタンを押した瞬間に
     //   ネットワーク取得が走ることをユーザーに知らせるためのローディング表示。
     const isLoadingThis = loadingDeckIds.has(d.id);
@@ -1838,6 +2105,7 @@ async function fetchAndMergeDecks() {
       // ★ 漢字デッキかどうか。サーバーが返さない場合は、この端末に残っている値を引き継ぐ
       kanjiMode: s.kanji_mode || (existing && existing.kanjiMode) || null,
       choiceMode: s.choice_mode || null, // ★ 多肢選択デッキかどうか（旧データの互換のため "single"/"multi" 文字列も truthy として扱う）
+      cardTypes: (s.card_types && typeof s.card_types === 'object') ? s.card_types : null, // ★ 追加：種別ごとの枚数（バッジ表示用）
       // ★ 追加（2026/08/21）：クイズ過去問デッキかどうか。以前はフォルダの位置
       //   （isDeckInFolderScope）だけで判定していたが、外のフォルダへ移動できる
       //   ようにしたため、デッキ自身が持つこのフラグ（サーバー側で維持される。
@@ -2248,10 +2516,41 @@ function csvField(v) {
   const s = v == null ? '' : String(v);
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
+// ★ 追加：並び順・ダミー語句のセル（項目を「|」で連結）。項目中の「\」は「\\」に、
+//   「|」は「\|」にエスケープする（「\」を先に置換する。bot.py _csv_pipe_join と同じ規則）。
+function csvPipeJoin(items) {
+  if (!Array.isArray(items)) return '';
+  return items.map(x => String(x).replace(/\\/g, '\\\\').replace(/\|/g, '\\|')).join('|');
+}
 // bot.py _deck_to_csv_text のクライアント側版（ローカル下書きデッキ専用）。
+// ★ 書式の選び方もサーバーと同じ：並び替えカードを含む、または通常・選択式が混在し
+//   choice_mode が無いデッキは種別列付きの統一書式。それ以外で choice_mode があるか
+//   選択式カードを含むなら選択式書式、それ以外は通常書式（今までのデッキの書式は変えない）。
 function buildDeckCsvText(deck) {
   const lines = [];
-  if (deck.choiceMode) {
+  const types = deck.cards.map(cardType);
+  const hasOrder = types.includes('order'), hasChoice = types.includes('choice'), hasNormal = types.includes('normal');
+  const choiceMode = deck.filename ? deck.choiceMode : deckChoiceModeForServer(deck);
+  if (hasOrder || (hasNormal && hasChoice && !choiceMode)) {
+    lines.push(['種別', '問題', '解答', '解説', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '選択肢5', '正解', '並び順', 'ダミー', '形式'].join(','));
+    for (const c of deck.cards) {
+      const t = cardType(c);
+      const p = t === 'order' ? cardToServerPayload(c) : null;
+      const row = [CARD_TYPE_LABELS[t], c.question || '', p ? p.answer : (c.answer || ''), c.explanation || ''];
+      if (t === 'choice') {
+        const choices = c.choices || [];
+        for (let i = 0; i < 5; i++) row.push(choices[i] != null ? choices[i] : '');
+        const correct = [...(c.correct_indices || [])].sort((a, b) => a - b);
+        row.push(correct.map(i => i + 1).join(','));
+      } else {
+        for (let i = 0; i < 6; i++) row.push('');
+      }
+      if (p) row.push(csvPipeJoin(p.order_items), csvPipeJoin(p.order_distractors));
+      else row.push('', '');
+      row.push(p ? (p.order_style === 'chips' ? '語句' : 'リスト') : '');
+      lines.push(row.map(csvField).join(','));
+    }
+  } else if (choiceMode || hasChoice) {
     lines.push(['問題', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '選択肢5', '正解'].join(','));
     for (const c of deck.cards) {
       const choices = c.choices || [];
@@ -2620,8 +2919,6 @@ async function menuDelete() {
 function openNewSet() {
   document.getElementById('new-set-name').value = '';
   document.getElementById('new-plan-publish').checked = true; // ★ 追加：毎回デフォルトで「公開予定」に戻す
-  // ★ 追加：多肢選択デッキのトグルも毎回OFFへ戻す
-  document.getElementById('new-choice-mode-enabled').checked = false;
   showScreen('new');
   loadSubjects();
   setTimeout(() => document.getElementById('new-set-name').focus(), 200);
@@ -2655,11 +2952,12 @@ async function startEdit() {
   const name = subject ? `${subject} ${input}` : input;
   // ★ 追加：このデッキを公開予定として作成するかどうか（デフォルトtrue＝公開予定）
   const planPublish = document.getElementById('new-plan-publish').checked;
-  // ★ 追加：多肢選択デッキにするか（null=通常のフラッシュカードデッキ / true=選択式デッキ）。
-  //   単一正解/複数正解はデッキ単位では決めず、問題ごとに正解チェックの数で自動的に決まる。
-  const choiceMode = document.getElementById('new-choice-mode-enabled').checked ? true : null;
-  // ★ 追加：漢字デッキにするか（プレイ時に手書き解答がデフォルトになる。多肢選択とは排他）
-  const kanjiMode = !choiceMode && document.getElementById('new-kanji-mode-enabled').checked ? true : null;
+  // ★ 変更：「多肢選択デッキにする」トグルは廃止した。カードの種別（通常／選択式／並び替え）は
+  //   カードごとに選ぶ方式になり、choice_mode は「全カードが選択式なら true」とサーバーが自動で決める。
+  //   deck.choiceMode は旧データ互換のための読み取り専用の値なので、新規作成時は常に null。
+  const choiceMode = null;
+  // ★ 追加：漢字デッキにするか（プレイ時に手書き解答がデフォルトになる。手書きは「通常」カードにだけ使われる）
+  const kanjiMode = document.getElementById('new-kanji-mode-enabled').checked ? true : null;
   // ★ notYetPublished: まだ一度も「公開して保存」（完成／未完成の選択）を経ていないことを表す。
   //   これが true の間は、カードが何枚あっても常に「作成中」バッジとして扱う（プレイ不可・編集は可）。
   const deck = { id: genId(), name, subject, cards: [], cardsLoaded: true, folderId: currentFolderId, planPublish, notYetPublished: true, choiceMode, kanjiMode };
@@ -2696,7 +2994,7 @@ async function announceNewDeckToServer(deckId) {
     //   上書きされて消えてしまう、という重大な不具合につながっていた。
     //   ここでは必ず「今ローカルにある実際のカード」をそのまま送る
     //   （まだ1枚も無ければ結果的に空配列になるだけで、これまで通り）。
-    const cards = deck.cards.map(cardToServerPayload);
+    const cards = serverPayloadCards(deck);
     const res = await fetch(`${API_BASE}save_cards`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2712,7 +3010,7 @@ async function announceNewDeckToServer(deckId) {
         silent: true,      // ★ 作成しただけなのでDiscord通知はしない
         incomplete: true,  // ★ まだ「保存して公開」を経ていないので「未完成（作成中）」扱いにする
         kanji_mode: deck.kanjiMode || null, // ★ 漢字デッキかどうか
-        choice_mode: deck.choiceMode || null, // ★ 多肢選択デッキかどうか
+        choice_mode: deckChoiceModeForServer(deck), // ★ 多肢選択デッキかどうか
       }),
       signal: controller.signal,
     });
@@ -2778,25 +3076,36 @@ async function openEditDeck(deckId) {
   //   デッキだけ、従来通り気軽な「保存」を残す。
   document.getElementById('btn-save-local').style.display = deck.filename ? 'none' : '';
   document.getElementById('btn-done').textContent = deck.filename ? '公開して保存' : '保存して公開';
-  // ★ 追加：多肢選択デッキかどうかで「解答/解説」欄と「選択肢」欄を出し分ける
-  applyCardFormChoiceMode(deck.choiceMode);
+  // ★ 変更：作るカードの種別の初期値は「最後のカードの種別」（カードが無ければ、
+  //   旧多肢選択デッキなら選択式、それ以外は通常）。以降は clearEditor() ではリセットせず保持する。
+  const lastCard = deck.cards[deck.cards.length - 1];
+  applyCardFormType(lastCard ? cardType(lastCard) : (deck.choiceMode ? 'choice' : 'normal'));
   clearEditor(); renderCreatedList(); showScreen('edit');
   setTimeout(() => document.getElementById('ta-q').focus(), 200);
 }
 
-// ★ 追加：カード新規作成フォームを、通常デッキ用（解答/解説）と
-//   多肢選択デッキ用（選択肢）のどちらの見た目にするか切り替える。
-//   CSV読み込みも「問題,解答,解説」形式専用なので選択式デッキでは隠す。
-function applyCardFormChoiceMode(choiceMode) {
-  const isChoice = !!choiceMode;
-  document.getElementById('qa-csv-block').style.display         = isChoice ? 'none' : '';
-  document.getElementById('qa-choice-csv-block').style.display  = isChoice ? '' : 'none';
-  document.getElementById('qa-answer-block').style.display      = isChoice ? 'none' : '';
-  document.getElementById('qa-explanation-block').style.display = isChoice ? 'none' : '';
-  document.getElementById('qa-choices-block').style.display     = isChoice ? '' : 'none';
-  if (isChoice) {
-    renderChoiceEditorRows('ta-choice', ['', ''], []);
-  }
+// ★ 作業中（次に追加する）カードの種別。clearEditor() ではリセットせず、
+//   種別ボタンで切り替えるか、別のデッキの編集画面を開いたときだけ変わる。
+let currentFormType = 'normal';
+
+// ★ 変更：applyCardFormChoiceMode を一般化。カード新規作成フォームを、
+//   通常（解答/解説）・選択式（選択肢）・並び替え（並び順＋解説）のどの見た目にするか切り替える。
+//   入力欄の中身は消さない（種別を行き来しても書きかけの内容が残る）。
+//   CSV読み込みは、選択式のときだけ選択式用（qa-choice-csv-block）を出す
+//   （どちらの読み込みも見出しに「種別」列があれば混在形式として読む）。
+function applyCardFormType(type) {
+  const t = CARD_TYPES.includes(type) ? type : 'normal';
+  currentFormType = t;
+  syncCardTypeSegment('ta-type-seg', t);
+  document.getElementById('qa-csv-block').style.display         = t === 'choice' ? 'none' : '';
+  document.getElementById('qa-choice-csv-block').style.display  = t === 'choice' ? '' : 'none';
+  document.getElementById('qa-answer-block').style.display      = t === 'normal' ? '' : 'none';
+  document.getElementById('qa-explanation-block').style.display = t === 'choice' ? 'none' : '';
+  document.getElementById('qa-choices-block').style.display     = t === 'choice' ? '' : 'none';
+  document.getElementById('qa-order-block').style.display       = t === 'order' ? '' : 'none';
+  // まだ一度も描画していない入力欄だけ用意する（書きかけの内容は消さない）
+  if (!document.querySelector('#ta-choice-rows .modal-choice-row')) renderChoiceEditorRows('ta-choice', ['', ''], []);
+  if (!document.querySelector('#ta-order-rows .order-item-input')) renderOrderEditor('ta-order', ['', ''], [], 'list');
 }
 
 function clearEditor() {
@@ -2808,11 +3117,12 @@ function clearEditor() {
     imgBuf[k] = [];
     document.getElementById('imgs-'+k).innerHTML = '';
   });
-  // ★ 追加：多肢選択デッキの選択肢入力欄も、カードを1枚保存するたびに空へ戻す
-  const deck = decks.find(d => d.id === currentDeckId);
-  if (deck && deck.choiceMode) {
-    renderChoiceEditorRows('ta-choice', ['', ''], []);
-  }
+  // ★ 選択肢・並び順の入力欄も、カードを1枚保存するたびに空へ戻す。
+  //   種別（currentFormType）と並び替えの形式（list/chips）は次のカードにも引き継ぐ。
+  renderChoiceEditorRows('ta-choice', ['', ''], []);
+  const prevOrderRows = document.getElementById('ta-order-rows');
+  const prevStyle = prevOrderRows && prevOrderRows.dataset.style === 'chips' ? 'chips' : 'list';
+  renderOrderEditor('ta-order', ['', ''], [], prevStyle);
 }
 
 // ============================================================
@@ -2858,13 +3168,43 @@ async function addChoiceCardFromForm(deck, q) {
   // ★ answer は正解の選択肢文言をまとめたもの。単語検索・一覧表示など
   //   「answerは文字列である」という前提の既存コードをそのまま動かすため。
   const answerText = correct.map(i => choices[i]).join(' / ');
-  if (await warnIfDuplicateOrSameCard(deck, q, answerText, '')) return 'invalid';
+  if (await warnIfDuplicateOrSameCard(deck, q, answerText, '', -1, 'choice')) return 'invalid';
 
-  deck.cards.push({
-    id: genId(), question: q, answer: answerText, explanation: '',
-    choices, correct_indices: correct.slice().sort((x, y) => x - y),
-    imgs_q: [...imgBuf.q], imgs_a: [], imgs_e: [],
-  });
+  const card = { id: genId(), question: q, answer: '', explanation: '', imgs_q: [...imgBuf.q], imgs_a: [], imgs_e: [] };
+  applyCardTypeFields(card, 'choice', { choices, correct });
+  deck.cards.push(card);
+  saveDecks(decks);
+  document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
+  if (deck.filename) queueSyncDeckToServer(deck);
+  return 'added';
+}
+
+// ★ 追加：並び替えカードを「カードを追加」フォーム（ta-order-rows）から1枚追加する。
+//   戻り値は addChoiceCardFromForm と同じ（'added' / 'skip' / 'invalid'）。
+async function addOrderCardFromForm(deck, q) {
+  const { items, distractors, style } = readOrderEditorTrimmed('ta-order');
+  const e = document.getElementById('ta-e').value.trim();
+  const anyInput = !!q || items.some(x => x) || distractors.length > 0;
+  if (!anyInput) return 'skip';
+
+  if (!q) { shake('ta-q'); return 'invalid'; }
+  const emptyIdx = items.findIndex(x => !x);
+  if (emptyIdx !== -1) { shake(`ta-order-item-${emptyIdx}`); return 'invalid'; }
+  const err = orderFieldsError(items, distractors, style);
+  if (err) { await showCmAlert({ title: '並び順を確認してください', desc: err }); return 'invalid'; }
+  if (await warnIfBugChars(q, 'ta-q')) return 'invalid';
+  for (let i = 0; i < items.length; i++) {
+    if (await warnIfBugChars(items[i], `ta-order-item-${i}`)) return 'invalid';
+  }
+  for (let i = 0; i < distractors.length; i++) {
+    if (await warnIfBugChars(distractors[i], 'ta-order-rows')) return 'invalid';
+  }
+  if (await warnIfBugChars(e, 'ta-e')) return 'invalid';
+  if (await warnIfDuplicateOrSameCard(deck, q, orderAnswerText(items, style), e, -1, 'order')) return 'invalid';
+
+  const card = { id: genId(), question: q, answer: '', explanation: e, imgs_q: [...imgBuf.q], imgs_a: [], imgs_e: [...imgBuf.e] };
+  applyCardTypeFields(card, 'order', { items, distractors, style });
+  deck.cards.push(card);
   saveDecks(decks);
   document.getElementById('edit-counter').textContent = deck.cards.length + '枚';
   if (deck.filename) queueSyncDeckToServer(deck);
@@ -2874,11 +3214,14 @@ async function addChoiceCardFromForm(deck, q) {
 async function saveCard(mode) {
   const q = document.getElementById('ta-q').value.trim();
   const deck = decks.find(d => d.id === currentDeckId);
-  const isChoiceDeck = deck && !!deck.choiceMode;
 
-  if (isChoiceDeck) {
+  // ★ 変更：デッキ単位（deck.choiceMode）ではなく、作業中の種別（currentFormType）で分岐する
+  if (currentFormType === 'choice') {
     const added = await addChoiceCardFromForm(deck, q);
     if (added === 'invalid') return; // 入力不備。編集を続けさせる
+  } else if (currentFormType === 'order') {
+    const added = await addOrderCardFromForm(deck, q);
+    if (added === 'invalid') return;
   } else {
     const a = document.getElementById('ta-a').value.trim();
     const e = document.getElementById('ta-e').value.trim();
@@ -2888,7 +3231,7 @@ async function saveCard(mode) {
       if (await warnIfBugChars(a, 'ta-a')) return;
       if (await warnIfBugChars(e, 'ta-e')) return;
       if (await warnIfDuplicateOrSameCard(deck, q, a, e)) return;
-      deck.cards.push({ id:genId(), question:q, answer:a,
+      deck.cards.push({ id:genId(), type:'normal', question:q, answer:a,
         explanation: e,
         imgs_q:[...imgBuf.q], imgs_a:[...imgBuf.a], imgs_e:[...imgBuf.e] });
       saveDecks(decks);
@@ -2985,7 +3328,7 @@ async function publishDeck(deckId, isComplete = true) {
     ensureDeckCardsLoaded(deck.id, true).catch(() => {});
     return;
   }
-  const cards = deck.cards.map(cardToServerPayload);
+  const cards = serverPayloadCards(deck);
   // ★ 追加：サーバー側の is_update（＝filenameが既に存在するか）だけでは、
   //   「作成中（作成時にannounceNewDeckToServerで登録済み）」のデッキが
   //   初めて『公開して保存』されたときも filename が既に存在するため
@@ -3009,7 +3352,7 @@ async function publishDeck(deckId, isComplete = true) {
     incomplete: !isComplete, // ★ 未完成フラグをサーバーに保存し、他の人の端末にも表示させる
     first_publish: isFirstPublish, // ★ 追加：通知文言を「公開」/「更新」どちらにするか判定するためのヒント
     kanji_mode: deck.kanjiMode || null, // ★ 漢字デッキかどうか
-        choice_mode: deck.choiceMode || null, // ★ 追加：多肢選択デッキかどうか
+        choice_mode: deckChoiceModeForServer(deck), // ★ 追加：多肢選択デッキかどうか
   };
   if (deck.filename) body.filename = deck.filename;
   try {
@@ -3071,7 +3414,7 @@ function renderCreatedList() {
       <span class="drag-handle" title="ドラッグして並び替え">⠿</span>
       <div class="created-item-num">${i+1}</div>
       <div class="created-item-body">
-        <div class="created-item-q">${esc(mathToPlainText(c.question))}</div>
+        <div class="created-item-q">${cardType(c) !== 'normal' ? `<span class="created-item-type">${CARD_TYPE_LABELS[cardType(c)]}</span>` : ''}${esc(mathToPlainText(c.question))}</div>
         <div class="created-item-a">${esc(mathToPlainText(c.answer))}</div>
       </div>
       <div class="created-item-btns">
@@ -3811,112 +4154,168 @@ async function editCurrentStudyCard() {
   openCardEditModalCommon(deckId, freshCard, 'study');
 }
 
-let editingIsQuizChoice = false; // ★ 選択式カード（多肢選択デッキ／クイズ過去問デッキ）を編集中かどうか
+let editingIsQuizChoice = false; // ★ 互換用：編集中のカードが選択式かどうか（editingCardType === 'choice' と同じ）
+let editingCardType = 'normal';   // ★ 編集モーダルで今選んでいる種別（保存時にこの種別で書き戻す）
+let editingOrigType = 'normal';   // ★ 編集を始めたときの種別（種別を変えたかどうかの判定用）
 
 function openCardEditModalCommon(deckId, c, context) {
   editingDeckId  = deckId;
   editingCardKey = cardKey(c);
   editingContext = context;
-  // ★ choices を持つカードは、通常の解答/解説欄の代わりに選択肢入力欄を表示する。
-  //   単一/複数正解はデッキ／カードのどちらにもモードを持たせず、常にチェックボックスで
-  //   表示し、チェックした個数だけで自動的に決まる。
-  editingIsQuizChoice = Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN;
+  editingOrigType = cardType(c);
 
   document.getElementById('modal-edit-q').value = mathToPlainText(c.question);
   autoResize(document.getElementById('modal-edit-q'));
   document.getElementById('modal-edit-q').dispatchEvent(new Event('input', { bubbles: true }));
 
-  document.getElementById('modal-edit-answer-block').style.display      = editingIsQuizChoice ? 'none' : '';
-  document.getElementById('modal-edit-choices-block').style.display     = editingIsQuizChoice ? '' : 'none';
-  document.getElementById('modal-edit-explanation-block').style.display = editingIsQuizChoice ? 'none' : '';
+  // ★ 変更：種別を編集中に切り替えられるよう、全種別の入力欄を最初にまとめて用意しておき、
+  //   applyModalEditType() では表示/非表示だけを切り替える（切り替えても書きかけの内容は消えない）。
+  //   他の種別の欄には、元の値があればそれを、無ければ空欄を入れておく。
+  const t = editingOrigType;
+  document.getElementById('modal-edit-a').value = t === 'normal' ? mathToPlainText(c.answer) : '';
+  document.getElementById('modal-edit-e').value = t === 'choice' ? '' : mathToPlainText(c.explanation || '');
+  ['modal-edit-a','modal-edit-e'].forEach(id => {
+    const el = document.getElementById(id);
+    autoResize(el);
+    el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 既存の数式プレビューを反映させる
+  });
+  // ★ 旧形式（correct_index単数）のカードにも対応する
+  const correctIndices = Array.isArray(c.correct_indices) ? c.correct_indices
+    : (typeof c.correct_index === 'number' ? [c.correct_index] : []);
+  renderChoiceEditorRows('modal-edit-choice',
+    t === 'choice' && Array.isArray(c.choices) ? c.choices : ['', ''],
+    t === 'choice' ? correctIndices : []);
+  renderOrderEditor('modal-edit-order',
+    t === 'order' && Array.isArray(c.order_items) && c.order_items.length ? c.order_items : ['', ''],
+    t === 'order' && Array.isArray(c.order_distractors) ? c.order_distractors : [],
+    t === 'order' ? c.order_style : 'list');
 
-  if (editingIsQuizChoice) {
-    // ★ 旧形式（correct_index単数）のカードにも対応する
-    const correctIndices = Array.isArray(c.correct_indices) ? c.correct_indices
-      : (typeof c.correct_index === 'number' ? [c.correct_index] : []);
-    renderChoiceEditorRows('modal-edit-choice', c.choices, correctIndices);
-    // ★ 問題文の画像だけはこのモードでも使う（imgs_q）
-    editImgBuf = { q: [...(c.imgs_q || [])], a: [], e: [] };
-    renderModalImgStrip('q');
-  } else {
-    document.getElementById('modal-edit-a').value = mathToPlainText(c.answer);
-    document.getElementById('modal-edit-e').value = mathToPlainText(c.explanation||'');
-    ['modal-edit-a','modal-edit-e'].forEach(id => {
-      const el = document.getElementById(id);
-      autoResize(el);
-      el.dispatchEvent(new Event('input', { bubbles: true })); // ★ 既存の数式プレビューを反映させる
-    });
+  // ★ 追加：既存の画像をモーダル専用バッファへコピーして表示する
+  //   （元の配列を直接触らず、保存時にまとめて書き戻すため）
+  editImgBuf = {
+    q: [...(c.imgs_q || [])],
+    a: [...(c.imgs_a || [])],
+    e: [...(c.imgs_e || [])],
+  };
+  ['q','a','e'].forEach(k => renderModalImgStrip(k));
 
-    // ★ 追加：既存の画像をモーダル専用バッファへコピーして表示する
-    //   （元の配列を直接触らず、保存時にまとめて書き戻すため）
-    editImgBuf = {
-      q: [...(c.imgs_q || [])],
-      a: [...(c.imgs_a || [])],
-      e: [...(c.imgs_e || [])],
-    };
-    ['q','a','e'].forEach(k => renderModalImgStrip(k));
-  }
-
+  applyModalEditType(t);
   document.getElementById('card-edit-ok').style.display  = 'none';
   document.getElementById('card-edit-err').style.display = 'none';
   openModal('modal-card-edit');
 }
 
+// ★ 追加：編集モーダルの種別を切り替える（表示する入力欄を出し分けるだけ）
+function applyModalEditType(type) {
+  const t = CARD_TYPES.includes(type) ? type : 'normal';
+  editingCardType = t;
+  editingIsQuizChoice = t === 'choice';
+  syncCardTypeSegment('modal-edit-type-seg', t);
+  document.getElementById('modal-edit-answer-block').style.display      = t === 'normal' ? '' : 'none';
+  document.getElementById('modal-edit-choices-block').style.display     = t === 'choice' ? '' : 'none';
+  document.getElementById('modal-edit-order-block').style.display       = t === 'order' ? '' : 'none';
+  document.getElementById('modal-edit-explanation-block').style.display = t === 'choice' ? 'none' : '';
+}
+
+function showCardEditError(errBar, msg) {
+  errBar.innerHTML = Icons.html('close', {size:14}) + ' ' + esc(msg);
+  errBar.style.display = 'block';
+  setTimeout(() => errBar.style.display = 'none', 3000);
+}
+
+// ★ 追加：編集後のカード内容を、プレイ中の配列（studyCards）の同じカードにも書き戻す。
+//   以前は deck.cards と同じオブジェクト参照だったため自動的に反映されていたが、
+//   カード編集前に deck.cards を丸ごと読み込み直すようになったため、
+//   もはや同じ参照とは限らない。取りこぼさないよう明示的に書き戻す
+//   （種別を変えた場合に旧種別のフィールドが残らないよう、対象のキーは一度消してから写す）。
+const CARD_CONTENT_KEYS = ['type', 'question', 'answer', 'explanation', 'imgs_q', 'imgs_a', 'imgs_e',
+  'choices', 'correct_indices', 'correct_index', 'order_items', 'order_distractors', 'order_style'];
+function syncEditedCardToStudy(deck, card) {
+  const studySameIdx = studyCards.findIndex(sc =>
+    cardKey(sc) === editingCardKey && (sc.__deckId || studyDeckId) === deck.id
+  );
+  if (studySameIdx === -1) return null;
+  const sc = studyCards[studySameIdx];
+  CARD_CONTENT_KEYS.forEach(k => { delete sc[k]; });
+  CARD_CONTENT_KEYS.forEach(k => {
+    if (card[k] !== undefined) sc[k] = Array.isArray(card[k]) ? [...card[k]] : card[k];
+  });
+  return sc;
+}
+
 async function saveCardEdit() {
   const q = document.getElementById('modal-edit-q').value.trim();
   const errBar = document.getElementById('card-edit-err');
+  const type = editingCardType;
 
-  // ★「クイズ過去問」デッキの4択カードは、通常の解答/解説とは別の保存経路にする
-  if (editingIsQuizChoice) {
-    return saveQuizChoiceCardEdit(q, errBar);
-  }
-
-  const a = document.getElementById('modal-edit-a').value.trim();
-  const e = document.getElementById('modal-edit-e').value.trim();
-  if (!q || !a) {
-    errBar.innerHTML = Icons.html('close', {size:14}) + ' 問題文と解答は必須です';
-    errBar.style.display = 'block';
-    setTimeout(() => errBar.style.display = 'none', 3000);
-    return;
-  }
-  if (await warnIfBugChars(q, 'modal-edit-q')) return;
-  if (await warnIfBugChars(a, 'modal-edit-a')) return;
-  if (await warnIfBugChars(e, 'modal-edit-e')) return;
   const deck = decks.find(d => d.id === editingDeckId);
   if (!deck) { closeModal('modal-card-edit'); return; }
   const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
   if (idx === -1) { closeModal('modal-card-edit'); return; }
 
-  if (await warnIfDuplicateOrSameCard(deck, q, a, e, idx)) return;
+  // ── 種別ごとの入力チェックと、書き戻す内容の組み立て ──
+  let typeData, explanation = '';
+  if (type === 'choice') {
+    const { choices: rawChoices, correct } = readChoiceEditorState('modal-edit-choice');
+    const choices = rawChoices.map(c => c.trim());
+    // ★ 単一/複数正解は問題ごとに正解チェックの数で自動的に決まる（1個＝択一、2個以上＝複数回答）。
+    //   ここでは「1つも選ばれていない」ことだけをエラーにする。
+    if (!q || choices.some(c => !c) || correct.length === 0) {
+      showCardEditError(errBar, '問題文・すべての選択肢・正解を1つ以上選ぶことはすべて必須です');
+      return;
+    }
+    if (await warnIfBugChars(q, 'modal-edit-q')) return;
+    for (let i = 0; i < choices.length; i++) {
+      if (await warnIfBugChars(choices[i], `modal-edit-choice-choice-${i}`)) return;
+    }
+    typeData = { choices, correct };
+  } else if (type === 'order') {
+    const { items, distractors, style } = readOrderEditorTrimmed('modal-edit-order');
+    explanation = document.getElementById('modal-edit-e').value.trim();
+    if (!q) { showCardEditError(errBar, '問題文は必須です'); return; }
+    const err = orderFieldsError(items, distractors, style);
+    if (err) { showCardEditError(errBar, err); return; }
+    if (await warnIfBugChars(q, 'modal-edit-q')) return;
+    for (let i = 0; i < items.length; i++) {
+      if (await warnIfBugChars(items[i], `modal-edit-order-item-${i}`)) return;
+    }
+    for (let i = 0; i < distractors.length; i++) {
+      if (await warnIfBugChars(distractors[i], 'modal-edit-order-rows')) return;
+    }
+    if (await warnIfBugChars(explanation, 'modal-edit-e')) return;
+    if (await warnIfDuplicateOrSameCard(deck, q, orderAnswerText(items, style), explanation, idx, 'order')) return;
+    typeData = { items, distractors, style };
+  } else {
+    const a = document.getElementById('modal-edit-a').value.trim();
+    explanation = document.getElementById('modal-edit-e').value.trim();
+    if (!q || !a) { showCardEditError(errBar, '問題文と解答は必須です'); return; }
+    if (await warnIfBugChars(q, 'modal-edit-q')) return;
+    if (await warnIfBugChars(a, 'modal-edit-a')) return;
+    if (await warnIfBugChars(explanation, 'modal-edit-e')) return;
+    if (await warnIfDuplicateOrSameCard(deck, q, a, explanation, idx)) return;
+    typeData = { answer: a };
+  }
 
-  // 既存オブジェクトを直接書き換える
+  // 既存オブジェクトを直接書き換える（種別が変わった場合は旧種別のフィールドを片付ける）
   const card = deck.cards[idx];
   card.question    = q;
-  card.answer      = a;
-  card.explanation = e;
-  // ★ 追加：画像もモーダルバッファから書き戻す
+  card.explanation = explanation;
+  // ★ 画像もモーダルバッファから書き戻す（選択式は解答・解説の画像を、並び替えは解答の画像を使わない）
   card.imgs_q = [...editImgBuf.q];
-  card.imgs_a = [...editImgBuf.a];
-  card.imgs_e = [...editImgBuf.e];
+  card.imgs_a = type === 'normal' ? [...editImgBuf.a] : [];
+  card.imgs_e = type === 'choice' ? [] : [...editImgBuf.e];
+  applyCardTypeFields(card, type, typeData);
 
-  // ★ studyCards 側（プレイ中の配列）にも同期する。
-  //   以前は deck.cards と同じオブジェクト参照だったため自動的に反映されていたが、
-  //   カード編集前に deck.cards を丸ごと読み込み直すようになったため、
-  //   もはや同じ参照とは限らない。取りこぼさないよう明示的に書き戻す。
-  const studySameIdx = studyCards.findIndex(sc =>
-    cardKey(sc) === editingCardKey && (sc.__deckId || studyDeckId) === deck.id
-  );
-  if (studySameIdx !== -1) {
-    const sc = studyCards[studySameIdx];
-    sc.question = q; sc.answer = a; sc.explanation = e;
-    sc.imgs_q = [...editImgBuf.q]; sc.imgs_a = [...editImgBuf.a]; sc.imgs_e = [...editImgBuf.e];
-  }
+  syncEditedCardToStudy(deck, card);
 
   saveDecks(decks);
   closeModal('modal-card-edit');
 
   if (editingContext === 'study') {
-    refreshStudyCardDisplay(card);
+    // 通常カードのまま中身だけ変えた場合は、めくり状態を保ったまま表示だけ更新する。
+    // 種別が変わった／選択式・並び替えの場合は解答欄の作りが変わるので、カードを描き直す。
+    if (type === 'normal' && editingOrigType === 'normal') refreshStudyCardDisplay(card);
+    else renderStudyCard();
   } else if (editingContext === 'listview') {
     // ★ 追加：一覧表示画面から編集した場合はその一覧を再描画する
     renderListView();
@@ -3938,65 +4337,14 @@ async function saveCardEdit() {
   }
 }
 
-// ★ 選択式カード（多肢選択デッキ／クイズ過去問デッキ）の編集を保存する（saveCardEditから分岐して呼ばれる）
-async function saveQuizChoiceCardEdit(q, errBar) {
-  const { choices: rawChoices, correct } = readChoiceEditorState('modal-edit-choice');
-  const choices = rawChoices.map(c => c.trim());
-  // ★ 単一/複数正解は問題ごとに正解チェックの数で自動的に決まる（1個＝択一、2個以上＝複数回答）。
-  //   ここでは「1つも選ばれていない」ことだけをエラーにする。
-  if (!q || choices.some(c => !c) || correct.length === 0) {
-    errBar.innerHTML = Icons.html('close', {size:14}) + ' 問題文・すべての選択肢・正解を1つ以上選ぶことはすべて必須です';
-    errBar.style.display = 'block';
-    setTimeout(() => errBar.style.display = 'none', 3000);
-    return;
-  }
-  if (await warnIfBugChars(q, 'modal-edit-q')) return;
-  for (let i = 0; i < choices.length; i++) {
-    if (await warnIfBugChars(choices[i], `modal-edit-choice-${i}`)) return;
-  }
-
-  const deck = decks.find(d => d.id === editingDeckId);
-  if (!deck) { closeModal('modal-card-edit'); return; }
-  const idx = deck.cards.findIndex(c => cardKey(c) === editingCardKey);
-  if (idx === -1) { closeModal('modal-card-edit'); return; }
-
-  const card = deck.cards[idx];
-  card.question = q;
-  card.choices = choices;
-  card.correct_indices = correct.slice().sort((x, y) => x - y);
-  delete card.correct_index; // ★ 旧形式（単数）のフィールドが残っていれば片付ける
-  // ★ answer も正解の選択肢文言で更新しておく（検索・一覧表示など既存コードのため）
-  card.answer = card.correct_indices.map(i => choices[i]).join(' / ');
-  card.imgs_q = [...editImgBuf.q];
-
-  saveDecks(decks);
-  closeModal('modal-card-edit');
-
-  if (editingContext === 'listview') {
-    renderListView();
-  } else {
-    renderCreatedList();
-  }
-
-  if (deck.filename) {
-    const ok = await queueSyncDeckToServer(deck);
-    if (ok) {
-      showBanner('保存しました', '#dcfce7', '#166534', Icons.html('save', {size:15}));
-    } else {
-      showBanner('サーバーへの反映に失敗しました（ローカルには保存済み）', '#fffbeb', '#92400e', Icons.html('warning', {size:15}));
-    }
-  } else {
-    showBanner('保存しました（ローカル）', '#dcfce7', '#166534', Icons.html('save', {size:15}));
-  }
-}
-
 // プレイ中の表示だけを更新（めくり状態はそのまま維持）
 function refreshStudyCardDisplay(c) {
   // ★ 反転モードなら問題⇔解答を入れ替えて表示する（データ自体は変えない）
-  const qText = studyReverse ? c.answer   : c.question;
-  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
-  const aText = studyReverse ? c.question : c.answer;
-  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
+  const rev = studyReverse && cardType(c) === 'normal'; // ★ 反転は通常カードだけ
+  const qText = rev ? c.answer   : c.question;
+  const qImgs = rev ? c.imgs_a   : c.imgs_q;
+  const aText = rev ? c.question : c.answer;
+  const aImgs = rev ? c.imgs_q   : c.imgs_a;
 
   setMathText(document.getElementById('study-q-text'), qText);
   renderImgList(document.getElementById('study-q-imgs'), qImgs);
@@ -4165,7 +4513,7 @@ async function waitForPendingSync(deckId) {
 async function syncDeckToServer(deck) {
   try {
     if (deck.filename && deck.cardsLoaded === false) return false; // 本体を外した状態では送らない（0枚上書き防止）
-    const cards = deck.cards.map(cardToServerPayload); // ★ choices/correct_indicesも含めて画像も同期する
+    const cards = serverPayloadCards(deck); // ★ choices/correct_indicesも含めて画像も同期する
     const session = getLoginSession();
     const res = await fetch(`${API_BASE}save_cards`, {
       method: 'POST',
@@ -4184,7 +4532,7 @@ async function syncDeckToServer(deck) {
         silent: true, // ★ 通知しない
         incomplete: !!deck.incomplete, // ★ 未完成フラグを維持したままサーバーへ反映する
         kanji_mode: deck.kanjiMode || null, // ★ 漢字デッキかどうか
-        choice_mode: deck.choiceMode || null, // ★ 多肢選択デッキかどうかを維持したまま反映する
+        choice_mode: deckChoiceModeForServer(deck), // ★ 多肢選択デッキかどうかを維持したまま反映する
       }),
       signal: AbortSignal.timeout(10000),
     });
@@ -4726,7 +5074,8 @@ function saveStudyProgress() {
     shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
     // ★ 追加：クイズ過去問・多肢選択デッキをプレイ中なら、ここまでの各問題の正誤も
     //   保存しておく（続きから再開したときにスコアを正しく引き継ぐため）。
-    quizAnswers: studyIsQuizDeck ? [...studyQuizAnswers.entries()] : undefined,
+    //   ★ 変更：選択式・並び替えカードはどのデッキでも採点するので、記録があれば常に保存する。
+    quizAnswers: studyQuizAnswers.size ? [...studyQuizAnswers.entries()] : undefined,
     updatedAt: Date.now(),
   };
   const key = studyItemKey(studyIsFolder, id);
@@ -4895,8 +5244,31 @@ async function openFolderPlayMode(folderId) {
 //   これらはプレイモード選択自体はふつうのデッキと同じ（続きから/すべて/わからないだけ/
 //   みんなでクイズ/一覧で見る）だが、反転モード・自動採点（4択にする含む）は意味を持たない
 //   ため出さない（openPlayMode/startStudyMode両方から参照する）。
+//   ★ 変更：カードの種別がカードごとに混在しうるようになったため、「通常カードが1枚も無い
+//   （選択式・並び替えだけの）デッキ」も同じ扱いにする（反転・自動採点は通常カードにしか効かないため）。
 function isQuizPlayDeck(deck) {
-  return !!(deck && (isDeckInFolderScope(deck.id, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode));
+  if (!deck) return false;
+  if (isDeckInFolderScope(deck.id, QUIZ_ARCHIVE_FOLDER_ID) || deck.choiceMode) return true;
+  const counts = deckCardTypeCounts(deck);
+  return !!(counts && counts.normal === 0 && (counts.choice + counts.order) > 0);
+}
+
+// ★ 追加：デッキ内のカード種別ごとの枚数 { normal, choice, order }。
+//   カード本体を読み込み済みならそこから数え、未読み込みならサーバーの索引（list_cards の card_types）を使う。
+//   どちらも無ければ null（＝不明。呼び出し側は従来の choiceMode 判定にフォールバックする）。
+function deckCardTypeCounts(deck) {
+  if (!deck) return null;
+  if (deck.cardsLoaded || !deck.filename) {
+    if (!Array.isArray(deck.cards) || !deck.cards.length) return null;
+    const counts = { normal: 0, choice: 0, order: 0 };
+    deck.cards.forEach(c => { counts[cardType(c)]++; });
+    return counts;
+  }
+  const ct = deck.cardTypes;
+  if (ct && typeof ct === 'object') {
+    return { normal: Number(ct.normal) || 0, choice: Number(ct.choice) || 0, order: Number(ct.order) || 0 };
+  }
+  return null;
 }
 
 async function openPlayMode(deckId) {
@@ -4979,13 +5351,7 @@ async function openPlayMode(deckId) {
 // ★ 追加：反転モードのON/OFFに応じて自動採点トグルの表示を切り替える。
 //   反転モード（問題と解答を逆にする）中は自動採点の対象がずれてしまうため、
 //   反転ONの間はトグル自体を隠し、内部的にもOFFへ強制的に戻しておく。
-// ★ 追加：新規デッキ作成画面で「多肢選択」と「漢字」は同時にONにできない
-function onNewDeckModeToggle(which) {
-  const choice = document.getElementById('new-choice-mode-enabled');
-  const kanji = document.getElementById('new-kanji-mode-enabled');
-  if (which === 'choice' && choice.checked) kanji.checked = false;
-  if (which === 'kanji' && kanji.checked) choice.checked = false;
-}
+// ★ 削除：onNewDeckModeToggle（「多肢選択」と「漢字」の排他）は、多肢選択トグルの廃止に伴い不要になった
 
 // ★ 追加：「手書きで答える」をONにしたら自動採点もONにし、「4択にする」はOFFにする
 function onHandwritingToggleChange() {
@@ -5027,17 +5393,15 @@ function onFourChoiceToggleChange() {
   document.getElementById('handwriting-checkbox').checked = false; // ★ 手書きとは同時に使えない
 }
 
-// ★ クイズ過去問・多肢選択デッキのカードのうち、選択式として遊べるものだけに絞り、
-//   correct_indices（旧形式のcorrect_index単数も配列へ正規化）を補って返す。
+// ★ 変更：カードの種別（通常／選択式／並び替え）はカードごとに混在しうるので、
+//   選択式でないカードを絞り込むのはやめた（通常・並び替えカードはそれぞれの方法で出題する）。
+//   旧形式（correct_index単数）の選択式カードだけ correct_indices を配列で補ったコピーを返し、
+//   それ以外のカードは元のオブジェクトのまま返す（編集時の参照を極力変えないため）。
 function normalizeQuizPlayableCards(cards) {
-  return cards
-    .filter(c => Array.isArray(c.choices) && c.choices.length >= CHOICE_MIN)
-    .map(c => ({
-      ...c,
-      correct_indices: Array.isArray(c.correct_indices) ? c.correct_indices
-        : (typeof c.correct_index === 'number' ? [c.correct_index] : []),
-    }))
-    .filter(c => c.correct_indices.length >= 1);
+  return cards.map(c => {
+    if (cardType(c) !== 'choice' || Array.isArray(c.correct_indices)) return c;
+    return { ...c, correct_indices: typeof c.correct_index === 'number' ? [c.correct_index] : [] };
+  });
 }
 
 async function startStudyMode(mode) {
@@ -5096,7 +5460,8 @@ async function startStudyMode(mode) {
     studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
     // ★ 追加：クイズ過去問デッキは、保存されていた「これまでの各問題の正誤」も復元する
     //   （スコアは studyQuizAnswers から都度数え直す。saveStudyProgress側参照）。
-    studyQuizAnswers = new Map(studyIsQuizDeck && Array.isArray(saved.quizAnswers) ? saved.quizAnswers : []);
+    //   ★ 変更：選択式・並び替えカードはどのデッキでも記録するので、デッキの種類によらず復元する。
+    studyQuizAnswers = new Map(Array.isArray(saved.quizAnswers) ? saved.quizAnswers : []);
 
     let pool;
     if (studyIsFolder) {
@@ -5109,13 +5474,17 @@ async function startStudyMode(mode) {
       pool = deck ? [...deck.cards] : [];
       studyBaseTitle = deck ? deck.name : '';
     }
-    if (studyIsQuizDeck) pool = normalizeQuizPlayableCards(pool);
+    pool = normalizeQuizPlayableCards(pool);
     const byKey = new Map(pool.map(c => [cardKey(c), c]));
     // ★ order は保存時点の並び順（シャッフル済みならその並び）をそのまま記録しているので、
     //   ここで単純にキーから引き直すだけで、シャッフルした状態のまま正しく再開できる。
     studyCards = saved.order.map(k => byKey.get(k)).filter(Boolean);
     if (!studyCards.length) return; // カードが全部消えていた場合は何もしない
     studyIdx = Math.min(saved.idx, studyCards.length - 1);
+    // ★ 追加：正誤の記録は「今も採点対象（選択式・並び替え）として残っているカード」の分だけにする
+    //   （中断中にカードが消えた・通常カードへ種別が変わった場合に、スコアの母数とずれないように）。
+    const gradedKeys = new Set(studyCards.filter(c => cardType(c) !== 'normal').map(cardKey));
+    for (const k of [...studyQuizAnswers.keys()]) if (!gradedKeys.has(k)) studyQuizAnswers.delete(k);
   } else {
     studyMode = mode;
     studyShuffled = false; // ★ 「すべて」「わからないだけ」を選び直した場合はシャッフル状態をリセット
@@ -5130,12 +5499,12 @@ async function startStudyMode(mode) {
           merged.push({ ...c, __deckId: d.id }); // ★ 元のデッキidを保持
         });
       });
-      studyCards = merged;
+      studyCards = normalizeQuizPlayableCards(merged);
       const folder = folders.find(f => f.id === studyFolderId);
       studyBaseTitle = virtualPlayName(studyFolderId) || (folder ? folder.name : 'フォルダ');
     } else {
       const deck = decks.find(d => d.id === studyDeckId);
-      const sourceCards = studyIsQuizDeck ? normalizeQuizPlayableCards(deck.cards) : deck.cards;
+      const sourceCards = normalizeQuizPlayableCards(deck.cards);
       if (mode === 'unsure') {
         const unsure = getUnsureSet(studyDeckId);
         studyCards = sourceCards.filter(c => unsure.has(cardKey(c)));
@@ -5146,8 +5515,8 @@ async function startStudyMode(mode) {
     }
     if (studyIsQuizDeck && !studyCards.length) {
       await showCmAlert(mode === 'unsure'
-        ? { title: 'わからないカードはありません', desc: '「わからない」マークが付いた選択式の問題がまだありません。' }
-        : { title: '選択式の問題がありません', desc: 'このデッキには選択式の問題がまだありません。' });
+        ? { title: 'わからないカードはありません', desc: '「わからない」マークが付いた問題がまだありません。' }
+        : { title: '問題がありません', desc: 'このデッキにはまだ問題がありません。' });
       return;
     }
     studyIdx = 0;
@@ -5259,6 +5628,7 @@ async function setupFourChoiceIfNeeded() {
     const seen = new Set();
     const pool = [];
     (deck ? deck.cards : []).forEach(cc => {
+      if (cardType(cc) !== 'normal') return; // ★ 選択式・並び替えの解答は誤答プールに使わない（bot.py _cardmaker_deck_answer_pool と同じ）
       const a = (cc.answer || '').trim();
       if (a && !seen.has(a)) { seen.add(a); pool.push(a); }
     });
@@ -5273,6 +5643,7 @@ async function setupFourChoiceIfNeeded() {
   //   充実する＝AIがより自信を持って紛らわしい誤答を選べるようになる。
   const FOUR_CHOICE_POOL_MIN_SIZE = 10;
   studyCards.forEach(card => {
+    if (cardType(card) !== 'normal') return; // ★ 「4択にする」は通常カードだけが対象（選択式・並び替えは自前のUIで答える）
     const correct = ((studyReverse ? card.question : card.answer) || '').trim();
     if (!correct) return;
     const deckId = card.__deckId || studyDeckId;
@@ -5459,10 +5830,13 @@ async function scheduleFourChoiceAiEnhancement(skipKeys) {
 //   ②studyFourChoice（通常デッキの「自動採点＋4択にする」）：AIで組み立てた
 //     studyChoicesMapのエントリ（単一正解のみ、correctIndexを1件の配列にする）。
 //   どちらでもなければnull（＝通常の解答入力欄にフォールバック）。
+//   ★ 変更：①はデッキ単位（studyIsQuizDeck）ではなくカード単位で判定する。選択式カードは
+//   どのデッキに入っていても自分の選択肢で出題し、並び替えカードは選択肢欄を使わない（null）。
 function currentStudyChoiceEntry(card) {
   if (!card) return null;
-  if (studyIsQuizDeck) {
-    if (!Array.isArray(card.choices) || card.choices.length < CHOICE_MIN) return null;
+  const t = cardType(card);
+  if (t === 'order') return null;
+  if (t === 'choice') {
     const correctIndices = Array.isArray(card.correct_indices) ? card.correct_indices
       : (typeof card.correct_index === 'number' ? [card.correct_index] : []);
     if (!correctIndices.length) return null;
@@ -5555,10 +5929,246 @@ function finishStudyChoiceAnswer(card, entry, isCorrect, selectedSet) {
   // ★ 追加：クイズ過去問・多肢選択デッキは、このカードの正誤を記録する
   //   （studyQuizAnswers。「← 前へ」で戻って答え直しても、最新の判定で
   //   上書きされるだけなので二重加点はしない。スコア表示はupdateStudyQuizScoreLabel参照）。
-  if (studyIsQuizDeck) {
+  //   ★ 変更：デッキ単位ではなく「選択式カードかどうか」で判定する（通常カードの「4択にする」は記録しない）。
+  if (cardType(card) !== 'normal') {
     studyQuizAnswers.set(cardKey(card), isCorrect);
     saveStudyProgress(); // ★ スコアが変わった時点でも保存し直す（idx変更を待たず取りこぼさない）
   }
+  autoMarkUnsureForCard(card, isCorrect);
+  updateUnsureBtn();
+}
+
+
+// ============================================================
+//  ★ 追加：並び替えカードの出題（一人プレイ）
+//  ─────────────────────────────────────────────
+//  #study-order-wrap の中に「解答欄（上）」と「語句の置き場（下）」を作る。
+//  ・置き場のチップをタップすると解答欄の末尾に入り、解答欄のチップをタップすると置き場へ戻る。
+//  ・list 形式は Pointer Events のドラッグにも対応（解答欄の中での並べ替え、置き場→解答欄の
+//    好きな位置への挿入、解答欄→欄の外へ出して置き場へ戻す）。
+//  ・chips 形式はダミー語句が混ざることがある（正しい項目数だけ選んで採点する）。
+//  ・採点は「並べた語句の文字列の並び」が order_items と完全に一致したときだけ正解。
+//    位置ごとに正誤を色分けし、不正解なら autoMarkUnsureForCard を呼ぶ。
+//  ・語句は利用者の入力なので、innerHTML には入れず setMathText / textContent で描画する。
+// ============================================================
+let studyOrderState = null;      // { key, items, style, pieces:[{id,text}], placed:[id], answered }
+let studyOrderSuppressClick = false; // ドラッグ直後に発生する click をタップとして扱わないためのフラグ
+
+function clearStudyOrder() {
+  studyOrderState = null;
+  const wrap = document.getElementById('study-order-wrap');
+  if (!wrap) return;
+  wrap.style.display = 'none';
+  wrap.replaceChildren();
+}
+
+function renderStudyOrder(card) {
+  const wrap = document.getElementById('study-order-wrap');
+  if (!wrap) return;
+  const style = card.order_style === 'chips' ? 'chips' : 'list';
+  const items = (Array.isArray(card.order_items) ? card.order_items : []).map(x => String(x));
+  const distractors = style === 'chips' && Array.isArray(card.order_distractors) ? card.order_distractors.map(x => String(x)) : [];
+  const pieces = [...items, ...distractors].map((text, i) => ({ id: i, text }));
+  // シャッフル（項目が2つ以上あるのに偶然正しい並びのままになった場合は並べ直す）
+  for (let tries = 0; tries < 5; tries++) {
+    shuffleArrayInPlace(pieces);
+    const asIs = pieces.slice(0, items.length).map(p => p.text);
+    if (distractors.length || items.length < 2 || asIs.some((t, i) => t !== items[i])) break;
+  }
+  studyOrderState = { key: cardKey(card), items, style, pieces, placed: [], answered: false };
+  wrap.style.display = '';
+  drawStudyOrder();
+}
+
+function _studyOrderPiece(id) {
+  return studyOrderState.pieces.find(p => p.id === id);
+}
+
+function drawStudyOrder(result) {
+  const st = studyOrderState;
+  const wrap = document.getElementById('study-order-wrap');
+  if (!st || !wrap) return;
+  wrap.replaceChildren();
+  wrap.classList.toggle('is-list', st.style === 'list');
+  wrap.classList.toggle('is-chips', st.style === 'chips');
+
+  const hint = document.createElement('div');
+  hint.className = 'study-order-hint';
+  hint.textContent = st.answered ? '' : (st.style === 'list'
+    ? '下の項目をタップ（またはドラッグ）して、正しい順に並べてください'
+    : (st.pieces.length > st.items.length
+      ? '語句を正しい順にタップしてください（使わない語句も混ざっています）'
+      : '語句を正しい順にタップしてください'));
+  if (hint.textContent) wrap.appendChild(hint);
+
+  // ── 解答欄 ──
+  const answer = document.createElement('div');
+  answer.className = 'study-order-answer';
+  answer.id = 'study-order-answer';
+  if (!st.placed.length) {
+    const ph = document.createElement('div');
+    ph.className = 'study-order-placeholder';
+    ph.textContent = st.style === 'list' ? 'ここに順番に並びます' : 'ここに語句が並びます';
+    answer.appendChild(ph);
+  }
+  st.placed.forEach((id, pos) => {
+    const btn = makeStudyOrderChip(_studyOrderPiece(id), 'answer', pos);
+    if (result) btn.classList.add(result[pos] ? 'is-correct' : 'is-wrong');
+    answer.appendChild(btn);
+  });
+  wrap.appendChild(answer);
+
+  // ── 置き場（まだ使っていない語句） ──
+  if (!st.answered) {
+    const bank = document.createElement('div');
+    bank.className = 'study-order-bank';
+    bank.id = 'study-order-bank';
+    st.pieces.filter(p => !st.placed.includes(p.id)).forEach(p => bank.appendChild(makeStudyOrderChip(p, 'bank')));
+    wrap.appendChild(bank);
+
+    const actions = document.createElement('div');
+    actions.className = 'study-order-actions';
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'btn btn-ghost study-order-reset';
+    resetBtn.textContent = 'やり直す';
+    resetBtn.disabled = !st.placed.length;
+    resetBtn.addEventListener('click', () => { if (!st.answered) { st.placed = []; drawStudyOrder(); } });
+    const giveUpBtn = document.createElement('button');
+    giveUpBtn.type = 'button';
+    giveUpBtn.className = 'btn btn-ghost study-order-giveup';
+    giveUpBtn.textContent = '答えを見る';
+    giveUpBtn.addEventListener('click', () => gradeStudyOrder(true));
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'btn btn-blue study-order-submit';
+    submitBtn.id = 'study-order-submit';
+    submitBtn.textContent = `採点する（${st.placed.length} / ${st.items.length}）`;
+    submitBtn.disabled = st.placed.length !== st.items.length;
+    submitBtn.addEventListener('click', () => gradeStudyOrder(false));
+    actions.append(resetBtn, giveUpBtn, submitBtn);
+    wrap.appendChild(actions);
+  }
+}
+
+// 語句チップ1個を作る（where: 'answer' | 'bank'）
+function makeStudyOrderChip(piece, where, pos) {
+  const st = studyOrderState;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'study-order-chip' + (where === 'answer' ? ' in-answer' : '');
+  btn.dataset.pieceId = String(piece.id);
+  if (where === 'answer' && st.style === 'list') {
+    const num = document.createElement('span');
+    num.className = 'study-order-chip-num';
+    num.textContent = String(pos + 1);
+    btn.appendChild(num);
+  }
+  const label = document.createElement('span');
+  label.className = 'study-order-chip-text';
+  setMathText(label, piece.text);
+  btn.appendChild(label);
+  if (st.answered) { btn.disabled = true; return btn; }
+  btn.addEventListener('click', () => {
+    if (studyOrderSuppressClick) { studyOrderSuppressClick = false; return; }
+    if (!studyOrderState || studyOrderState.answered) return;
+    if (where === 'bank') {
+      if (st.placed.length >= st.items.length) return; // 正しい項目数より多くは置けない
+      st.placed.push(piece.id);
+    } else {
+      st.placed = st.placed.filter(id => id !== piece.id);
+    }
+    drawStudyOrder();
+  });
+  if (st.style === 'list') attachStudyOrderDrag(btn, piece.id, where);
+  return btn;
+}
+
+// ★ list 形式のドラッグ（Pointer Events）。6px 以上動いたらドラッグとみなし、
+//   指／カーソルに追従する半透明のコピーを出す。離した位置が解答欄の中なら、
+//   その位置（各チップの中心より上か下か）に差し込む。解答欄の外なら置き場へ戻す。
+function attachStudyOrderDrag(btn, pieceId, where) {
+  btn.style.touchAction = 'none'; // ドラッグ中にページがスクロールしないように
+  btn.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0 || !studyOrderState || studyOrderState.answered) return;
+    const st = studyOrderState;
+    const startX = ev.clientX, startY = ev.clientY;
+    let ghost = null;
+    const onMove = e => {
+      if (!ghost) {
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) < 6) return;
+        const r = btn.getBoundingClientRect();
+        ghost = btn.cloneNode(true);
+        ghost.classList.add('study-order-ghost');
+        ghost.style.width = r.width + 'px';
+        document.body.appendChild(ghost);
+        btn.classList.add('is-dragging');
+      }
+      ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + 'px';
+      ghost.style.top  = (e.clientY - ghost.offsetHeight / 2) + 'px';
+      e.preventDefault();
+    };
+    const onUp = e => {
+      btn.removeEventListener('pointermove', onMove);
+      btn.removeEventListener('pointerup', onUp);
+      btn.removeEventListener('pointercancel', onUp);
+      if (!ghost) return; // 動いていなければ通常のタップ（click）に任せる
+      ghost.remove();
+      btn.classList.remove('is-dragging');
+      studyOrderSuppressClick = true;
+      setTimeout(() => { studyOrderSuppressClick = false; }, 0);
+      if (e.type === 'pointercancel' || studyOrderState !== st || st.answered) { drawStudyOrder(); return; }
+      const answerEl = document.getElementById('study-order-answer');
+      const ar = answerEl && answerEl.getBoundingClientRect();
+      const inside = ar && e.clientX >= ar.left && e.clientX <= ar.right && e.clientY >= ar.top && e.clientY <= ar.bottom;
+      const rest = st.placed.filter(id => id !== pieceId);
+      if (inside) {
+        if (where === 'bank' && st.placed.length >= st.items.length) { drawStudyOrder(); return; }
+        let insertAt = rest.length;
+        const chips = [...answerEl.querySelectorAll('.study-order-chip')].filter(el => el.dataset.pieceId !== String(pieceId));
+        for (let i = 0; i < chips.length; i++) {
+          const cr = chips[i].getBoundingClientRect();
+          if (e.clientY < cr.top + cr.height / 2) { insertAt = i; break; }
+        }
+        rest.splice(insertAt, 0, pieceId);
+        st.placed = rest;
+      } else if (where === 'answer') {
+        st.placed = rest; // 解答欄の外へ出したら置き場へ戻す
+      }
+      drawStudyOrder();
+    };
+    try { btn.setPointerCapture(ev.pointerId); } catch (e) {}
+    btn.addEventListener('pointermove', onMove);
+    btn.addEventListener('pointerup', onUp);
+    btn.addEventListener('pointercancel', onUp);
+  });
+}
+
+// 採点する（giveUp=true は「答えを見る」＝並べた途中のまま不正解として扱う）
+function gradeStudyOrder(giveUp) {
+  const st = studyOrderState;
+  if (!st || st.answered) return;
+  const card = studyCards[studyIdx];
+  if (!card || cardKey(card) !== st.key) return;
+  if (!giveUp && st.placed.length !== st.items.length) return;
+  const texts = st.placed.map(id => _studyOrderPiece(id).text);
+  const perPos = texts.map((t, i) => t === st.items[i]);
+  const isCorrect = !giveUp && texts.length === st.items.length && perPos.every(Boolean);
+  st.answered = true;
+  drawStudyOrder(perPos);
+
+  document.getElementById('study-answer-panel').classList.add('show');
+  document.getElementById('study-reveal-bar').style.display = 'none';
+  document.getElementById('study-nav').style.display = '';
+  const result = document.getElementById('study-grade-result');
+  result.style.display = 'flex';
+  result.className = 'study-grade-result ' + (isCorrect ? 'correct' : 'incorrect');
+  document.getElementById('grade-mark').innerHTML = isCorrect ? '○ 正解' : (Icons.html('close', {size:14}) + ' 不正解');
+  // 解答欄の色分けで既に示しているので「あなたの解答」は出さない（4択と同じ方針）
+  document.getElementById('grade-user-answer').textContent = '';
+
+  studyQuizAnswers.set(cardKey(card), isCorrect);
+  saveStudyProgress();
   autoMarkUnsureForCard(card, isCorrect);
   updateUnsureBtn();
 }
@@ -5634,9 +6244,14 @@ function renderStudyCard() {
     //   （study-done-subを「全N問完了！」の代わりにスコア表示として流用する）。
     //   ★ 2026/08/27：他の人との順位比較（ランキング）は「消してほしい」との
     //   要望で撤去済み。自分の正解数だけを見せる。
-    if (studyIsQuizDeck) {
-      const scoreCount = [...studyQuizAnswers.values()].filter(Boolean).length;
-      document.getElementById('study-done-sub').textContent = `${scoreCount} / ${studyCards.length} 問正解！`;
+    //   ★ 変更：母数は「採点するカード（選択式・並び替え）」の枚数。通常カードしか無ければ従来どおり。
+    const gradedCount = studyCards.filter(sc => cardType(sc) !== 'normal').length;
+    if (gradedCount) {
+      const gradedKeys = new Set(studyCards.filter(sc => cardType(sc) !== 'normal').map(cardKey));
+      const scoreCount = [...studyQuizAnswers.entries()].filter(([k, v]) => v && gradedKeys.has(k)).length;
+      document.getElementById('study-done-sub').textContent = gradedCount === studyCards.length
+        ? `${scoreCount} / ${gradedCount} 問正解！`
+        : `全 ${studyCards.length} 問完了！（選択式・並び替え ${scoreCount} / ${gradedCount} 問正解）`;
     } else {
       document.getElementById('study-done-sub').textContent = `全 ${studyCards.length} 問完了！`;
     }
@@ -5647,10 +6262,13 @@ function renderStudyCard() {
   updateUnderstandingBadgeForCurrentCard(); // ★ 追加：カードが切り替わるたび、このカード1枚分の「わかる率」に更新する
 
   // ★ 反転モードなら「問題」欄に解答、「解答」欄に問題文を出す（解説はそのまま解答側に表示）
-  const qText = studyReverse ? c.answer   : c.question;
-  const qImgs = studyReverse ? c.imgs_a   : c.imgs_q;
-  const aText = studyReverse ? c.question : c.answer;
-  const aImgs = studyReverse ? c.imgs_q   : c.imgs_a;
+  //   ★ 変更：反転・自動採点・4択・手書きは「通常」カードにだけ効く（選択式・並び替えはカード自身の形式で出題）
+  const cType = cardType(c);
+  const rev = studyReverse && cType === 'normal';
+  const qText = rev ? c.answer   : c.question;
+  const qImgs = rev ? c.imgs_a   : c.imgs_q;
+  const aText = rev ? c.question : c.answer;
+  const aImgs = rev ? c.imgs_q   : c.imgs_a;
 
   setMathText(document.getElementById('study-q-text'), qText);
   renderImgList(document.getElementById('study-q-imgs'), qImgs);
@@ -5679,15 +6297,18 @@ function renderStudyCard() {
   //   選択式にできる場合は、解答入力欄の代わりに選択肢欄を表示する（currentStudyChoiceEntry参照）。
   //   できない場合は通常の解答入力欄のままにする。
   const choiceEntry = currentStudyChoiceEntry(c);
+  const isOrder = cType === 'order'; // ★ 並び替えカードは専用の解答欄（renderStudyOrder）で答える
   const answerInputWrap = document.getElementById('study-answer-input-wrap');
   const answerInput = document.getElementById('study-answer-input');
   const choiceWrap = document.getElementById('study-choice-wrap');
-  answerInputWrap.style.display = choiceEntry ? 'none' : '';
+  answerInputWrap.style.display = (choiceEntry || isOrder) ? 'none' : '';
   answerInput.value = '';
-  // ★ 手書きモード：選択式にならないカードでは手書きパッドを出す（入力欄は認識結果の表示・修正用）
-  if (typeof hwSetup === 'function') hwSetup(studyHandwriting && !choiceEntry);
+  // ★ 手書きモード：通常カードで選択式にならない場合だけ手書きパッドを出す（入力欄は認識結果の表示・修正用）
+  if (typeof hwSetup === 'function') hwSetup(studyHandwriting && !choiceEntry && cType === 'normal');
   choiceWrap.style.display = choiceEntry ? '' : 'none';
-  document.getElementById('reveal-answer-btn').style.display = choiceEntry ? 'none' : '';
+  document.getElementById('reveal-answer-btn').style.display = (choiceEntry || isOrder) ? 'none' : '';
+  if (isOrder) renderStudyOrder(c);
+  else clearStudyOrder();
   if (choiceEntry) {
     renderStudyChoices(choiceEntry);
   } else {
@@ -5701,7 +6322,7 @@ function renderStudyCard() {
   const gradeResult = document.getElementById('study-grade-result');
   gradeResult.style.display = 'none';
   gradeResult.className = 'study-grade-result';
-  document.getElementById('reveal-answer-btn').textContent = studyAutoGrade ? '採点する' : '答えを見る';
+  document.getElementById('reveal-answer-btn').textContent = (studyAutoGrade && cType === 'normal') ? '採点する' : '答えを見る';
 
   setMathText(document.getElementById('study-a-text'), aText);
   renderImgList(document.getElementById('study-a-imgs'), aImgs);
@@ -5735,7 +6356,8 @@ async function revealAnswer() {
   document.getElementById('study-answer-panel').classList.add('show');
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
-  if (studyAutoGrade) gradeCurrentAnswer(); // ★ 追加：自動採点モードなら○×判定を行う
+  // ★ 追加：自動採点モードなら○×判定を行う（通常カードだけ。選択式・並び替えはそれぞれの採点処理がある）
+  if (studyAutoGrade && cardType(studyCards[studyIdx]) === 'normal') gradeCurrentAnswer();
   // ★ 採点後は手書きパッドを畳む（大きい状態だと解答パネルと「次へ」が画面外に押し出されるため）
   if (studyHandwriting && typeof hwHide === 'function') hwHide();
   updateUnsureBtn();
@@ -5818,7 +6440,8 @@ function shuffleStudy() {
   studyIdx = 0;
   // ★ 追加：クイズ過去問・多肢選択デッキは、シャッフル＝最初からやり直しとして
   //   これまでの正誤記録もリセットする（studyIdxを0に戻すのと同じ「やり直し」の意味）。
-  if (studyIsQuizDeck) studyQuizAnswers = new Map();
+  //   ★ 変更：選択式・並び替えカードはどのデッキでも採点するので、常にリセットする。
+  studyQuizAnswers = new Map();
   studyShuffled = true; // ★ 追加：シャッフル済み状態にする。以降の saveStudyProgress で保存され、
                         //   「続きから」で再開したときもこのシャッフル順のまま復元される。
   renderStudyTitle(); // ★ タイトルにシャッフル中を表示（studyShuffledは直前にtrueへ更新済み）
@@ -5842,7 +6465,8 @@ document.addEventListener('keydown', e => {
   //   カードは、スペースキーでの「答えを見る」（revealAnswer、テキスト入力前提の採点）
   //   を行わない。選択肢はボタンをクリックして答える（answerStudyChoice）ため。
   const curCard = studyCards[studyIdx];
-  const inChoiceMode = !!(curCard && currentStudyChoiceEntry(curCard));
+  //   ★ 並び替えカードもチップのタップで答えるので同じ扱いにする。
+  const inChoiceMode = !!(curCard && (currentStudyChoiceEntry(curCard) || cardType(curCard) === 'order'));
   if (e.key===' ' && !inChoiceMode) { e.preventDefault(); revealAnswer(); }
 });
 

@@ -1006,3 +1006,81 @@ html, body {
 }
 .hw-status { margin-top: .3rem; font-size: 12px; color: var(--text-secondary); min-height: 1em; }
 .hw-canvas.big { height: min(42vh, 320px); }
+
+/* ══════════ ★ 追加：カード種別（通常／選択式／並び替え）・並び替えカード ══════════ */
+/* 種別・並び替え形式の切替（セグメントボタン） */
+.card-type-seg {
+  display: flex; gap: 4px; padding: 4px; margin: 0 0 1rem;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.card-type-seg-btn {
+  flex: 1; min-height: 40px; padding: .45rem .5rem; border: none; border-radius: calc(var(--r-md) - 2px);
+  background: transparent; color: var(--text-secondary); font-family: inherit;
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s, color .15s, box-shadow .15s;
+}
+.card-type-seg-btn.active { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.10); }
+.card-type-seg-btn:active { opacity: .85; }
+.order-style-seg { margin: .25rem 0 .5rem; }
+.card-block .card-type-seg { margin-left: 0; margin-right: 0; }
+
+/* 並び順・ダミー語句の入力行 */
+.order-editor-row .order-item-input { flex: 1; min-width: 0; }
+.order-editor-num {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+}
+
+/* 作成済み一覧・一覧で見るの種別ラベル */
+.created-item-type, .list-view-type-tag {
+  display: inline-block; flex-shrink: 0; font-size: 10px; font-weight: 700;
+  padding: 1px 7px; border-radius: 2px; line-height: 1.6;
+  color: var(--accent); background: var(--accent-soft); white-space: nowrap;
+}
+.created-item-type { margin-right: 6px; vertical-align: 1px; }
+
+/* 一覧で見る：並び替えカードの正しい順 */
+.list-view-order-list { margin: .1rem 0 .4rem; padding-left: 1.5rem; font-size: 15px; line-height: 1.7; }
+.list-view-order-list li { word-break: break-word; }
+
+/* 学習画面：並び替えカードの解答欄 */
+.study-order-wrap { margin-bottom: 1rem; }
+.study-order-hint { font-size: 12px; color: var(--text-tertiary); margin-bottom: .5rem; }
+.study-order-answer {
+  min-height: 56px; padding: 8px; margin-bottom: .75rem;
+  border: 2px dashed var(--border); border-radius: var(--r-md); background: var(--bg);
+  display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start;
+}
+.study-order-wrap.is-list .study-order-answer { flex-direction: column; flex-wrap: nowrap; }
+.study-order-placeholder { align-self: center; margin: auto; font-size: 13px; color: var(--text-tertiary); }
+.study-order-bank { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: .75rem; min-height: 8px; }
+.study-order-wrap.is-list .study-order-bank { flex-direction: column; }
+.study-order-chip {
+  display: inline-flex; align-items: center; gap: 8px; text-align: left;
+  padding: 10px 14px; border: 2px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); color: var(--text); font-family: inherit;
+  font-size: 15px; font-weight: 600; cursor: pointer; -webkit-user-select: none; user-select: none;
+  transition: opacity .15s, border-color .15s, background .15s;
+}
+.study-order-wrap.is-list .study-order-chip { width: 100%; }
+.study-order-chip:active:not(:disabled) { opacity: .85; }
+.study-order-chip.in-answer { border-color: var(--accent); background: var(--accent-soft); }
+.study-order-chip:disabled { cursor: default; }
+.study-order-chip.is-correct { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.study-order-chip.is-wrong   { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.study-order-chip.is-dragging { opacity: .35; }
+.study-order-chip-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; background: var(--accent);
+}
+.study-order-chip.is-correct .study-order-chip-num { background: var(--ok); }
+.study-order-chip.is-wrong   .study-order-chip-num { background: var(--danger); }
+.study-order-chip-text { min-width: 0; word-break: break-word; }
+.study-order-ghost {
+  position: fixed; z-index: 600; pointer-events: none; margin: 0;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); opacity: .95;
+}
+.study-order-actions { display: flex; gap: 8px; }
+.study-order-actions .btn { flex: 1; }
+.study-order-actions .study-order-submit { flex: 2; }
