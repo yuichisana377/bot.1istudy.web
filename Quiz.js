@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="820aad2279";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="aad8208d73";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1512,6 +1512,8 @@ function pruneQuizImageCache(qIndex) {
 function renderQuizImages(container, qIndex, kind, count) {
   const sig = `${roomCode}:${qIndex}:${kind}:${count}`;
   if (container.dataset.sig === sig) return;
+  // 別の問題・種別に変わったときだけ再試行回数を戻す（同じ問題の取り直しでは保つ）
+  if (container.dataset.sigBase !== sig) { container.dataset.sigBase = sig; container.dataset.retry = '0'; }
   container.dataset.sig = sig;
   container.replaceChildren();
   if (kind === 'q') pruneQuizImageCache(qIndex);

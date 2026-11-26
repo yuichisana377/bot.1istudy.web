@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="820aad2279";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="aad8208d73";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2249,9 +2249,15 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
       return { ok: false, reason: 'mismatch', expectedCount, fetchedCount: fetchedCards.length };
     }
 
-    deck.cards = fetchedCards;
+    // ★ サーバーへ送れない書きかけの並び替えカードは端末にしか無いので、取得結果の後ろに残す（黙って消さない）
+    const localOnly = deck.cardsLoaded ? (deck.cards || []).filter(c => {
+      if (cardType(c) !== 'order') return false;
+      const p = cardToServerPayload(c);
+      return p.order_items.length < ORDER_MIN || p.order_items.length > ORDER_MAX;
+    }) : [];
+    deck.cards = fetchedCards.concat(localOnly);
     deck.cardsLoaded = true;
-    deck.count = deck.cards.length;
+    deck.count = fetchedCards.length;
     // ★ カード本体取得時にもサーバー側の未完成フラグを取り込んでおく（念のため）
     if ('incomplete' in data) deck.incomplete = !!data.incomplete;
     saveDecks(decks);
