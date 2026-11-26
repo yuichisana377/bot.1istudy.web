@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="8bf7811c2d";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="63a19ce656";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1538,6 +1538,19 @@ function pruneQuizImageCache(qIndex) {
   const prefix = `${roomCode}:${qIndex}:`;
   for (const k of [...quizImageCache.keys()]) if (!k.startsWith(prefix)) quizImageCache.delete(k);
 }
+// 画像タップで拡大表示（もう一度タップ／背景タップで閉じる）。srcはdata:image/のみ（fetchQuizImage側で検証済み）
+function openQuizImgZoom(src) {
+  if (!src || document.getElementById('qz-img-zoom')) return;
+  const ov = document.createElement('div');
+  ov.id = 'qz-img-zoom';
+  ov.className = 'qz-img-zoom';
+  const im = document.createElement('img');
+  im.alt = '';
+  im.src = src;
+  ov.appendChild(im);
+  ov.addEventListener('click', () => ov.remove());
+  document.body.appendChild(ov);
+}
 function renderQuizImages(container, qIndex, kind, count) {
   const sig = `${roomCode}:${qIndex}:${kind}:${count}`;
   if (container.dataset.sig === sig) return;
@@ -1555,7 +1568,7 @@ function renderQuizImages(container, qIndex, kind, count) {
     container.appendChild(img);
     fetchQuizImage(qIndex, kind, i).then(src => {
       if (container.dataset.sig !== sig) return; // もう別の問題に変わっていたら捨てる
-      if (src) { img.src = src; img.classList.add('qz-img-loaded'); }
+      if (src) { img.src = src; img.classList.add('qz-img-loaded'); img.addEventListener('click', () => openQuizImgZoom(src)); }
       else {
         img.remove();
         if (!container.querySelector('img')) container.style.display = 'none';
