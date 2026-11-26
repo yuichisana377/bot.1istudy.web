@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="a5a2a4a60f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="a071e6b95d";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -1046,7 +1046,7 @@ function renderOrderEditor(prefix, items, distractors, style) {
 function readOrderEditorTrimmed(prefix) {
   const s = readOrderEditorState(prefix);
   return {
-    items: s.items.map(x => x.trim()),
+    items: s.items.map(x => x.trim()).filter(x => x), // ★ Enterで増えた空の枠は保存時に除く
     distractors: s.style === 'chips' ? s.distractors.map(x => x.trim()).filter(x => x) : [],
     style: s.style,
   };
@@ -5121,6 +5121,7 @@ function saveStudyProgress() {
     autoGrade: studyAutoGrade, // ★ 追加：自動採点モードだったかどうかを保存し、再開時に復元する
     handwriting: studyHandwriting, // ★ 手書きモードだったかどうか
     fourChoice: studyFourChoice, // ★ 追加：「4択にする」設定だったかどうかを保存し、再開時に復元する
+    orderAsNormal: studyOrderAsNormal, // ★ 英語の並び替えを通常カードで出していたか（再開時に復元。モーダルの状態は信用できない）
     shuffled: studyShuffled, // ★ 追加：シャッフル済みの並びかどうかを保存し、再開時に区別できるようにする
     // ★ 追加：クイズ過去問・多肢選択デッキをプレイ中なら、ここまでの各問題の正誤も
     //   保存しておく（続きから再開したときにスコアを正しく引き継ぐため）。
@@ -5510,6 +5511,7 @@ async function startStudyMode(mode) {
     studyFourChoice = studyIsQuizDeck ? false : (studyAutoGrade && !!saved.fourChoice); // ★ 追加：保存されていた「4択にする」設定を復元
     studyHandwriting = studyIsQuizDeck ? false : (studyAutoGrade && !studyFourChoice && !!saved.handwriting); // ★ 手書きモードも復元
     if (studyHandwriting) await loadChunkWithFeedback('handwriting', '/Cardmaker-handwriting.js');
+    studyOrderAsNormal = !studyIsQuizDeck && !!saved.orderAsNormal; // ★ モーダルのDOMではなく保存値を使う
     studyMode = saved.mode || 'all';
     studyShuffled = !!saved.shuffled; // ★ シャッフル済みだったかどうかを復元（タイトル表示用）
     // ★ 追加：クイズ過去問デッキは、保存されていた「これまでの各問題の正誤」も復元する
