@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="c2d7908f26";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="16e29204c5";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5015,13 +5015,17 @@ document.addEventListener('visibilitychange', async () => {
     } else if (autoPausedByHide) {
       if (!studyScreenActive()) { finishAutoTimerIfPending(); return; }
       if (!hasAutoTimerPending()) { autoPausedByHide = false; return; } // 目印が消えていれば自分の計測ではない
-      autoPausedByHide = false;
-      // 隠れる直前の一時停止がまだ届いていない場合に備え、1回だけ待って再試行する
+      // ★ 再開が確定する（成功、または「一時停止中ではない」と確定）まで、フラグは立てたままにする。
+      //   通信失敗で再開できなかったとき、フラグを先に落としていると、一時停止のまま残った計測を
+      //   終了処理が見落として、自動記録が漏れていた。
+      // 隠れる直前の一時停止がまだ届いていない場合や通信失敗に備え、最大2回まで待って再試行する
       let r = await post('timer_resume').catch(() => null);
-      if (r && !r.ok && r.error === 'not_paused') {
+      for (let n = 0; n < 2 && (!r || (!r.ok && r.error === 'not_paused')); n++) {
         await new Promise(res => setTimeout(res, 1500));
+        if (document.visibilityState !== 'visible') return; // また隠れた：次の「戻った」時に任せる（フラグは立てたまま）
         r = await post('timer_resume').catch(() => null);
       }
+      if (r && (r.ok || r.error === 'not_paused')) autoPausedByHide = false;
     }
   } catch (e) {}
 });
