@@ -4036,6 +4036,11 @@ async function openRename(id, fromEdit) {
   } else {
     planRow.style.display = 'none';
   }
+  // ★ 追加：漢字デッキのON/OFF（多肢選択デッキ・クイズ過去問では出さない）
+  const kanjiRow = document.getElementById('modal-rename-kanji-row');
+  const canKanji = !isQuizPlayDeck(deck);
+  kanjiRow.style.display = canKanji ? '' : 'none';
+  document.getElementById('modal-rename-kanji').checked = !!deck.kanjiMode;
   const sel = document.getElementById('modal-rename-subject');
   sel.innerHTML = '<option value="">読み込み中…</option>';
   openModal('modal-rename');
@@ -4075,6 +4080,7 @@ async function saveRename() {
   deck.subject = subject;
   deck.name    = newName;
   deck.description = description || null; // ★ 追加
+  if (!isQuizPlayDeck(deck)) deck.kanjiMode = document.getElementById('modal-rename-kanji').checked ? true : null; // ★ 漢字デッキのON/OFF
   saveDecks(decks);
   closeModal('modal-rename');
   renderDeckListUI();
