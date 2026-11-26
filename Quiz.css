@@ -584,7 +584,7 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 
 .qz-img.qz-img-loaded{ cursor:zoom-in; }
 .qz-img-zoom{
-  position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.88);
+  position:fixed; inset:0; z-index:250; background:rgba(0,0,0,.88);
   display:flex; align-items:center; justify-content:center; padding:12px;
   cursor:zoom-out; touch-action:none;
 }

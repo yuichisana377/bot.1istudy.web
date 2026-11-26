@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="63a19ce656";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="343e49c4b6";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -117,6 +117,7 @@ function withAuth(extra = {}) {
 //   3画面の間だけbody自体のスクロールもJS側で明示的に止める。
 const QZ_FIXED_HEIGHT_SCREENS = new Set(['host-play', 'player-play', 'ranking']);
 function showScreenQ(id) {
+  if (!document.getElementById('screen-' + id)?.classList.contains('active')) closeQuizImgZoom();
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
   document.getElementById('screen-' + id).classList.add('active');
   window.scrollTo(0, 0);
@@ -960,6 +961,7 @@ function renderPlayScreen(room, opts) {
   const qChanged = room.current_q !== renderedQIndex;
   const stateChanged = room.state !== renderedState;
   if (qChanged) hasAnsweredThisQ = false;
+  if (qChanged || stateChanged) closeQuizImgZoom();
   renderedQIndex = room.current_q; renderedState = room.state;
 
   document.getElementById(progressId).textContent = `Q ${room.current_q + 1} / ${room.total_questions}`;
@@ -1539,6 +1541,7 @@ function pruneQuizImageCache(qIndex) {
   for (const k of [...quizImageCache.keys()]) if (!k.startsWith(prefix)) quizImageCache.delete(k);
 }
 // 画像タップで拡大表示（もう一度タップ／背景タップで閉じる）。srcはdata:image/のみ（fetchQuizImage側で検証済み）
+function closeQuizImgZoom() { document.getElementById('qz-img-zoom')?.remove(); }
 function openQuizImgZoom(src) {
   if (!src || document.getElementById('qz-img-zoom')) return;
   const ov = document.createElement('div');
