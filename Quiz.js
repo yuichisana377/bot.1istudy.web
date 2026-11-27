@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="e20ee56c0c";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="c2dd93f36e";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -991,7 +991,7 @@ function playerChipsHtml(players) {
     </div>`).join('');
 }
 
-const CHOICE_CLASSES = ['qz-choice-a', 'qz-choice-b', 'qz-choice-c', 'qz-choice-d'];
+const CHOICE_CLASSES = ['qz-choice-a', 'qz-choice-b', 'qz-choice-c', 'qz-choice-d', 'qz-choice-e'];
 
 // ★ ホストも1人の参加者として一緒に回答する。出題画面はホスト用／
 //   プレイヤー用でほぼ同じ処理になるため、共通ロジックをここにまとめる。

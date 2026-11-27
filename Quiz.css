@@ -376,6 +376,9 @@ body.qz-reveal-scroll #screen-host-play .qz-body, body.qz-reveal-scroll #screen-
 .qz-choice-c{ background:var(--choice-c); color:#3b2405; } .qz-choice-c::before{ background:rgba(0,0,0,.7); border-radius:50%; }
 .qz-choice-d{ background:var(--choice-d); } .qz-choice-d::before{ border-radius:3px; }
 
+.qz-choice-e{ background:#7c3aed; } .qz-choice-e::before{ clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%); }
+.qz-choice-grid > .qz-choice-btn:last-child:nth-child(odd){ grid-column:1 / -1; } /* 3・5択の最後を横いっぱいに */
+
 .qz-choice-btn[disabled]{ pointer-events:none; }
 .qz-choice-btn.qz-dim{ opacity:.35; filter:grayscale(.3); }
 
