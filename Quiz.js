@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="7f91656351";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="14d11249c9";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -477,6 +477,7 @@ async function goHostSetupScreen() {
   showScreenQ('host-setup');
   document.getElementById('hs-error').textContent = '';
   setLateJoinOption(true);
+  setScoreMode('total'); // 前回の選択を引き継がず、作成のたびに合計点へ戻す
   // ★ 追加：詳細設定も毎回リセットする（ボーナス問題なし・出題時間/発表時間は既定値）
   document.getElementById('hs-bonus-count').value = '1';
   setBonusMode('none');
