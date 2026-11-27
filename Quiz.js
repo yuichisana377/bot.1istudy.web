@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="b511855218";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="e20ee56c0c";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -527,7 +527,37 @@ function openDeckPicker() {
   location.href = 'Cardmaker.html?pick=quiz';
 }
 
+// ★ 出題数の選択肢を、選んだデッキのカード総数までに絞る（40枚しかないのに80問が出ないように）
+let deckCountMap = null; // filename → カード数（取得できなければ null のまま＝絞らない）
+async function loadDeckCounts() {
+  if (deckCountMap) return;
+  const data = await apiGet('list_cards', withAuth(), 15000);
+  if (!data || !data.ok || !Array.isArray(data.sets)) return;
+  deckCountMap = {};
+  data.sets.forEach(s => { deckCountMap[s.filename] = Number(s.count) || 0; });
+  updateNumQuestionOptions();
+}
+function updateNumQuestionOptions() {
+  const sel = document.getElementById('hs-num-questions');
+  if (!sel) return;
+  let total = null;
+  if (deckCountMap && hsSelectedDecks.length) {
+    total = hsSelectedDecks.reduce((n, d) => n + (deckCountMap[d.filename] || 0), 0);
+  }
+  const cur = sel.value;
+  const opts = [{ v: '', t: '全部使う' }];
+  for (let n = 10; n <= 100; n += 10) {
+    if (total !== null && n >= total) break; // 総数以上の選択肢は「全部使う」と同じなので出さない
+    opts.push({ v: String(n), t: n + '問' });
+  }
+  if (total !== null) opts[0].t = '全部使う（' + total + '問）';
+  sel.innerHTML = opts.map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+  sel.value = opts.some(o => o.v === cur) ? cur : '';
+}
+
 function renderSelectedDecks() {
+  updateNumQuestionOptions();
+  if (!deckCountMap) loadDeckCounts();
   const emptyWrap = document.getElementById('hs-deck-picker-empty');
   const selectedWrap = document.getElementById('hs-deck-picker-selected');
   const listEl = document.getElementById('hs-selected-deck-list');
