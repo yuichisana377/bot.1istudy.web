@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="6a27a3d230";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="b2670a3772";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1197,7 +1197,7 @@ function renderRanking(room) {
       <span class="qz-lb-rank">${i + 1}${moveHtml}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
-      ${p.time_sec != null ? `<span class="qz-lb-time">${p.time_sec}${escapeHtml(p.time_unit || '秒')}</span>` : ''}
+      ${p.time_sec != null ? `<span class="qz-lb-time">${Number(p.time_sec).toFixed(1)}${escapeHtml(p.time_unit || '秒')}</span>` : ''}
       <span class="qz-lb-score">${p.score}${escapeHtml(p.score_unit || '点')}</span>
     </div>`;
   }).join('');
@@ -1762,7 +1762,7 @@ function renderResult(room) {
       <span class="qz-lb-rank">${i + 1}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
-      ${p.time_sec != null ? `<span class="qz-lb-time">${p.time_sec}${escapeHtml(p.time_unit || '秒')}</span>` : ''}
+      ${p.time_sec != null ? `<span class="qz-lb-time">${Number(p.time_sec).toFixed(1)}${escapeHtml(p.time_unit || '秒')}</span>` : ''}
       <span class="qz-lb-score">${p.score}${escapeHtml(p.score_unit || '点')}</span>
     </div>`).join('');
 }

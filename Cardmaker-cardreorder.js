@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-cardreorder.js"]="6a27a3d230";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-cardreorder.js"]="b2670a3772";/*@end*/// ============================================================
 //  Cardmaker-cardreorder.js — CardMaker「作成済みカードのドラッグ並び替え」機能
 //  （遅延読み込みチャンク）
 //  ─────────────────────────────────────────────
