@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="4645226ff2";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="911258b122";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -320,7 +320,7 @@ function setupCodeCopy(pre) {
   wrap.appendChild(badge);
   pre.addEventListener('click', async () => {
     // バッジ以外の本文だけを取り出す（生HTMLの<pre>でもバッジ文字が混ざらないように）
-    const text = pre.textContent;
+    const text = pre.innerText || pre.textContent; // 見えている文字だけをコピー
     let ok = false;
     // iOS等ではawait後だとexecCommandが拒否されるため、先に同期のフォールバックを使う
     if (!navigator.clipboard || !navigator.clipboard.writeText) {
@@ -345,7 +345,7 @@ function renderNoticeBody(bodyEl, filename, content) {
     bodyEl.classList.add('markdown-body');
     // 改行コードを揃える（\r\n だと ``` の行判定が崩れる環境があるため）
     const rawHtml = marked.parse(String(content).replace(/\r\n?/g, '\n'), { breaks: true, gfm: true });
-    bodyEl.innerHTML = DOMPurify.sanitize(rawHtml, { FORBID_ATTR: ['style'] });
+    bodyEl.innerHTML = DOMPurify.sanitize(rawHtml);
     bodyEl.querySelectorAll('pre').forEach(setupCodeCopy);
   } else {
     bodyEl.classList.remove('markdown-body');

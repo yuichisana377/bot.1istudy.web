@@ -1134,7 +1134,7 @@ body {
   word-break: normal;
 }
 .code-wrap { position: relative; margin: 0 0 .8em; }
-.code-wrap > pre { margin: 0; }
+.notice-body.markdown-body .code-wrap > pre { margin: 0; }
 .notice-body.markdown-body pre {
   white-space: pre;
   word-break: normal;
