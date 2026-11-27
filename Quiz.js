@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="2a4bc9be7b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="06c83097da";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1558,7 +1558,7 @@ function openQuizImgZoom(src) {
   // 動かさずに離したタップだけを「閉じる」操作として扱う（拡大中は閉じない）。
   let scale = 1, tx = 0, ty = 0;
   const pts = new Map();          // pointerId -> {x, y}
-  let lastDist = 0, lastMid = null, moved = false, hadMulti = false;
+  let lastDist = 0, lastMid = null, moved = false, hadMulti = false, startPt = null, tapClose = false;
   const apply = () => { im.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
   im.style.transformOrigin = 'center center';
   im.style.willChange = 'transform';
@@ -1569,8 +1569,8 @@ function openQuizImgZoom(src) {
   ov.addEventListener('pointerdown', e => {
     ov.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) { startPt = { x: e.clientX, y: e.clientY }; moved = false; tapClose = false; }
     if (pts.size >= 2) { hadMulti = true; lastDist = 0; lastMid = null; }
-    moved = false;
   });
   ov.addEventListener('pointermove', e => {
     if (!pts.has(e.pointerId)) return;
@@ -1587,8 +1587,8 @@ function openQuizImgZoom(src) {
     } else if (scale > 1) {
       tx += e.clientX - prev.x; ty += e.clientY - prev.y;
       moved = true; apply();
-    } else if (Math.hypot(e.clientX - prev.x, e.clientY - prev.y) > 3) {
-      moved = true;
+    } else if (startPt && Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 6) {
+      moved = true; // 押した位置からの合計移動量で判定（細かい移動の積み重ねも拾う）
     }
   });
   const end = e => {
@@ -1596,12 +1596,20 @@ function openQuizImgZoom(src) {
     pts.delete(e.pointerId);
     lastDist = 0; lastMid = null;
     if (pts.size === 0) {
-      clampScale(); apply();
-      // ピンチ・ドラッグをしていない単なるタップで、拡大していなければ閉じる
-      if (e.type === 'pointerup' && !moved && !hadMulti && scale === 1) ov.remove();
+      // ほぼ等倍なら等倍に戻し、拡大中は画像が画面外へ出きらないよう移動量を制限する
+      clampScale();
+      if (scale < 1.05) { scale = 1; tx = 0; ty = 0; }
+      const maxX = (scale - 1) * im.offsetWidth / 2, maxY = (scale - 1) * im.offsetHeight / 2;
+      tx = Math.max(-maxX, Math.min(maxX, tx));
+      ty = Math.max(-maxY, Math.min(maxY, ty));
+      apply();
+      // 閉じるのはここではなく click で行う（ここで消すと、直後に発火する click が
+      // 下にある選択肢ボタン等へ抜けて誤回答・再拡大になるため）
+      tapClose = e.type === 'pointerup' && !moved && !hadMulti && scale === 1;
       hadMulti = false;
     }
   };
+  ov.addEventListener('click', () => { if (tapClose) ov.remove(); tapClose = false; });
   ov.addEventListener('pointerup', end);
   ov.addEventListener('pointercancel', end);
 }
