@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="14d11249c9";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="2a4bc9be7b";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1551,9 +1551,59 @@ function openQuizImgZoom(src) {
   const im = document.createElement('img');
   im.alt = '';
   im.src = src;
+  im.draggable = false;
   ov.appendChild(im);
-  ov.addEventListener('click', () => ov.remove());
   document.body.appendChild(ov);
+  // 2本指のピンチで拡大縮小、拡大中は1本指（またはピンチ中の移動）でドラッグ。
+  // 動かさずに離したタップだけを「閉じる」操作として扱う（拡大中は閉じない）。
+  let scale = 1, tx = 0, ty = 0;
+  const pts = new Map();          // pointerId -> {x, y}
+  let lastDist = 0, lastMid = null, moved = false, hadMulti = false;
+  const apply = () => { im.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
+  im.style.transformOrigin = 'center center';
+  im.style.willChange = 'transform';
+  const clampScale = () => {
+    if (scale < 1) { scale = 1; tx = 0; ty = 0; }
+    if (scale > 6) scale = 6;
+  };
+  ov.addEventListener('pointerdown', e => {
+    ov.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size >= 2) { hadMulti = true; lastDist = 0; lastMid = null; }
+    moved = false;
+  });
+  ov.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    const prev = pts.get(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size >= 2) {
+      const [a, b] = [...pts.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (lastDist) { scale *= dist / lastDist; clampScale(); }
+      if (lastMid) { tx += mid.x - lastMid.x; ty += mid.y - lastMid.y; }
+      lastDist = dist; lastMid = mid; moved = true;
+      apply();
+    } else if (scale > 1) {
+      tx += e.clientX - prev.x; ty += e.clientY - prev.y;
+      moved = true; apply();
+    } else if (Math.hypot(e.clientX - prev.x, e.clientY - prev.y) > 3) {
+      moved = true;
+    }
+  });
+  const end = e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    lastDist = 0; lastMid = null;
+    if (pts.size === 0) {
+      clampScale(); apply();
+      // ピンチ・ドラッグをしていない単なるタップで、拡大していなければ閉じる
+      if (e.type === 'pointerup' && !moved && !hadMulti && scale === 1) ov.remove();
+      hadMulti = false;
+    }
+  };
+  ov.addEventListener('pointerup', end);
+  ov.addEventListener('pointercancel', end);
 }
 function renderQuizImages(container, qIndex, kind, count) {
   const sig = `${roomCode}:${qIndex}:${kind}:${count}`;
