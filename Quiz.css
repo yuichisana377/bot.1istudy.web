@@ -329,7 +329,7 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
 .qz-choice-spacer{ flex-grow:0; transition:flex-grow .35s ease; }
 .qz-choice-spacer.qz-choices-bottom{ flex-grow:1; }
 /* 正解発表中だけ：画面ぴったり固定をやめ、内容が多いときは自由に縦スクロールできる */
-body.qz-fixed-screen.qz-reveal-scroll{ overflow:auto; touch-action:pan-y pinch-zoom; }
+body.qz-fixed-screen.qz-reveal-scroll{ overflow:visible; touch-action:pan-y; }
 body.qz-reveal-scroll #screen-host-play, body.qz-reveal-scroll #screen-player-play{
   height:auto; min-height:100vh; min-height:100dvh; overflow:visible;
 }

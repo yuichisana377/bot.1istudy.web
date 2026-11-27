@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="231d2489ec";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="0a19546f6b";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -117,9 +117,10 @@ function withAuth(extra = {}) {
 //   3画面の間だけbody自体のスクロールもJS側で明示的に止める。
 const QZ_FIXED_HEIGHT_SCREENS = new Set(['host-play', 'player-play', 'ranking']);
 function showScreenQ(id) {
-  if (!document.getElementById('screen-' + id)?.classList.contains('active')) closeQuizImgZoom();
+  // ★ 他の画面から外す前に「すでにこの画面か」を判定する（外した後だと常にfalseになる）
+  const wasActive = !!document.getElementById('screen-' + id)?.classList.contains('active');
+  if (!wasActive) closeQuizImgZoom();
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
-  const wasActive = document.getElementById('screen-' + id).classList.contains('active');
   document.getElementById('screen-' + id).classList.add('active');
   // 同じ画面の再描画（0.4秒ごとのポーリング）ではスクロール位置を触らない
   if (!wasActive) window.scrollTo(0, 0);
@@ -230,6 +231,7 @@ async function initQuizApp() {
 
 function backToHomeFromResult() {
   stopPolling();
+  document.body.classList.remove('qz-reveal-scroll');
   const wasCode = roomCode;
   roomCode = null; isHost = false; renderedQIndex = -1; renderedState = null;
   history.replaceState(null, '', location.pathname);
