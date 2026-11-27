@@ -1130,6 +1130,22 @@ body {
 .notice-body.markdown-body pre code {
   background: none;
   padding: 0;
+  white-space: pre;
+  word-break: normal;
+}
+.notice-body.markdown-body pre {
+  position: relative;
+  white-space: pre;
+  word-break: normal;
+}
+.notice-body.markdown-body pre.code-copyable { cursor: pointer; padding-right: 64px; }
+.code-copy-badge {
+  position: absolute; top: 6px; right: 6px;
+  font-size: 11px; line-height: 1;
+  padding: 4px 7px; border-radius: 6px;
+  background: var(--surface, #fff); color: var(--text-sub, #555);
+  border: 1px solid var(--border);
+  pointer-events: none;
 }
 
 .notice-body.markdown-body blockquote {

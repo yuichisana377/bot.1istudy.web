@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="c2dd93f36e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="f757dee963";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -292,6 +292,32 @@ async function openViewModal(filename) {
   }
 }
 
+/** コードブロック(pre)をタップするとクリップボードへコピーできるようにする */
+function setupCodeCopy(pre) {
+  pre.classList.add('code-copyable');
+  pre.title = 'タップでコピー';
+  const badge = document.createElement('span');
+  badge.className = 'code-copy-badge';
+  badge.textContent = 'コピー';
+  pre.appendChild(badge);
+  pre.addEventListener('click', async () => {
+    const code = pre.querySelector('code');
+    const text = (code || pre).textContent;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        ok = document.execCommand('copy'); ta.remove();
+      } catch (e2) {}
+    }
+    badge.textContent = ok ? 'コピーしました' : 'コピー失敗';
+    clearTimeout(badge._t);
+    badge._t = setTimeout(() => { badge.textContent = 'コピー'; }, 1500);
+  });
+}
+
 /** .md は GitHub 風に Markdown レンダリング、.txt はプレーンテキスト表示 */
 function renderNoticeBody(bodyEl, filename, content) {
   const isMd = /\.md$/i.test(filename);
@@ -301,8 +327,10 @@ function renderNoticeBody(bodyEl, filename, content) {
   if (isMd && window.marked && window.DOMPurify) {
     bodyEl.classList.remove('notice-plain');
     bodyEl.classList.add('markdown-body');
-    const rawHtml = marked.parse(content, { breaks: true, gfm: true });
+    // 改行コードを揃える（\r\n だと ``` の行判定が崩れる環境があるため）
+    const rawHtml = marked.parse(String(content).replace(/\r\n?/g, '\n'), { breaks: true, gfm: true });
     bodyEl.innerHTML = DOMPurify.sanitize(rawHtml);
+    bodyEl.querySelectorAll('pre').forEach(setupCodeCopy);
   } else {
     bodyEl.classList.remove('markdown-body');
     bodyEl.classList.add('notice-plain');
