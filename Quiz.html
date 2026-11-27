@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="687244c0ec">
-<script src="/Version.js?v=687244c0ec"></script>
+<meta name="app-version" content="7f91656351">
+<script src="/Version.js?v=7f91656351"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>みんなでクイズ</title>
 <!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
      共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
-<link rel="stylesheet" href="/Style.css?v=687244c0ec">
-<link rel="stylesheet" href="Quiz.css?v=687244c0ec">
+<link rel="stylesheet" href="/Style.css?v=7f91656351">
+<link rel="stylesheet" href="Quiz.css?v=7f91656351">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -172,13 +172,13 @@ window.addEventListener('error', function (e) {
     <div class="qz-field">
       <span class="qz-field-label">途中参加</span>
       <div class="qz-toggle-group" id="hs-late-join-toggle">
-        <button type="button" class="qz-toggle-opt active" onclick="setLateJoinOption(false)">許可しない</button>
-        <button type="button" class="qz-toggle-opt" onclick="setLateJoinOption(true)">許可する</button>
+        <button type="button" class="qz-toggle-opt" onclick="setLateJoinOption(false)">許可しない</button>
+        <button type="button" class="qz-toggle-opt active" onclick="setLateJoinOption(true)">許可する</button>
       </div>
       <p class="qz-hint">許可すると、クイズが始まった後でも「参加する」の一覧からそのクイズを選んで途中から参加できます（一覧には終了するまで「プレイ中」として出続けます）。</p>
     </div>
 
-    <div class="qz-field" id="hs-score-mode-field" style="display:none">
+    <div class="qz-field" id="hs-score-mode-field">
       <span class="qz-field-label">順位のつけ方</span>
       <div class="qz-toggle-group" id="hs-score-mode-toggle">
         <button type="button" class="qz-toggle-opt active" onclick="setScoreMode('total')">合計点</button>
@@ -424,11 +424,11 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=687244c0ec"></script>
-<script src="/SwipeGuard.js?v=687244c0ec"></script>
-<script src="/Dialog.js?v=687244c0ec"></script>
-<script src="/Dropdown.js?v=687244c0ec"></script>
-<script src="/Common.js?v=687244c0ec"></script>
-<script src="Quiz.js?v=687244c0ec"></script>
+<script src="/Icons.js?v=7f91656351"></script>
+<script src="/SwipeGuard.js?v=7f91656351"></script>
+<script src="/Dialog.js?v=7f91656351"></script>
+<script src="/Dropdown.js?v=7f91656351"></script>
+<script src="/Common.js?v=7f91656351"></script>
+<script src="Quiz.js?v=7f91656351"></script>
 </body>
 </html>

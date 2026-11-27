@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="687244c0ec";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="7f91656351";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -433,7 +433,7 @@ function quizErrorText(code) {
 // ============================================================
 //  クイズを作る（ホスト：セットアップ）
 // ============================================================
-let hsAllowLateJoin = false; // 途中参加を許可するか（作成のたびにデフォルト＝不許可へ戻す）
+let hsAllowLateJoin = true; // 途中参加を許可するか（作成のたびにデフォルト＝許可へ戻す）
 let hsScoreMode = 'total'; // 'total'（合計点）/ 'average'（1問あたり平均点。途中参加ありのときのみ有効）
 function setScoreMode(mode) {
   hsScoreMode = mode;
@@ -476,7 +476,7 @@ function updateTimingHint() {
 async function goHostSetupScreen() {
   showScreenQ('host-setup');
   document.getElementById('hs-error').textContent = '';
-  setLateJoinOption(false);
+  setLateJoinOption(true);
   // ★ 追加：詳細設定も毎回リセットする（ボーナス問題なし・出題時間/発表時間は既定値）
   document.getElementById('hs-bonus-count').value = '1';
   setBonusMode('none');
