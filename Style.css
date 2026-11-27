@@ -1138,12 +1138,12 @@ body {
   white-space: pre;
   word-break: normal;
 }
-.notice-body.markdown-body pre.code-copyable { cursor: pointer; padding-right: 64px; }
+.notice-body.markdown-body pre.code-copyable { cursor: pointer; padding-right: 100px; }
 .code-copy-badge {
   position: absolute; top: 6px; right: 6px;
   font-size: 11px; line-height: 1;
   padding: 4px 7px; border-radius: 6px;
-  background: var(--surface, #fff); color: var(--text-sub, #555);
+  background: var(--surface, #fff); color: var(--text-secondary);
   border: 1px solid var(--border);
   pointer-events: none;
 }

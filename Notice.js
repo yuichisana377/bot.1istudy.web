@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="f757dee963";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="2b7e24e2d6";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -292,6 +292,19 @@ async function openViewModal(filename) {
   }
 }
 
+function legacyCopyText(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.readOnly = true;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;font-size:16px';
+    document.body.appendChild(ta);
+    ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
 /** コードブロック(pre)をタップするとクリップボードへコピーできるようにする */
 function setupCodeCopy(pre) {
   pre.classList.add('code-copyable');
@@ -301,16 +314,16 @@ function setupCodeCopy(pre) {
   badge.textContent = 'コピー';
   pre.appendChild(badge);
   pre.addEventListener('click', async () => {
-    const code = pre.querySelector('code');
-    const text = (code || pre).textContent;
+    // バッジ以外の本文だけを取り出す（生HTMLの<pre>でもバッジ文字が混ざらないように）
+    const clone = pre.cloneNode(true);
+    clone.querySelectorAll('.code-copy-badge').forEach(n => n.remove());
+    const text = clone.textContent;
     let ok = false;
-    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
-        ok = document.execCommand('copy'); ta.remove();
-      } catch (e2) {}
+    // iOS等ではawait後だとexecCommandが拒否されるため、先に同期のフォールバックを使う
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      ok = legacyCopyText(text);
+    } else {
+      try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { ok = legacyCopyText(text); }
     }
     badge.textContent = ok ? 'コピーしました' : 'コピー失敗';
     clearTimeout(badge._t);
@@ -329,7 +342,7 @@ function renderNoticeBody(bodyEl, filename, content) {
     bodyEl.classList.add('markdown-body');
     // 改行コードを揃える（\r\n だと ``` の行判定が崩れる環境があるため）
     const rawHtml = marked.parse(String(content).replace(/\r\n?/g, '\n'), { breaks: true, gfm: true });
-    bodyEl.innerHTML = DOMPurify.sanitize(rawHtml);
+    bodyEl.innerHTML = DOMPurify.sanitize(rawHtml, { FORBID_ATTR: ['style'] });
     bodyEl.querySelectorAll('pre').forEach(setupCodeCopy);
   } else {
     bodyEl.classList.remove('markdown-body');
