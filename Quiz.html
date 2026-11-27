@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="b2670a3772">
-<script src="/Version.js?v=b2670a3772"></script>
+<meta name="app-version" content="b511855218">
+<script src="/Version.js?v=b511855218"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>みんなでクイズ</title>
 <!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
      共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
-<link rel="stylesheet" href="/Style.css?v=b2670a3772">
-<link rel="stylesheet" href="Quiz.css?v=b2670a3772">
+<link rel="stylesheet" href="/Style.css?v=b511855218">
+<link rel="stylesheet" href="Quiz.css?v=b511855218">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -368,6 +368,21 @@ window.addEventListener('error', function (e) {
   <div class="qz-body qz-body-center">
     <div class="qz-podium" id="result-podium"></div>
     <div class="qz-full-leaderboard" id="result-list"></div>
+    <button class="qz-cta" id="result-next-btn" onclick="showReviewScreen()" style="display:none">次へ</button>
+    <button class="qz-cta" id="result-home-btn" onclick="backToHomeFromResult()">ホームに戻る</button>
+  </div>
+</section>
+
+<!-- ============ 結果発表のあとの振り返り（自分の正答率・問題ごとの正誤） ============ -->
+<section class="screen" id="screen-review">
+  <header class="qz-header">
+    <span></span>
+    <div class="qz-brand-sm">あなたの結果</div>
+    <span></span>
+  </header>
+  <div class="qz-body">
+    <div class="qz-review-summary" id="review-summary"></div>
+    <div id="review-list"></div>
     <button class="qz-cta" onclick="backToHomeFromResult()">ホームに戻る</button>
   </div>
 </section>
@@ -430,11 +445,11 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=b2670a3772"></script>
-<script src="/SwipeGuard.js?v=b2670a3772"></script>
-<script src="/Dialog.js?v=b2670a3772"></script>
-<script src="/Dropdown.js?v=b2670a3772"></script>
-<script src="/Common.js?v=b2670a3772"></script>
-<script src="Quiz.js?v=b2670a3772"></script>
+<script src="/Icons.js?v=b511855218"></script>
+<script src="/SwipeGuard.js?v=b511855218"></script>
+<script src="/Dialog.js?v=b511855218"></script>
+<script src="/Dropdown.js?v=b511855218"></script>
+<script src="/Common.js?v=b511855218"></script>
+<script src="Quiz.js?v=b511855218"></script>
 </body>
 </html>

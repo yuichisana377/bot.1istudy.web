@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="b2670a3772";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="b511855218";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -231,6 +231,7 @@ async function initQuizApp() {
 
 function backToHomeFromResult() {
   stopPolling();
+  lastReview = null;
   document.body.classList.remove('qz-reveal-scroll');
   const wasCode = roomCode;
   roomCode = null; isHost = false; renderedQIndex = -1; renderedState = null;
@@ -824,7 +825,10 @@ function stopQuizRealtime() {
 }
 async function pollOnce() {
   if (!roomCode) return;
+  const polledCode = roomCode;
   const data = await apiGet('quiz_state', withAuth({ code: roomCode }));
+  // ★ 待っている間にホームへ戻る／別ルームへ移った場合、遅れて届いた応答で画面を戻さない
+  if (roomCode !== polledCode) return;
   if (!data.ok) {
     if (data.error === 'room_not_found') {
       stopPolling();
@@ -1726,8 +1730,37 @@ async function confirmQuitPlayer() {
 // ============================================================
 //  結果発表
 // ============================================================
+// ★ 追加：結果発表のあとの「次へ」で出す振り返り画面（正答率・間違えた問題・合っていた問題）
+let lastReview = null;
+function showReviewScreen() {
+  const rv = lastReview;
+  if (!rv) { backToHomeFromResult(); return; }
+  const pct = rv.total ? Math.round(rv.correct_count / rv.total * 100) : 0;
+  document.getElementById('review-summary').innerHTML = `
+    <div class="qz-review-pct">${pct}%</div>
+    <div class="qz-review-sub">正答率（${rv.total}問中 ${rv.correct_count}問正解）</div>`;
+  const row = it => `
+    <div class="qz-review-item ${it.correct === true ? 'ok' : it.correct === false ? 'ng' : 'none'}">
+      <div class="qz-review-q"><span class="qz-review-no">第${it.index + 1}問</span>${it.question ? escapeHtml(it.question) : '（画像の問題）'}</div>
+      <div class="qz-review-a">正解：${escapeHtml(it.correct_text)}</div>
+      ${it.correct === true ? '' : `<div class="qz-review-a you">あなたの答え：${it.your_text ? escapeHtml(it.your_text) : '（未回答）'}</div>`}
+      ${it.explanation ? `<div class="qz-review-exp">${escapeHtml(it.explanation)}</div>` : ''}
+    </div>`;
+  const sec = (title, list) => list.length ? `<h3 class="qz-review-h">${title}（${list.length}）</h3>${list.map(row).join('')}` : '';
+  document.getElementById('review-list').innerHTML =
+    sec('間違えた問題', rv.items.filter(i => i.correct === false)) +
+    sec('未回答の問題', rv.items.filter(i => i.correct === null)) +
+    sec('合っていた問題', rv.items.filter(i => i.correct === true));
+  showScreenQ('review');
+}
+
 function renderResult(room) {
   stopPolling();
+  lastReview = room.review || lastReview;
+  // 振り返り画面を見ている最中に、遅れて届いた応答で結果画面へ戻さない
+  if (document.getElementById('screen-review')?.classList.contains('active')) return;
+  document.getElementById('result-next-btn').style.display = lastReview ? '' : 'none';
+  document.getElementById('result-home-btn').style.display = lastReview ? 'none' : '';
   showScreenQ('result');
   // ★ 修正：room.players はサーバー側で既にスコア降順（同点は回答時間合計が
   //   短い方が上）に並べ済みなので、ここで再ソートしない（以前はスコアだけで
