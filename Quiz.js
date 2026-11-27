@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="06c83097da";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="231d2489ec";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -119,8 +119,10 @@ const QZ_FIXED_HEIGHT_SCREENS = new Set(['host-play', 'player-play', 'ranking'])
 function showScreenQ(id) {
   if (!document.getElementById('screen-' + id)?.classList.contains('active')) closeQuizImgZoom();
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+  const wasActive = document.getElementById('screen-' + id).classList.contains('active');
   document.getElementById('screen-' + id).classList.add('active');
-  window.scrollTo(0, 0);
+  // 同じ画面の再描画（0.4秒ごとのポーリング）ではスクロール位置を触らない
+  if (!wasActive) window.scrollTo(0, 0);
   document.body.classList.toggle('qz-fixed-screen', QZ_FIXED_HEIGHT_SCREENS.has(id));
 }
 
@@ -850,6 +852,12 @@ async function pollOnce() {
 // ============================================================
 function renderRoom(room) {
   lastRoomSnapshot = room;
+  // 正解発表中だけ、出題画面を自由にスクロールできるようにする（Quiz.css の qz-reveal-scroll）
+  const revealScroll = room.state === 'reveal';
+  if (document.body.classList.contains('qz-reveal-scroll') !== revealScroll) {
+    document.body.classList.toggle('qz-reveal-scroll', revealScroll);
+    if (!revealScroll) window.scrollTo(0, 0);
+  }
 
   if (room.state === 'lobby') {
     renderLobby(room);

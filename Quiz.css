@@ -328,6 +328,14 @@ body.qz-fixed-screen{ overflow:hidden; touch-action:none; }
    選択肢がパッと切り替わらず、スーッとスライドするようになる。 */
 .qz-choice-spacer{ flex-grow:0; transition:flex-grow .35s ease; }
 .qz-choice-spacer.qz-choices-bottom{ flex-grow:1; }
+/* 正解発表中だけ：画面ぴったり固定をやめ、内容が多いときは自由に縦スクロールできる */
+body.qz-fixed-screen.qz-reveal-scroll{ overflow:auto; touch-action:pan-y pinch-zoom; }
+body.qz-reveal-scroll #screen-host-play, body.qz-reveal-scroll #screen-player-play{
+  height:auto; min-height:100vh; min-height:100dvh; overflow:visible;
+}
+body.qz-reveal-scroll #screen-host-play .qz-body, body.qz-reveal-scroll #screen-player-play .qz-body{
+  overflow:visible; min-height:auto;
+}
 .qz-scroll-list{ flex:1; min-height:0; width:100%; overflow-y:auto; touch-action:pan-y; }
 #rk-my-rank{ font-weight:700; font-size:15px; color:var(--accent); flex-shrink:0; }
 
