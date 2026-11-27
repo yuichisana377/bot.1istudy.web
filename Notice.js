@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="2b7e24e2d6";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Notice.js"]="4645226ff2";/*@end*/// ============================================================
 //  Notice.js — お知らせページ用スクリプト
 //  Notice.html から読み込む
 // ============================================================
@@ -309,15 +309,18 @@ function legacyCopyText(text) {
 function setupCodeCopy(pre) {
   pre.classList.add('code-copyable');
   pre.title = 'タップでコピー';
+  // バッジは横スクロールするpreの外（外枠）に置き、スクロールについてこないようにする
+  const wrap = document.createElement('div');
+  wrap.className = 'code-wrap';
+  pre.parentNode.insertBefore(wrap, pre);
+  wrap.appendChild(pre);
   const badge = document.createElement('span');
   badge.className = 'code-copy-badge';
   badge.textContent = 'コピー';
-  pre.appendChild(badge);
+  wrap.appendChild(badge);
   pre.addEventListener('click', async () => {
     // バッジ以外の本文だけを取り出す（生HTMLの<pre>でもバッジ文字が混ざらないように）
-    const clone = pre.cloneNode(true);
-    clone.querySelectorAll('.code-copy-badge').forEach(n => n.remove());
-    const text = clone.textContent;
+    const text = pre.textContent;
     let ok = false;
     // iOS等ではawait後だとexecCommandが拒否されるため、先に同期のフォールバックを使う
     if (!navigator.clipboard || !navigator.clipboard.writeText) {
@@ -372,7 +375,7 @@ function switchNoticeTab(tab) {
     // renderNoticeBody は .md 拡張子のときのみ Markdown レンダリング、それ以外はプレーン表示
     previewEl.innerHTML = '';
     previewEl.className = 'notice-body';
-    renderNoticeBody(previewEl, filename, expandNoticeImages(content) || '（内容がありません）');
+    renderNoticeBody(previewEl, filename || 'preview.md', expandNoticeImages(content) || '（内容がありません）');
     previewEl.style.display = 'block';
     textarea.style.display = 'none';
     previewBtn.classList.add('active');
