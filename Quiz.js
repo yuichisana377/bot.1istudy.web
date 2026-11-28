@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="cc35f028bc";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="d94d2db6fa";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1802,10 +1802,10 @@ function renderResult(room) {
   // 振り返り画面を見ている最中に、遅れて届いた応答で結果画面へ戻さない
   if (document.getElementById('screen-review')?.classList.contains('active')) return;
   // 同じ結果を再描画すると表彰台の演出が最初からやり直しになるので、描画済みなら何もしない
-  if (window.__resultShownFor === roomCode && document.getElementById('screen-result')?.classList.contains('active')) return;
-  window.__resultShownFor = roomCode;
   document.getElementById('result-next-btn').style.display = lastReview ? '' : 'none';
   document.getElementById('result-home-btn').style.display = lastReview ? 'none' : '';
+  if (window.__resultShownFor === roomCode && document.getElementById('screen-result')?.classList.contains('active')) return;
+  window.__resultShownFor = roomCode;
   showScreenQ('result');
   // ★ 修正：room.players はサーバー側で既にスコア降順（同点は回答時間合計が
   //   短い方が上）に並べ済みなので、ここで再ソートしない（以前はスコアだけで
