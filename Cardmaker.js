@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="caf2c2c95e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="5279db271b";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6737,6 +6737,7 @@ function onOverlayClick(e,id) { if(e.target===document.getElementById(id)) close
 // ── 画像ライトボックス（タップで拡大表示） ──────
 function openImgLightbox(src) {
   if (!src) return;
+  lbReset();
   document.getElementById('img-lightbox-img').src = src;
   document.getElementById('img-lightbox').classList.add('open');
 }
@@ -6746,70 +6747,100 @@ function closeImgLightbox() {
   lbReset();
 }
 
-// ★ ライトボックスの拡大縮小：指2本のピンチで拡大・縮小、拡大中は1本指でドラッグ移動、
+// ★ ライトボックスの拡大縮小：指2本のピンチで拡大・縮小（指の位置を中心に）、拡大中は1本指でドラッグ移動、
 //   ダブルタップで拡大/元に戻す。拡大していない状態でタップ（動かさず離す）すると閉じる。
 //   マウス操作ではホイールでも拡大できる。
 let lbScale = 1, lbX = 0, lbY = 0;
 const lbPtrs = new Map();
-let lbPinchStart = null, lbMoved = false, lbLastTap = 0, lbDownAt = 0;
+let lbPinchStart = null, lbMoved = false, lbLastTap = 0, lbTapTimer = 0;
+function lbClampPan() {
+  const ov = document.getElementById('img-lightbox'), img = document.getElementById('img-lightbox-img');
+  if (!ov || !img) return;
+  const maxX = Math.max(0, (img.offsetWidth * lbScale - ov.clientWidth) / 2);
+  const maxY = Math.max(0, (img.offsetHeight * lbScale - ov.clientHeight) / 2);
+  lbX = Math.min(maxX, Math.max(-maxX, lbX));
+  lbY = Math.min(maxY, Math.max(-maxY, lbY));
+}
 function lbApply() {
   const img = document.getElementById('img-lightbox-img');
-  if (img) img.style.transform = lbScale === 1 && !lbX && !lbY ? '' : `translate(${lbX}px, ${lbY}px) scale(${lbScale})`;
+  if (!img) return;
+  if (lbScale <= 1) { lbScale = 1; lbX = 0; lbY = 0; img.style.transform = ''; img.style.willChange = ''; return; }
+  lbClampPan();
+  img.style.willChange = 'transform';
+  img.style.transform = `translate(${lbX}px, ${lbY}px) scale(${lbScale})`;
 }
-function lbReset() { lbScale = 1; lbX = 0; lbY = 0; lbPtrs.clear(); lbPinchStart = null; lbMoved = false; lbApply(); }
-function lbClampScale(s) { return Math.min(6, Math.max(1, s)); }
+function lbReset() {
+  clearTimeout(lbTapTimer); lbTapTimer = 0; lbLastTap = 0;
+  lbScale = 1; lbX = 0; lbY = 0; lbPtrs.clear(); lbPinchStart = null; lbMoved = false; lbApply();
+}
+// 指(fx,fy＝画面中心からの相対位置)を動かさないまま倍率を s1 にする
+function lbZoomAt(s1, fx, fy) {
+  s1 = Math.min(6, Math.max(1, s1));
+  const r = s1 / lbScale;
+  lbX = fx - (fx - lbX) * r; lbY = fy - (fy - lbY) * r;
+  lbScale = s1;
+  lbApply();
+}
 (function initLightboxZoom() {
   const ov = document.getElementById('img-lightbox');
   if (!ov) return;
-  const dist = () => { const [a, b] = [...lbPtrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  const center = () => { const r = ov.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+  const pts = () => [...lbPtrs.values()];
+  const dist = () => { const [a, b] = pts(); return Math.hypot(a.x - b.x, a.y - b.y); };
+  const mid = () => { const [a, b] = pts(); return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
   ov.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.isPrimary && lbPtrs.size > 0) lbPtrs.clear(); // 取りこぼした古い指を掃除
     ov.setPointerCapture?.(e.pointerId);
     lbPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
-    if (lbPtrs.size === 1) { lbMoved = false; lbDownAt = Date.now(); }
-    if (lbPtrs.size === 2) { lbMoved = true; lbPinchStart = { d: dist(), s: lbScale }; }
+    if (lbPtrs.size === 1) lbMoved = false;
+    if (lbPtrs.size === 2) { lbMoved = true; lbPinchStart = { d: dist() || 1, last: mid() }; }
   });
   ov.addEventListener('pointermove', e => {
     const p = lbPtrs.get(e.pointerId); if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
     p.x = e.clientX; p.y = e.clientY;
     if (lbPtrs.size >= 2 && lbPinchStart) {
-      lbScale = lbClampScale(lbPinchStart.s * dist() / (lbPinchStart.d || 1));
-      if (lbScale === 1) { lbX = 0; lbY = 0; }
-      lbApply();
+      const c = center(), m = mid(), d = dist();
+      // 2本指の中点の移動ぶんだけ画像も動かし、倍率は指の距離の変化に合わせる
+      lbX += m.x - lbPinchStart.last.x; lbY += m.y - lbPinchStart.last.y;
+      lbZoomAt(lbScale * d / lbPinchStart.d, m.x - c.x, m.y - c.y);
+      lbPinchStart = { d, last: m };
     } else if (lbPtrs.size === 1) {
       if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 8) lbMoved = true;
       if (lbScale > 1) { lbX += dx; lbY += dy; lbApply(); }
     }
   });
   const up = e => {
-    const wasSingle = lbPtrs.size === 1;
+    const wasSingle = lbPtrs.size === 1 && lbPtrs.has(e.pointerId);
     lbPtrs.delete(e.pointerId);
     if (lbPtrs.size < 2) lbPinchStart = null;
-    if (lbPtrs.size === 1) { const r = [...lbPtrs.values()][0]; r.sx = r.x; r.sy = r.y; }
-    if (!wasSingle || e.type === 'pointercancel' || lbMoved) return;
+    if (lbPtrs.size === 1) { const r = pts()[0]; r.sx = r.x; r.sy = r.y; }
+    if (!wasSingle || e.type !== 'pointerup' || lbMoved) return;
     // 動かさずに離した＝タップ
     const now = Date.now();
-    if (now - lbLastTap < 300) { // ダブルタップ：拡大 ⇄ 元に戻す
-      lbLastTap = 0;
-      if (lbScale > 1) { lbScale = 1; lbX = 0; lbY = 0; } else { lbScale = 2.5; }
-      lbApply();
+    if (now - lbLastTap < 300) { // ダブルタップ：タップ位置を中心に拡大 ⇄ 元に戻す
+      clearTimeout(lbTapTimer); lbTapTimer = 0; lbLastTap = 0;
+      const c = center();
+      if (lbScale > 1) lbZoomAt(1, 0, 0); else lbZoomAt(2.5, e.clientX - c.x, e.clientY - c.y);
     } else {
       lbLastTap = now;
-      const t = now;
-      setTimeout(() => { // ダブルタップにならなければ：拡大していなければ閉じる／拡大中は元に戻す
-        if (lbLastTap !== t) return;
-        lbLastTap = 0;
-        if (lbScale > 1) { lbScale = 1; lbX = 0; lbY = 0; lbApply(); } else closeImgLightbox();
+      clearTimeout(lbTapTimer);
+      lbTapTimer = setTimeout(() => { // ダブルタップにならなければ：拡大していなければ閉じる／拡大中は元に戻す
+        lbTapTimer = 0; lbLastTap = 0;
+        if (lbScale > 1) lbZoomAt(1, 0, 0); else closeImgLightbox();
       }, 300);
     }
   };
   ov.addEventListener('pointerup', up);
   ov.addEventListener('pointercancel', up);
+  ov.addEventListener('lostpointercapture', e => { lbPtrs.delete(e.pointerId); if (lbPtrs.size < 2) lbPinchStart = null; });
+  // iOSの古いバージョン・ホーム画面アプリでページ全体がピンチ拡大されるのを防ぐ保険
+  ['gesturestart', 'gesturechange'].forEach(t => ov.addEventListener(t, e => e.preventDefault(), { passive: false }));
   ov.addEventListener('wheel', e => {
     e.preventDefault();
-    lbScale = lbClampScale(lbScale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
-    if (lbScale === 1) { lbX = 0; lbY = 0; }
-    lbApply();
+    const c = center();
+    lbZoomAt(lbScale * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - c.x, e.clientY - c.y);
   }, { passive: false });
 })();
 

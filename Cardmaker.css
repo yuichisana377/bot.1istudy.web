@@ -875,7 +875,7 @@ html, body {
   max-width: 100%; max-height: 100%;
   border-radius: 2px; object-fit: contain;
   box-shadow: 0 8px 40px rgba(0,0,0,.4);
-  transform-origin: center center; will-change: transform; -webkit-user-drag: none; pointer-events: none;
+  transform-origin: center center; -webkit-user-drag: none; pointer-events: none;
 }
 
 /* ── カード編集モーダル：入力欄と「画像を追加」ボタンを近づける ── */
