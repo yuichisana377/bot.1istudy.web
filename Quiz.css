@@ -354,7 +354,7 @@ body.qz-reveal-scroll #screen-host-play .qz-timerbar-track, body.qz-reveal-scrol
    バーの背後を内容が透けないよう、背景色つきの帯(box-shadow)で上下を覆う。 */
 #screen-host-play .qz-timerbar-track, #screen-player-play .qz-timerbar-track{
   position:sticky; top:0; z-index:90;
-  margin-top:0; box-shadow:0 -6px 0 var(--surface-bg, var(--bg)), 0 6px 0 var(--surface-bg, var(--bg));
+  margin-top:0; box-shadow:0 -6px 0 var(--bg), 0 6px 0 var(--bg);
 }
 .qz-timerbar-fill{
   height:100%; width:100%; background:linear-gradient(90deg, var(--good), var(--gold) 60%, var(--bad));
