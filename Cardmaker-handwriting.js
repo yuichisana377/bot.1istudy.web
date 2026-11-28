@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="3e25b2c857";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker-handwriting.js"]="2af9bc5b8b";/*@end*/// ============================================================
 //  Cardmaker-handwriting.js — 手書き解答パッド（漢字モード）
 //  ─────────────────────────────────────────────
 //  学習画面（screen-study）の自動採点で、解答入力欄の上に手書きキャンバスを出す。

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="3e25b2c857";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="2af9bc5b8b";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -978,6 +978,7 @@ function renderLobby(room) {
 // ★ 追加：ホストが待機中に発行する参加URL。ログイン済みの端末ならそのままこのクイズへ、
 //   未ログインならニックネームだけ入れて参加できる（g= はサーバーID）。
 function joinUrlFor(code) {
+  if (!code) return '';
   return `${location.origin}/Quiz.html?code=${encodeURIComponent(code)}&g=${encodeURIComponent(GUILD_ID)}`;
 }
 // 端末の共有シート（Discord・LINE・メッセージ等）。対応していない端末ではコピーに切り替える
@@ -985,13 +986,14 @@ async function shareJoinUrl() {
   const url = joinUrlFor(roomCode);
   if (navigator.share) {
     try { await navigator.share({ title: 'みんなでクイズ', text: 'クイズに参加しよう！', url }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; }
+    catch (e) { if (e && (e.name === 'AbortError' || e.name === 'InvalidStateError')) return; }
   }
   copyJoinUrl(isHost ? 'hl-copy-btn' : 'pl-copy-btn');
 }
 function shareJoinUrlLine() {
   const url = joinUrlFor(roomCode);
-  window.open('https://line.me/R/msg/text/?' + encodeURIComponent('クイズに参加しよう！ ' + url), '_blank', 'noopener');
+  if (!url) return;
+  location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent('クイズに参加しよう！ ' + url);
 }
 async function copyJoinUrl(btnId) {
   const url = joinUrlFor(roomCode);
