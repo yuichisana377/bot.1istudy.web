@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="2af9bc5b8b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="5a97f94656";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -993,7 +993,10 @@ async function shareJoinUrl() {
 function shareJoinUrlLine() {
   const url = joinUrlFor(roomCode);
   if (!url) return;
-  location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent('クイズに参加しよう！ ' + url);
+  const lineUrl = 'https://line.me/R/msg/text/?' + encodeURIComponent('クイズに参加しよう！ ' + url);
+  // 別ウィンドウで開く（ロビーを離れない）。ブロックされたときだけ同じタブで開く
+  const w = window.open(lineUrl, '_blank');
+  if (w) { try { w.opener = null; } catch (e) {} } else { location.href = lineUrl; }
 }
 async function copyJoinUrl(btnId) {
   const url = joinUrlFor(roomCode);
