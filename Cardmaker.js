@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="e50098961c";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="caf2c2c95e";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6743,7 +6743,75 @@ function openImgLightbox(src) {
 function closeImgLightbox() {
   document.getElementById('img-lightbox').classList.remove('open');
   document.getElementById('img-lightbox-img').src = '';
+  lbReset();
 }
+
+// ★ ライトボックスの拡大縮小：指2本のピンチで拡大・縮小、拡大中は1本指でドラッグ移動、
+//   ダブルタップで拡大/元に戻す。拡大していない状態でタップ（動かさず離す）すると閉じる。
+//   マウス操作ではホイールでも拡大できる。
+let lbScale = 1, lbX = 0, lbY = 0;
+const lbPtrs = new Map();
+let lbPinchStart = null, lbMoved = false, lbLastTap = 0, lbDownAt = 0;
+function lbApply() {
+  const img = document.getElementById('img-lightbox-img');
+  if (img) img.style.transform = lbScale === 1 && !lbX && !lbY ? '' : `translate(${lbX}px, ${lbY}px) scale(${lbScale})`;
+}
+function lbReset() { lbScale = 1; lbX = 0; lbY = 0; lbPtrs.clear(); lbPinchStart = null; lbMoved = false; lbApply(); }
+function lbClampScale(s) { return Math.min(6, Math.max(1, s)); }
+(function initLightboxZoom() {
+  const ov = document.getElementById('img-lightbox');
+  if (!ov) return;
+  const dist = () => { const [a, b] = [...lbPtrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  ov.addEventListener('pointerdown', e => {
+    ov.setPointerCapture?.(e.pointerId);
+    lbPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+    if (lbPtrs.size === 1) { lbMoved = false; lbDownAt = Date.now(); }
+    if (lbPtrs.size === 2) { lbMoved = true; lbPinchStart = { d: dist(), s: lbScale }; }
+  });
+  ov.addEventListener('pointermove', e => {
+    const p = lbPtrs.get(e.pointerId); if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (lbPtrs.size >= 2 && lbPinchStart) {
+      lbScale = lbClampScale(lbPinchStart.s * dist() / (lbPinchStart.d || 1));
+      if (lbScale === 1) { lbX = 0; lbY = 0; }
+      lbApply();
+    } else if (lbPtrs.size === 1) {
+      if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 8) lbMoved = true;
+      if (lbScale > 1) { lbX += dx; lbY += dy; lbApply(); }
+    }
+  });
+  const up = e => {
+    const wasSingle = lbPtrs.size === 1;
+    lbPtrs.delete(e.pointerId);
+    if (lbPtrs.size < 2) lbPinchStart = null;
+    if (lbPtrs.size === 1) { const r = [...lbPtrs.values()][0]; r.sx = r.x; r.sy = r.y; }
+    if (!wasSingle || e.type === 'pointercancel' || lbMoved) return;
+    // 動かさずに離した＝タップ
+    const now = Date.now();
+    if (now - lbLastTap < 300) { // ダブルタップ：拡大 ⇄ 元に戻す
+      lbLastTap = 0;
+      if (lbScale > 1) { lbScale = 1; lbX = 0; lbY = 0; } else { lbScale = 2.5; }
+      lbApply();
+    } else {
+      lbLastTap = now;
+      const t = now;
+      setTimeout(() => { // ダブルタップにならなければ：拡大していなければ閉じる／拡大中は元に戻す
+        if (lbLastTap !== t) return;
+        lbLastTap = 0;
+        if (lbScale > 1) { lbScale = 1; lbX = 0; lbY = 0; lbApply(); } else closeImgLightbox();
+      }, 300);
+    }
+  };
+  ov.addEventListener('pointerup', up);
+  ov.addEventListener('pointercancel', up);
+  ov.addEventListener('wheel', e => {
+    e.preventDefault();
+    lbScale = lbClampScale(lbScale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+    if (lbScale === 1) { lbX = 0; lbY = 0; }
+    lbApply();
+  }, { passive: false });
+})();
 
 // ── ドロワー ──────────────────────────
 // ★ 追加：ドロワーを開いた時点（＝まだどのページに行くか決める前）で、
