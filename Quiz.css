@@ -669,7 +669,8 @@ body.qz-reveal-scroll #screen-host-play .qz-timerbar-track, body.qz-reveal-scrol
 
 /* ===== 並び替えのドラッグ ===== */
 .qz-order-chip{ user-select:none; -webkit-user-select:none; }
-.qz-order-chip.is-draggable{ touch-action:pan-y; }
+.qz-order-chip.is-draggable{ touch-action:none; }
+.qz-order-scroll.is-overflowing .qz-order-chip.is-draggable{ touch-action:pan-y; }
 .qz-order-ghost{ position:fixed; z-index:700; pointer-events:none; opacity:.92; transform:scale(1.06); box-shadow:0 8px 22px rgba(0,0,0,.25); margin:0; }
 .qz-order-dragging{ opacity:.3; }
 body.qz-order-drag-active{ cursor:grabbing; }

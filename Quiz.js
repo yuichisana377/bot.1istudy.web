@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="1af702300b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="b6f0a4b6e8";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1557,6 +1557,10 @@ function renderOrderUI(room, orderEl, ctx, force = false) {
   submit.addEventListener('click', () => submitOrderAnswer(Date.now() + quizClockOffsetMs));
   actions.append(reset, submit);
   orderEl.appendChild(actions);
+  // ★ 項目が多くて内部スクロールが必要なときだけ、指の縦ドラッグをスクロールに譲る（少ないときは自由にドラッグできる）
+  const markOverflow = () => scroll.classList.toggle('is-overflowing', scroll.scrollHeight > scroll.clientHeight + 1);
+  markOverflow();
+  requestAnimationFrame(markOverflow);
 }
 
 // ★ ドラッグ並び替え：解答欄の項目を掴んで動かす／下の項目を解答欄の好きな位置へ落とす。
@@ -1568,7 +1572,7 @@ function attachOrderDrag(chip, id, from, area, getPickCount) {
   chip.addEventListener('pointerdown', (e) => {
     if (hasAnsweredThisQ || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const sx = e.clientX, sy = e.clientY, pid0 = e.pointerId, key0 = orderPickState.key;
-    let scrollTimer = null;
+    let scrollTimer = null, cleanupTm = () => {};
     let dragging = false, ghost = null, mark = null, insertAt = -1;
     const wrapOf = (c) => c.closest('.qz-order-li') || c;
     const cells = () => Array.from(area.children).filter(n => n.dataset && n.dataset.pid != null && String(n.dataset.pid) !== String(id));
@@ -1592,7 +1596,7 @@ function attachOrderDrag(chip, id, from, area, getPickCount) {
       if (!dragging) {
         if (Math.hypot(dx, dy) < 8) return;
         // ★ 指（タッチ）で縦方向に動かし始めたら、ドラッグではなく画面のスクロールとして扱う（横に動かしたときだけドラッグ）
-        if (ev.pointerType !== 'mouse' && Math.abs(dy) > Math.abs(dx)) { finish(ev, true); return; }
+        if (ev.pointerType !== 'mouse' && Math.abs(dy) > Math.abs(dx) && chip.closest('.qz-order-scroll.is-overflowing')) { finish(ev, true); return; }
         dragging = true;
         ghost = chip.cloneNode(true);
         ghost.classList.add('qz-order-ghost');
@@ -1620,6 +1624,7 @@ function attachOrderDrag(chip, id, from, area, getPickCount) {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onCancel);
+      cleanupTm();
       clearInterval(scrollTimer);
       if (!dragging) return; // タップ → 通常のclickに任せる
       clearMark();
@@ -1643,6 +1648,10 @@ function attachOrderDrag(chip, id, from, area, getPickCount) {
     }
     const onUp = (ev) => { if (ev.pointerId === pid0) finish(ev, false); };
     const onCancel = (ev) => { if (ev.pointerId === pid0) finish(ev, true); };
+    // ドラッグ開始後にブラウザが縦スクロールを始めてpointercancelになるのを防ぐ
+    const tm = (te) => { if (dragging) te.preventDefault(); };
+    document.addEventListener('touchmove', tm, { passive: false });
+    cleanupTm = () => document.removeEventListener('touchmove', tm);
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp);
     document.addEventListener('pointercancel', onCancel);
