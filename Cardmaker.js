@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="2241f8c31b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="46459468d1";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2259,7 +2259,8 @@ async function fetchCardSetOnce(filename, timeoutMs = DECK_LOAD_BASE_TIMEOUT_MS)
   }
 }
 
-async function ensureDeckCardsLoaded(deckId, force = false) {
+// ★ background=true: ユーザーが押したわけではない裏の先読み。読み込み中の印（プレイボタンのスピナー）は出さない
+async function ensureDeckCardsLoaded(deckId, force = false, background = false) {
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return { ok: false, reason: 'not_found' };
   if (!deck.filename) { deck.cardsLoaded = true; return { ok: true }; }
@@ -2282,8 +2283,10 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
   // ★ カード枚数が多い（＝データ量が大きい）デッキほどタイムアウトを延ばす
   const timeoutMs = deckLoadTimeoutMs(expectedCount);
 
-  loadingDeckIds.add(deckId);
-  if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  if (!background) {
+    loadingDeckIds.add(deckId);
+    if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
+  }
 
   try {
     // ★ 修正：まず1回試し、タイムアウトも含むネットワークエラーの場合だけ、
@@ -2326,7 +2329,7 @@ async function ensureDeckCardsLoaded(deckId, force = false) {
   } catch(e) {
     return { ok: false, reason: 'network' };
   } finally {
-    loadingDeckIds.delete(deckId);
+    if (!background) loadingDeckIds.delete(deckId);
     if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
   }
 }
@@ -2474,7 +2477,7 @@ function preloadUnsureBadges() {
     d.filename && d.cardsLoaded === false && (studyDataCache.unsure[d.filename] || []).length > 0
     && !loadingDeckIds.has(d.id)
   );
-  targets.forEach(d => ensureDeckCardsLoaded(d.id));
+  targets.forEach(d => ensureDeckCardsLoaded(d.id, false, true));
 }
 
 // ── デッキメニュー ─────────────────────
