@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="2c3b5e50cb";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="1af702300b";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -1578,7 +1578,7 @@ function attachOrderDrag(chip, id, from, area, getPickCount) {
       let idx = list.length;
       for (let i = 0; i < list.length; i++) {
         const r = list[i].getBoundingClientRect();
-        if (area.classList.contains('qz-order-chips-area') || cellsAreInline(list)) {
+        if (area.classList.contains('qz-order-row-chips') || cellsAreInline(list)) {
           const sameRow = y >= r.top && y <= r.bottom;
           if (y < r.top || (sameRow && x < r.left + r.width / 2)) { idx = i; break; }
         } else if (y < r.top + r.height / 2) { idx = i; break; }
@@ -1591,6 +1591,8 @@ function attachOrderDrag(chip, id, from, area, getPickCount) {
       const dx = ev.clientX - sx, dy = ev.clientY - sy;
       if (!dragging) {
         if (Math.hypot(dx, dy) < 8) return;
+        // ★ 指（タッチ）で縦方向に動かし始めたら、ドラッグではなく画面のスクロールとして扱う（横に動かしたときだけドラッグ）
+        if (ev.pointerType !== 'mouse' && Math.abs(dy) > Math.abs(dx)) { finish(ev, true); return; }
         dragging = true;
         ghost = chip.cloneNode(true);
         ghost.classList.add('qz-order-ghost');
