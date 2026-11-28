@@ -13,6 +13,17 @@ html, body {
   position: fixed;
   inset: 0;
   min-height: 0; /* Style.css の body{min-height:100vh} で、見えている高さより伸びないように */
+  /* ★ スマホで画面の向きを変えたあと、position:fixed の高さが古いまま（縦向き時の高さ等）に
+     なって下側のボタンが画面外に出ることがあった。JS(下記 syncAppHeight)が実際に見えている
+     高さを --app-h に入れるので、それを優先する（JSが動かない場合は従来通り inset:0 の高さ）。 */
+  height: var(--app-h, 100%);
+}
+
+/* 横向き（高さが低い）のときは、問題文側の最低高さを小さくして下側(選択肢・次へ)に余裕を持たせる */
+@media (max-height: 520px) {
+  .study-bottom { max-height: 78%; }
+  #screen-study .study-top { min-height: 20%; padding: .6rem 1rem .5rem; }
+  .study-reveal-bar, .study-nav { padding-top: .4rem; padding-bottom: calc(.4rem + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* width:100% + padding を使う要素がはみ出さないよう、

@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="daee7affc5";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="0bc01d0a46";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -7687,3 +7687,15 @@ setInterval(checkStudyDataUpdate, 15000);
 // ★ ここまでエラーなく実行できた＝JSが生きている合図として、<body>先頭の
 //   「読み込み中…」代替表示（js-fail-fallback、Icons.js参照）を消す。
 hideLoadingFallback();
+
+// ★ 画面の向きを変えたときに、見えている高さへ合わせ直す（position:fixed の body が
+//   向き変更前の高さのまま残り、学習画面の「次へ」等が画面外に出て押せなくなるのを防ぐ）
+(function syncAppHeight() {
+  const apply = () => {
+    const h = window.innerHeight;
+    if (h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
+  };
+  apply();
+  window.addEventListener('resize', apply);
+  window.addEventListener('orientationchange', () => { apply(); setTimeout(apply, 300); });
+})();
