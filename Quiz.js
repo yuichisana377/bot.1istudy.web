@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="cb8245a03f";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="ec09620791";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -274,7 +274,18 @@ async function startGuestFlow(code) {
     }
   } catch (e) {}
   document.getElementById('gj-error').textContent = '';
+  setGuestJoinStep(false);
   showScreenQ('guest-join');
+}
+// 「メンバーですか？」の選択 → はい：ログインして（この参加URLに戻って）参加／いいえ：ニックネーム入力へ
+function setGuestJoinStep(showNickname) {
+  document.getElementById('gj-ask').style.display = showNickname ? 'none' : '';
+  ['gj-guest-label', 'gj-field', 'gj-btn'].forEach(id => { document.getElementById(id).style.display = showNickname ? '' : 'none'; });
+}
+function guestAskMember(isMember) {
+  if (!isMember) { setGuestJoinStep(true); setTimeout(() => document.getElementById('gj-nickname').focus(), 50); return; }
+  try { sessionStorage.setItem('post_login_redirect', location.href); } catch (e) {}
+  location.href = LOGIN_PATH;
 }
 function enterRoomAsGuest(code, data) {
   roomCode = code; isHost = false; isGuest = true;
