@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="b6f0a4b6e8";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="6c6ad8365e";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -466,7 +466,7 @@ function setLateJoinOption(v) {
 // ★ 追加：詳細設定（専用画面screen-host-advanced、今後も項目を増やしやすいよう分離）。
 //   ボーナス問題：'none'（無し）/'random'（ランダムにN問）/'last'（最後のN問）。
 //   出題時間・正解発表の表示時間もここに置く。いずれも作成のたびに既定値へ戻す。
-let hsBonusMode = 'none';
+let hsBonusMode = 'auto';  // 既定は「自動」（普段の学習でわからない率が高い問題を5〜10%ほど2倍にする）
 function openAdvancedSettingsScreen() {
   showScreenQ('host-advanced');
 }
@@ -475,7 +475,7 @@ function setBonusMode(mode) {
   document.querySelectorAll('#hs-bonus-toggle .qz-toggle-opt').forEach(b => {
     b.classList.toggle('active', b.dataset.bonus === mode);
   });
-  document.getElementById('hs-bonus-count-wrap').style.display = mode === 'none' ? 'none' : '';
+  document.getElementById('hs-bonus-count-wrap').style.display = (mode === 'none' || mode === 'auto') ? 'none' : '';
 }
 // ★ 追加：host-setup画面の説明文に、詳細設定で変更した出題時間・発表時間を反映する。
 function updateTimingHint() {
@@ -492,7 +492,7 @@ async function goHostSetupScreen() {
   setScoreMode('total'); // 前回の選択を引き継がず、作成のたびに合計点へ戻す
   // ★ 追加：詳細設定も毎回リセットする（ボーナス問題なし・出題時間/発表時間は既定値）
   document.getElementById('hs-bonus-count').value = '1';
-  setBonusMode('none');
+  setBonusMode('auto');
   document.getElementById('hs-time-limit').value = '20';
   document.getElementById('hs-reveal-duration').value = '5';
   updateTimingHint();
@@ -785,7 +785,9 @@ async function submitCreateRoom() {
 
   // ★ 追加：詳細設定のボーナス問題。「なし」の場合はそもそもキーを送らない
   //   （サーバー側もbonus_modeが無ければボーナス無しとして扱う）。
-  if (hsBonusMode !== 'none') {
+  if (hsBonusMode === 'none' || hsBonusMode === 'auto') {
+    body.bonus_mode = hsBonusMode;   // 'auto'：サーバーが難問から自動で選ぶ／'none'：ボーナス無し
+  } else {
     const bonusCount = parseInt(document.getElementById('hs-bonus-count').value, 10);
     if (!Number.isInteger(bonusCount) || bonusCount < 1) {
       errEl.textContent = 'ボーナス問題の問数を正しく入力してください';
@@ -1195,7 +1197,7 @@ function renderPlayScreen(room, opts) {
 //   含めて返すようになったので、その問題への各参加者の◯×も一緒に表示する。
 //   （出題中は correct フィールド自体が来ないので、その場合は何も表示しない）
 function miniLeaderboardHtml(players) {
-  return players.slice(0, 5).map((p, i) => `
+  return players.map((p, i) => `
     <div class="qz-lb-row">
       <span class="qz-lb-rank">${i + 1}</span>
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
