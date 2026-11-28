@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="4ef022687c";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="2c3b5e50cb";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -952,7 +952,7 @@ function renderIntro(room) {
   const ikey = roomCode + ':' + room.current_q;
   if (room.is_bonus && window.QzFx && window.__introFxFor !== ikey) {
     window.__introFxFor = ikey;
-    QzFx.sfx('bonus'); QzFx.confetti(60, 45);
+    QzFx.sfx('bonus');
   }
 }
 
@@ -1564,6 +1564,7 @@ function renderOrderUI(room, orderEl, ctx, force = false) {
 //   解答欄の項目を解答欄の外へ落とすと外れる。タッチでも動くようpointer eventsで実装。
 function cellsAreInline(list) { return list.length > 1 && list[0].getBoundingClientRect().top === list[1].getBoundingClientRect().top || (list.length && list[0].offsetWidth < (list[0].parentElement.clientWidth * 0.8)); }
 function attachOrderDrag(chip, id, from, area, getPickCount) {
+  chip.classList.add('is-draggable');
   chip.addEventListener('pointerdown', (e) => {
     if (hasAnsweredThisQ || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const sx = e.clientX, sy = e.clientY, pid0 = e.pointerId, key0 = orderPickState.key;
