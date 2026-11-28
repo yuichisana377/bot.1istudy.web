@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="66d43b6cd6";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="cc35f028bc";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -234,6 +234,8 @@ function backToHomeFromResult() {
   lastReview = null;
   document.body.classList.remove('qz-reveal-scroll');
   const wasCode = roomCode;
+  window.__resultShownFor = null;
+  if (window.QzFx) QzFx.cancelResult();
   roomCode = null; isHost = false; renderedQIndex = -1; renderedState = null;
   history.replaceState(null, '', location.pathname);
   if (isGuest) {
@@ -1138,15 +1140,20 @@ function renderPlayScreen(room, opts) {
       //   点数（room.your_points）をそのまま表示する。
       const pointsText = room.your_points != null ? room.your_points : (bonus ? 12 : 10); // 念のためのフォールバック
       feedbackEl.innerHTML = bonus ? (Icons.html('celebrate', {size:15}) + ` 正解！一番乗りボーナスで +${pointsText}点！`) : (Icons.html('checkCircle', {size:15}) + ` 正解！ +${pointsText}点`);
+      // ★ 演出（QuizFx.js）：紙吹雪・効果音・「+N」・連続正解。発表1回につき最初の描画でだけ出る
+      const fx = window.QzFx ? QzFx.onReveal({ key: roomCode + ':' + room.current_q, correct: true, points: pointsText, anchor: feedbackEl }) : null;
+      if (fx && fx.streak >= 3) feedbackEl.innerHTML += ` <b class="qzfx-combo${fx.first ? ' is-new' : ''}">${fx.streak}連続正解！</b>`;
     } else {
       feedbackEl.className = 'qz-answer-feedback ng';
       feedbackEl.innerHTML = Icons.html('wrong', {size:15}) + ' 不正解…';
+      if (window.QzFx) QzFx.onReveal({ key: roomCode + ':' + room.current_q, correct: false, wrongBtn: choicesEl.children[yourAnswer] });
     }
     waitingNote.style.display = 'none';
   } else if (revealed && yourAnswer === undefined) {
     feedbackEl.style.display = '';
     feedbackEl.className = 'qz-answer-feedback ng';
     feedbackEl.innerHTML = Icons.html('timer', {size:15}) + ' 時間切れで未回答でした';
+    if (window.QzFx) QzFx.onReveal({ key: roomCode + ':' + room.current_q, correct: false });
     waitingNote.style.display = 'none';
   } else if (answered) {
     feedbackEl.style.display = 'none';
@@ -1794,6 +1801,9 @@ function renderResult(room) {
   lastReview = room.review || lastReview;
   // 振り返り画面を見ている最中に、遅れて届いた応答で結果画面へ戻さない
   if (document.getElementById('screen-review')?.classList.contains('active')) return;
+  // 同じ結果を再描画すると表彰台の演出が最初からやり直しになるので、描画済みなら何もしない
+  if (window.__resultShownFor === roomCode && document.getElementById('screen-result')?.classList.contains('active')) return;
+  window.__resultShownFor = roomCode;
   document.getElementById('result-next-btn').style.display = lastReview ? '' : 'none';
   document.getElementById('result-home-btn').style.display = lastReview ? 'none' : '';
   showScreenQ('result');
@@ -1820,7 +1830,7 @@ function renderResult(room) {
     return `
       <div class="qz-podium-col ${podiumClass[i]}">
         <div class="qz-podium-name">${escapeHtml(p.nickname)}</div>
-        <div class="qz-podium-score">${p.score}${escapeHtml(p.score_unit || '点')}</div>
+        <div class="qz-podium-score" data-n="${Number(p.score) || 0}" data-unit="${escapeHtml(p.score_unit || '点')}">${p.score}${escapeHtml(p.score_unit || '点')}</div>
         <div class="qz-podium-bar"><span class="qz-podium-medal">${medalMap[i]}</span></div>
       </div>`;
   }).join('');
@@ -1831,8 +1841,12 @@ function renderResult(room) {
       <span class="qz-avatar" style="background:${escapeHtml(p.color)};color:${escapeHtml(p.text_color)}">${escapeHtml((p.nickname || '').slice(0, 2).toUpperCase())}</span>
       <span class="qz-lb-name">${escapeHtml(p.nickname)}</span>
       ${p.time_sec != null ? `<span class="qz-lb-time">${Number(p.time_sec).toFixed(1)}${escapeHtml(p.time_unit || '秒')}</span>` : ''}
-      <span class="qz-lb-score">${p.score}${escapeHtml(p.score_unit || '点')}</span>
+      <span class="qz-lb-score" data-n="${Number(p.score) || 0}" data-unit="${escapeHtml(p.score_unit || '点')}">${p.score}${escapeHtml(p.score_unit || '点')}</span>
     </div>`).join('');
+  if (window.QzFx) {
+    QzFx.countUp(document.getElementById('screen-result'));
+    QzFx.onResult(String(roomCode));
+  }
 }
 
 initQuizApp();

@@ -631,3 +631,38 @@ body.qz-reveal-scroll #screen-host-play .qz-timerbar-track, body.qz-reveal-scrol
   cursor:zoom-out; touch-action:none;
 }
 .qz-img-zoom img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:8px; user-select:none; -webkit-user-drag:none; }
+
+/* ===== 演出（QuizFx.js）2026/11/28 ===== */
+.qzfx-confetti{ position:fixed; inset:0; pointer-events:none; z-index:600; overflow:hidden; }
+.qzfx-confetti i{ position:absolute; width:8px; height:12px; border-radius:2px; opacity:0; animation:qzfxConfetti 1.7s cubic-bezier(.2,.7,.3,1) forwards; }
+@keyframes qzfxConfetti{
+  0%{ opacity:1; transform:translate(0,0) rotate(0); }
+  70%{ opacity:1; }
+  100%{ opacity:0; transform:translate(var(--dx), calc(var(--dy) + 260px)) rotate(var(--rot)); }
+}
+.qzfx-float{ position:fixed; z-index:610; pointer-events:none; transform:translate(-50%,0); font-weight:900; font-size:30px; color:var(--ok,#16a34a);
+  text-shadow:0 2px 0 #fff, 0 0 10px rgba(255,255,255,.9); animation:qzfxFloat 1.2s ease-out forwards; }
+@keyframes qzfxFloat{ 0%{ opacity:0; transform:translate(-50%,10px) scale(.6); } 20%{ opacity:1; transform:translate(-50%,-6px) scale(1.2); } 100%{ opacity:0; transform:translate(-50%,-70px) scale(1); } }
+.qz-choice-btn.qz-shake{ animation:qzfxShake .45s ease; }
+@keyframes qzfxShake{ 0%,100%{ transform:translateX(0); } 20%{ transform:translateX(-9px); } 40%{ transform:translateX(8px); } 60%{ transform:translateX(-6px); } 80%{ transform:translateX(4px); } }
+.qzfx-combo{ display:inline-block; margin-left:4px; padding:1px 8px; border-radius:999px; background:#f59e0b; color:#fff; font-size:12px; }
+.qzfx-combo.is-new{ animation:qzfxPop .5s cubic-bezier(.3,1.6,.5,1); }
+@keyframes qzfxPop{ 0%{ transform:scale(.3); } 100%{ transform:scale(1); } }
+.qz-choice-btn.qz-correct-flash{ animation:qzfxGlow .8s ease 2; }
+@keyframes qzfxGlow{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.18); } }
+.qzfx-mute{ position:fixed; right:10px; top:calc(58px + env(safe-area-inset-top)); z-index:120; width:30px; height:30px; border-radius:50%;
+  border:1px solid var(--border,#d1d5db); background:rgba(255,255,255,.85); color:#475569; display:flex; align-items:center; justify-content:center; opacity:.7; cursor:pointer; padding:0; }
+/* 結果発表：表彰台が3位→2位→1位の順にせり上がる */
+#result-podium .qz-podium-bar{ transform-origin:bottom; animation:qzfxRise .7s cubic-bezier(.2,.9,.3,1) both; }
+#result-podium .qz-podium-3 .qz-podium-bar{ animation-delay:.1s; }
+#result-podium .qz-podium-2 .qz-podium-bar{ animation-delay:.7s; }
+#result-podium .qz-podium-1 .qz-podium-bar{ animation-delay:1.3s; }
+#result-podium .qz-podium-name, #result-podium .qz-podium-score{ animation:qzfxFade .5s ease both; }
+#result-podium .qz-podium-3 .qz-podium-name, #result-podium .qz-podium-3 .qz-podium-score{ animation-delay:.5s; }
+#result-podium .qz-podium-2 .qz-podium-name, #result-podium .qz-podium-2 .qz-podium-score{ animation-delay:1.1s; }
+#result-podium .qz-podium-1 .qz-podium-name, #result-podium .qz-podium-1 .qz-podium-score{ animation-delay:1.7s; }
+@keyframes qzfxRise{ from{ transform:scaleY(0); opacity:0; } to{ transform:scaleY(1); opacity:1; } }
+@keyframes qzfxFade{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce){
+  .qz-choice-btn.qz-shake, .qz-choice-btn.qz-correct-flash, .qzfx-combo, #result-podium *{ animation:none !important; }
+}

@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="66d43b6cd6">
-<script src="/Version.js?v=66d43b6cd6"></script>
+<meta name="app-version" content="cc35f028bc">
+<script src="/Version.js?v=cc35f028bc"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>みんなでクイズ</title>
 <!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
      共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
-<link rel="stylesheet" href="/Style.css?v=66d43b6cd6">
-<link rel="stylesheet" href="Quiz.css?v=66d43b6cd6">
+<link rel="stylesheet" href="/Style.css?v=cc35f028bc">
+<link rel="stylesheet" href="Quiz.css?v=cc35f028bc">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -364,7 +364,7 @@ window.addEventListener('error', function (e) {
   <header class="qz-header">
     <span></span>
     <div class="qz-brand-sm">結果発表</div>
-    <span></span>
+    <button class="qz-icon-btn" type="button" aria-label="ホームに戻る" onclick="backToHomeFromResult()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-3px;flex-shrink:0" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></button>
   </header>
   <div class="qz-body qz-body-center">
     <div class="qz-podium" id="result-podium"></div>
@@ -446,11 +446,12 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=66d43b6cd6"></script>
-<script src="/SwipeGuard.js?v=66d43b6cd6"></script>
-<script src="/Dialog.js?v=66d43b6cd6"></script>
-<script src="/Dropdown.js?v=66d43b6cd6"></script>
-<script src="/Common.js?v=66d43b6cd6"></script>
-<script src="Quiz.js?v=66d43b6cd6"></script>
+<script src="/Icons.js?v=cc35f028bc"></script>
+<script src="/SwipeGuard.js?v=cc35f028bc"></script>
+<script src="/Dialog.js?v=cc35f028bc"></script>
+<script src="/Dropdown.js?v=cc35f028bc"></script>
+<script src="/Common.js?v=cc35f028bc"></script>
+<script src="QuizFx.js?v=cc35f028bc"></script>
+<script src="Quiz.js?v=cc35f028bc"></script>
 </body>
 </html>
