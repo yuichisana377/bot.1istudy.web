@@ -610,7 +610,18 @@ html, body {
 }
 .study-q-imgs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
 .study-q-imgs img { height: 80px; border-radius: 2px; object-fit: cover; cursor: pointer; }
-.study-bottom { flex-shrink: 0; background: var(--bg); display: flex; flex-direction: column; }
+/* ★ 選択肢が多い・長いと下側が画面より高くなり、次へ等のボタンが画面外に出て押せなかったため、
+   下側は最大でも画面の約7割までにして、超える分はこの中でスクロールさせる。
+   前へ/次へのバーはスクロールしても下端に貼り付ける。 */
+.study-bottom {
+  flex: 0 1 auto; min-height: 0; max-height: 72%;
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  background: var(--bg); display: flex; flex-direction: column;
+}
+.study-bottom > * { flex-shrink: 0; }
+.study-bottom > .study-reveal-bar,
+.study-bottom > .study-nav { position: sticky; bottom: 0; z-index: 2; background: var(--surface); }
+#screen-study .study-top { min-height: 28%; }
 
 /* 答えを見る前のバー（前へ + 答えを見る） */
 .study-reveal-bar {
