@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="d94d2db6fa";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="4ef022687c";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -944,6 +944,16 @@ function renderIntro(room) {
   document.getElementById('in-total').textContent = `全${room.total_questions}問`;
   // ★ 追加：ホストの詳細設定「ボーナス問題」対象なら予告バッジを出す
   document.getElementById('in-bonus-badge').style.display = room.is_bonus ? '' : 'none';
+  // ★ ボーナス問題は専用の派手な演出（金色の背景・大きな「×2」・紙吹雪）。通常問題は線が走る演出。
+  const scr = document.getElementById('screen-intro');
+  scr.classList.toggle('is-bonus', !!room.is_bonus);
+  const bx = document.getElementById('in-bonus-x2');
+  if (bx) bx.style.display = room.is_bonus ? '' : 'none';
+  const ikey = roomCode + ':' + room.current_q;
+  if (room.is_bonus && window.QzFx && window.__introFxFor !== ikey) {
+    window.__introFxFor = ikey;
+    QzFx.sfx('bonus'); QzFx.confetti(60, 45);
+  }
 }
 
 function renderLobby(room) {
@@ -1493,7 +1503,7 @@ function renderOrderUI(room, orderEl, ctx, force = false) {
   if (!picks.length) {
     const ph = document.createElement('p');
     ph.className = 'qz-order-placeholder';
-    ph.textContent = chips ? '下の語句をタップして文を作ってください' : '下の項目を、正しい順にタップしてください';
+    ph.textContent = chips ? '下の語句をタップ（またはドラッグ）して文を作ってください' : '下の項目をタップ／ドラッグして、正しい順に並べてください';
     area.appendChild(ph);
   }
   picks.forEach((id, i) => {
@@ -1508,7 +1518,10 @@ function renderOrderUI(room, orderEl, ctx, force = false) {
         refreshOrderUI();
       });
     }
-    area.appendChild(orderNumbered(chip, chips ? null : i + 1));
+    const cell = orderNumbered(chip, chips ? null : i + 1);
+    cell.dataset.pid = id;
+    if (!answered) attachOrderDrag(chip, id, 'pick', area, () => pickCount);
+    area.appendChild(cell);
   });
   scroll.appendChild(area);
   if (answered) return; // 送信済み：自分の並びだけ見せて発表を待つ（「ほかの人の解答を待っています…」は呼び出し元が出す）
@@ -1523,6 +1536,7 @@ function renderOrderUI(room, orderEl, ctx, force = false) {
       orderPickState.picks = [...orderPickState.picks, it.id];
       refreshOrderUI();
     });
+    attachOrderDrag(chip, it.id, 'pool', area, () => pickCount);
     pool.appendChild(chip);
   });
   scroll.appendChild(pool);
@@ -1543,6 +1557,93 @@ function renderOrderUI(room, orderEl, ctx, force = false) {
   submit.addEventListener('click', () => submitOrderAnswer(Date.now() + quizClockOffsetMs));
   actions.append(reset, submit);
   orderEl.appendChild(actions);
+}
+
+// ★ ドラッグ並び替え：解答欄の項目を掴んで動かす／下の項目を解答欄の好きな位置へ落とす。
+//   動かさずに離せば従来どおり「タップ」（解答欄の項目は外す、下の項目は末尾に追加）。
+//   解答欄の項目を解答欄の外へ落とすと外れる。タッチでも動くようpointer eventsで実装。
+function cellsAreInline(list) { return list.length > 1 && list[0].getBoundingClientRect().top === list[1].getBoundingClientRect().top || (list.length && list[0].offsetWidth < (list[0].parentElement.clientWidth * 0.8)); }
+function attachOrderDrag(chip, id, from, area, getPickCount) {
+  chip.addEventListener('pointerdown', (e) => {
+    if (hasAnsweredThisQ || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const sx = e.clientX, sy = e.clientY, pid0 = e.pointerId, key0 = orderPickState.key;
+    let scrollTimer = null;
+    let dragging = false, ghost = null, mark = null, insertAt = -1;
+    const wrapOf = (c) => c.closest('.qz-order-li') || c;
+    const cells = () => Array.from(area.children).filter(n => n.dataset && n.dataset.pid != null && String(n.dataset.pid) !== String(id));
+    const inArea = (x, y) => { const r = area.getBoundingClientRect(); return x >= r.left - 12 && x <= r.right + 12 && y >= r.top - 12 && y <= r.bottom + 12; };
+    function calcInsert(x, y) {
+      const list = cells();
+      let idx = list.length;
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i].getBoundingClientRect();
+        if (area.classList.contains('qz-order-chips-area') || cellsAreInline(list)) {
+          const sameRow = y >= r.top && y <= r.bottom;
+          if (y < r.top || (sameRow && x < r.left + r.width / 2)) { idx = i; break; }
+        } else if (y < r.top + r.height / 2) { idx = i; break; }
+      }
+      return { idx, list };
+    }
+    function clearMark() { if (mark) { mark.classList.remove('qz-order-drop-before', 'qz-order-drop-end'); mark = null; } }
+    function onMove(ev) {
+      if (ev.pointerId !== pid0) return;
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!dragging) {
+        if (Math.hypot(dx, dy) < 8) return;
+        dragging = true;
+        ghost = chip.cloneNode(true);
+        ghost.classList.add('qz-order-ghost');
+        ghost.style.width = chip.offsetWidth + 'px';
+        document.body.appendChild(ghost);
+        chip.classList.add('qz-order-dragging');
+        document.body.classList.add('qz-order-drag-active');
+      }
+      ev.preventDefault();
+      ghost.style.left = (ev.clientX - ghost.offsetWidth / 2) + 'px';
+      ghost.style.top = (ev.clientY - ghost.offsetHeight / 2) + 'px';
+      // 端に近づいたら一覧を自動スクロール
+      clearInterval(scrollTimer);
+      const sc = area.closest('.qz-order-scroll');
+      if (sc) { const sr = sc.getBoundingClientRect(); const dy2 = ev.clientY < sr.top + 40 ? -10 : ev.clientY > sr.bottom - 40 ? 10 : 0; if (dy2) scrollTimer = setInterval(() => { sc.scrollTop += dy2; }, 16); }
+      clearMark();
+      if (inArea(ev.clientX, ev.clientY)) {
+        const { idx, list } = calcInsert(ev.clientX, ev.clientY);
+        insertAt = idx;
+        if (idx < list.length) { mark = list[idx]; mark.classList.add('qz-order-drop-before'); }
+        else { mark = area; area.classList.add('qz-order-drop-end'); }
+      } else insertAt = -1;
+    }
+    function finish(ev, cancelled) {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onCancel);
+      clearInterval(scrollTimer);
+      if (!dragging) return; // タップ → 通常のclickに任せる
+      clearMark();
+      ghost.remove();
+      chip.classList.remove('qz-order-dragging');
+      document.body.classList.remove('qz-order-drag-active');
+      // この後に発火するclickを1回だけ無効化（ドラッグ後にタップ処理が走らないように）
+      const stop = (c) => { c.stopImmediatePropagation(); c.preventDefault(); };
+      chip.addEventListener('click', stop, { capture: true, once: true });
+      setTimeout(() => chip.removeEventListener('click', stop, { capture: true }), 0);
+      if (cancelled || hasAnsweredThisQ || orderPickState.key !== key0) { refreshOrderUI(); return; }
+      let picks = orderPickState.picks.filter(x => x !== id);
+      if (insertAt >= 0) {
+        if (from === 'pool' && orderPickState.picks.length >= getPickCount()) { refreshOrderUI(); return; }
+        picks.splice(Math.min(insertAt, picks.length), 0, id);
+        orderPickState.picks = picks;
+      } else if (from === 'pick') {
+        orderPickState.picks = picks; // 解答欄の外へ落とした＝外す
+      }
+      refreshOrderUI();
+    }
+    const onUp = (ev) => { if (ev.pointerId === pid0) finish(ev, false); };
+    const onCancel = (ev) => { if (ev.pointerId === pid0) finish(ev, true); };
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onCancel);
+  });
 }
 
 function refreshOrderUI() {

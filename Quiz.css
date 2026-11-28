@@ -666,3 +666,25 @@ body.qz-reveal-scroll #screen-host-play .qz-timerbar-track, body.qz-reveal-scrol
 @media (prefers-reduced-motion: reduce){
   .qz-choice-btn.qz-shake, .qz-choice-btn.qz-correct-flash, .qzfx-combo, #result-podium *{ animation:none !important; }
 }
+
+/* ===== 並び替えのドラッグ ===== */
+.qz-order-chip{ touch-action:none; user-select:none; -webkit-user-select:none; }
+.qz-order-ghost{ position:fixed; z-index:700; pointer-events:none; opacity:.92; transform:scale(1.06); box-shadow:0 8px 22px rgba(0,0,0,.25); margin:0; }
+.qz-order-dragging{ opacity:.3; }
+body.qz-order-drag-active{ cursor:grabbing; }
+.qz-order-drop-before{ box-shadow:-4px 0 0 0 var(--accent); }
+.qz-order-li.qz-order-drop-before{ box-shadow:0 -4px 0 0 var(--accent); }
+.qz-order-answer.qz-order-drop-end{ border-color:var(--accent); background:var(--accent-soft); }
+/* ===== 「第N問」演出（通常は線が走る／ボーナスは金色の×2） ===== */
+.qz-intro-line{ height:4px; width:0; margin:10px auto 0; border-radius:4px; background:var(--accent); animation:qzIntroLine .7s ease-out .2s forwards; }
+@keyframes qzIntroLine{ to{ width:140px; } }
+#screen-intro.is-bonus{ background:radial-gradient(circle at 50% 45%, #fff7d6 0%, #fde68a 55%, #fbbf24 100%); }
+#screen-intro.is-bonus .qz-intro-qnum{ color:#92400e; }
+#screen-intro.is-bonus .qz-intro-sub{ color:#92400e; }
+#screen-intro.is-bonus .qz-intro-line{ background:#d97706; }
+#screen-intro.is-bonus .qz-intro-ring{ background:radial-gradient(circle, #f59e0b 0%, rgba(245,158,11,0) 72%); animation-iteration-count:3; }
+#screen-intro.is-bonus .qz-bonus-badge{ background:#b45309; color:#fff; border-color:#92400e; font-size:15px; }
+.qz-x2{ font-weight:900; font-size:84px; line-height:1; color:#dc2626; text-shadow:0 4px 0 #fff, 0 8px 22px rgba(220,38,38,.4); animation:qzX2 .6s cubic-bezier(.3,1.7,.5,1) both, qzX2Beat 1s ease-in-out .7s infinite; }
+@keyframes qzX2{ from{ transform:scale(.1) rotate(-25deg); opacity:0; } to{ transform:scale(1) rotate(-6deg); opacity:1; } }
+@keyframes qzX2Beat{ 0%,100%{ transform:scale(1) rotate(-6deg); } 50%{ transform:scale(1.12) rotate(-6deg); } }
+@media (prefers-reduced-motion: reduce){ .qz-x2, .qz-intro-line, #screen-intro.is-bonus .qz-intro-ring{ animation:none !important; } .qz-intro-line{ width:140px; } }

@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="d94d2db6fa">
-<script src="/Version.js?v=d94d2db6fa"></script>
+<meta name="app-version" content="4ef022687c">
+<script src="/Version.js?v=4ef022687c"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>みんなでクイズ</title>
 <!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
      共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
-<link rel="stylesheet" href="/Style.css?v=d94d2db6fa">
-<link rel="stylesheet" href="Quiz.css?v=d94d2db6fa">
+<link rel="stylesheet" href="/Style.css?v=4ef022687c">
+<link rel="stylesheet" href="Quiz.css?v=4ef022687c">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -307,10 +307,12 @@ window.addEventListener('error', function (e) {
   <div class="qz-body qz-body-center">
     <!-- ★ 追加：ホストの詳細設定「ボーナス問題」対象の問題だけ予告バッジを出す -->
     <span class="qz-bonus-badge" id="in-bonus-badge" style="display:none">ボーナス問題！得点2倍</span>
+    <div class="qz-x2" id="in-bonus-x2" style="display:none" aria-hidden="true">×2</div>
     <div class="qz-intro-qnum-wrap">
       <div class="qz-intro-ring" aria-hidden="true"></div>
       <div class="qz-intro-qnum" id="in-qnum">第1問</div>
     </div>
+    <div class="qz-intro-line" aria-hidden="true"></div>
     <p class="qz-intro-sub" id="in-total"></p>
   </div>
 </section>
@@ -446,12 +448,12 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=d94d2db6fa"></script>
-<script src="/SwipeGuard.js?v=d94d2db6fa"></script>
-<script src="/Dialog.js?v=d94d2db6fa"></script>
-<script src="/Dropdown.js?v=d94d2db6fa"></script>
-<script src="/Common.js?v=d94d2db6fa"></script>
-<script src="QuizFx.js?v=d94d2db6fa"></script>
-<script src="Quiz.js?v=d94d2db6fa"></script>
+<script src="/Icons.js?v=4ef022687c"></script>
+<script src="/SwipeGuard.js?v=4ef022687c"></script>
+<script src="/Dialog.js?v=4ef022687c"></script>
+<script src="/Dropdown.js?v=4ef022687c"></script>
+<script src="/Common.js?v=4ef022687c"></script>
+<script src="QuizFx.js?v=4ef022687c"></script>
+<script src="Quiz.js?v=4ef022687c"></script>
 </body>
 </html>
