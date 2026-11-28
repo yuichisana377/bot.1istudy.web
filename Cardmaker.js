@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="46459468d1";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="dec46ff180";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -2212,6 +2212,7 @@ async function fetchAndMergeDecks() {
 //   ・既に読み込み済み（cardsLoaded=true）でも、force=true が指定された場合は
 //     必ずサーバーから最新を取り直す（他の人が後から編集・移動している可能性があるため）。
 //   ・取得中は loadingDeckIds に id を入れて一覧を再描画し、「読み込み中…」を表示する。
+const bgLoadingDeckIds = new Set(); // 裏の先読み中のデッキ（スピナーは出さず、重複取得の防止だけに使う）
 let loadingDeckIds = new Set();
 // ★ 戻り値を { ok: true } | { ok: false, reason: 'network' | 'mismatch' | 'not_found', ... } に変更。
 //   単純な true/false ではなく「なぜ失敗したか」を区別できるようにし、
@@ -2283,7 +2284,10 @@ async function ensureDeckCardsLoaded(deckId, force = false, background = false) 
   // ★ カード枚数が多い（＝データ量が大きい）デッキほどタイムアウトを延ばす
   const timeoutMs = deckLoadTimeoutMs(expectedCount);
 
-  if (!background) {
+  if (background) {
+    if (bgLoadingDeckIds.has(deckId) || loadingDeckIds.has(deckId)) return { ok: true };
+    bgLoadingDeckIds.add(deckId);
+  } else {
     loadingDeckIds.add(deckId);
     if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
   }
@@ -2300,6 +2304,8 @@ async function ensureDeckCardsLoaded(deckId, force = false, background = false) 
       data = await fetchCardSetOnce(deck.filename, timeoutMs);
     }
     const fetchedCards = data.cards || [];
+    // ★ 裏の先読みの間に、編集・プレイ側の取得が先に済んでいたら、そちらを優先して上書きしない
+    if (background && deck.cardsLoaded) return { ok: true };
 
     // ★ 安全策：サーバーが ok:true を返していても、直前まで分かっていた問題数
     //   （または、この端末に既に読み込み済みだった実際の枚数）より
@@ -2329,7 +2335,7 @@ async function ensureDeckCardsLoaded(deckId, force = false, background = false) 
   } catch(e) {
     return { ok: false, reason: 'network' };
   } finally {
-    if (!background) loadingDeckIds.delete(deckId);
+    if (background) bgLoadingDeckIds.delete(deckId); else loadingDeckIds.delete(deckId);
     if (document.querySelector('.screen.active')?.id === 'screen-list') renderDeckListUI();
   }
 }
