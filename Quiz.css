@@ -345,10 +345,15 @@ body.qz-reveal-scroll #screen-host-play .qz-body, body.qz-reveal-scroll #screen-
 .qz-timerbar-track{
   width:100%; height:8px; border-radius:999px; background:var(--bg); overflow:hidden; margin-top:4px;
 }
+/* 通常の出題中は .qz-body 自体がスクロールの基準になるので top:0。ページ全体がスクロールする
+   正解発表中だけ、ヘッダー(56px+セーフエリア)の直下に貼り付ける。 */
+body.qz-reveal-scroll #screen-host-play .qz-timerbar-track, body.qz-reveal-scroll #screen-player-play .qz-timerbar-track{
+  top:calc(56px + env(safe-area-inset-top, 0px));
+}
 /* ★ 出題画面：スクロールしても残り時間バーは上（ヘッダーの直下）に出し続ける。
    バーの背後を内容が透けないよう、背景色つきの帯(box-shadow)で上下を覆う。 */
 #screen-host-play .qz-timerbar-track, #screen-player-play .qz-timerbar-track{
-  position:sticky; top:calc(56px + env(safe-area-inset-top, 0px)); z-index:90;
+  position:sticky; top:0; z-index:90;
   margin-top:0; box-shadow:0 -6px 0 var(--surface-bg, var(--bg)), 0 6px 0 var(--surface-bg, var(--bg));
 }
 .qz-timerbar-fill{

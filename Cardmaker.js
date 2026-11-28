@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="ef6fc2564e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="db892fc898";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5994,7 +5994,7 @@ function answerStudyChoice(idx) {
 function finishStudyChoiceAnswer(card, entry, isCorrect, selectedSet) {
   studyChoiceAnswered = true;
 
-  document.getElementById('study-answer-panel').classList.add('show');
+  document.getElementById('study-answer-panel').classList.add('show'); { const _sb = document.querySelector('#screen-study .study-bottom'); if (_sb) _sb.scrollTop = 0; } // 解答が画面外に出ないよう先頭へ
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
   document.getElementById('study-choice-submit-wrap').style.display = 'none';
@@ -6251,7 +6251,7 @@ function gradeStudyOrder(giveUp) {
   st.answered = true;
   drawStudyOrder(perPos);
 
-  document.getElementById('study-answer-panel').classList.add('show');
+  document.getElementById('study-answer-panel').classList.add('show'); { const _sb = document.querySelector('#screen-study .study-bottom'); if (_sb) _sb.scrollTop = 0; } // 解答が画面外に出ないよう先頭へ
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
   const result = document.getElementById('study-grade-result');
@@ -6450,7 +6450,7 @@ async function revealAnswer() {
     try { await hwFlush(); } catch (e) {} finally { setBtnLoading(btn, false); revealWaiting = false; }
     if (idx !== studyIdx) return; // 待っている間に別のカードへ移っていたら採点しない
   }
-  document.getElementById('study-answer-panel').classList.add('show');
+  document.getElementById('study-answer-panel').classList.add('show'); { const _sb = document.querySelector('#screen-study .study-bottom'); if (_sb) _sb.scrollTop = 0; } // 解答が画面外に出ないよう先頭へ
   document.getElementById('study-reveal-bar').style.display = 'none';
   document.getElementById('study-nav').style.display = '';
   // ★ 追加：自動採点モードなら○×判定を行う（通常カードだけ。選択式・並び替えはそれぞれの採点処理がある）
