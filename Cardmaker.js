@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="911258b122";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="2241f8c31b";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -1311,7 +1311,13 @@ function showScreen(id) {
   document.getElementById('screen-' + id).classList.add('active');
   window.scrollTo(0, 0);
   if (wasStudying) finishAutoTimerIfPending(); // ★ 追加：途中で学習を終えたので、自動計測していれば止めて記録する
-  if (id === 'list') {
+  if (id === 'list' && wasStudying) {
+    // ★ プレイ画面から戻るだけのときは、デッキ・フォルダ・並び順・学習データを
+    //   サーバーから取り直さない（プレイ中に一覧側のデータは変わっておらず、変わったとしても
+    //   定期ポーリングが拾う）。毎回4つのAPIを呼んで一覧が読み込み直しになるのを避け、
+    //   プレイ中に進んだ「続きから」「わからない」などの表示だけ手元の状態で更新する。
+    renderDeckListUI();
+  } else if (id === 'list') {
     decks = loadDecks();
     folders = loadFoldersCache();
     sharedOrderCache = loadSharedOrderCache();
