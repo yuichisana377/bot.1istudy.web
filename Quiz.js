@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="6c6ad8365e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Quiz.js"]="b62ff91b5e";/*@end*/// ============================================================
 //  Quiz.js — みんなでクイズ（オンライン早押し4択）
 //  Quiz.html から読み込む。Cardmaker.js / Login.js と同じ
 //  ログインセッション（localStorage の sl_session）をそのまま使う。
@@ -464,7 +464,7 @@ function setLateJoinOption(v) {
 }
 
 // ★ 追加：詳細設定（専用画面screen-host-advanced、今後も項目を増やしやすいよう分離）。
-//   ボーナス問題：'none'（無し）/'random'（ランダムにN問）/'last'（最後のN問）。
+//   ボーナス問題：'auto'（難問を自動で）/'none'（無し）/'random'（ランダムにN問）/'last'（最後のN問）。
 //   出題時間・正解発表の表示時間もここに置く。いずれも作成のたびに既定値へ戻す。
 let hsBonusMode = 'auto';  // 既定は「自動」（普段の学習でわからない率が高い問題を5〜10%ほど2倍にする）
 function openAdvancedSettingsScreen() {
@@ -783,7 +783,7 @@ async function submitCreateRoom() {
   }
   body.reveal_duration_sec = revealDuration;
 
-  // ★ 追加：詳細設定のボーナス問題。「なし」の場合はそもそもキーを送らない
+  // ★ 追加：詳細設定のボーナス問題。「自動」「なし」は明示的に送る（キーが無い古いクライアントはボーナス無し扱い）
   //   （サーバー側もbonus_modeが無ければボーナス無しとして扱う）。
   if (hsBonusMode === 'none' || hsBonusMode === 'auto') {
     body.bonus_mode = hsBonusMode;   // 'auto'：サーバーが難問から自動で選ぶ／'none'：ボーナス無し
@@ -1563,6 +1563,7 @@ function renderOrderUI(room, orderEl, ctx, force = false) {
   const markOverflow = () => scroll.classList.toggle('is-overflowing', scroll.scrollHeight > scroll.clientHeight + 1);
   markOverflow();
   requestAnimationFrame(markOverflow);
+  try { new ResizeObserver(markOverflow).observe(scroll); } catch (e) {}
 }
 
 // ★ ドラッグ並び替え：解答欄の項目を掴んで動かす／下の項目を解答欄の好きな位置へ落とす。
