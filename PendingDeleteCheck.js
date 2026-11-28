@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["PendingDeleteCheck.js"]="b62ff91b5e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["PendingDeleteCheck.js"]="3e25b2c857";/*@end*/// ============================================================
 //  PendingDeleteCheck.js — 削除依頼のWeb確認（Discord未連携の受け皿）
 //  ─────────────────────────────
 //  作成者本人以外がデッキ／お知らせの削除を依頼すると、通常はDiscord DMで

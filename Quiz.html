@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="app-version" content="b62ff91b5e">
-<script src="/Version.js?v=b62ff91b5e"></script>
+<meta name="app-version" content="3e25b2c857">
+<script src="/Version.js?v=3e25b2c857"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
 <title>みんなでクイズ</title>
 <!-- ★ CardMakerと見た目を揃えるため、独自のGoogle Fontsは使わず
      共通スタイル（Style.css）をCardmaker.htmlと同じ順序で読み込む -->
-<link rel="stylesheet" href="/Style.css?v=b62ff91b5e">
-<link rel="stylesheet" href="Quiz.css?v=b62ff91b5e">
+<link rel="stylesheet" href="/Style.css?v=3e25b2c857">
+<link rel="stylesheet" href="Quiz.css?v=3e25b2c857">
 </head>
 <body>
 <div id="js-fail-fallback" style="position:fixed;inset:0;z-index:999999;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:sans-serif;">
@@ -288,7 +288,11 @@ window.addEventListener('error', function (e) {
     <!-- ★ 追加：参加URL（ログイン済みならそのまま参加、未ログインならニックネームだけで参加できる） -->
     <p class="qz-hint">またはこのURLを送ってください（ログインしていない人もニックネームだけで参加できます）</p>
     <div class="qz-join-url" id="hl-url"></div>
-    <button class="qz-cta" id="hl-copy-btn" type="button" onclick="copyJoinUrl()">参加URLをコピー</button>
+    <div class="qz-share-row">
+      <button class="qz-cta" id="hl-copy-btn" type="button" onclick="copyJoinUrl('hl-copy-btn')">参加URLをコピー</button>
+      <button class="qz-cta qz-cta-sub" type="button" onclick="shareJoinUrl()">共有（Discordなど）</button>
+      <button class="qz-cta qz-cta-sub" type="button" onclick="shareJoinUrlLine()">LINEで送る</button>
+    </div>
     <p class="qz-hint" id="hl-count">参加者 0人</p>
     <div class="qz-player-grid" id="hl-players"></div>
     <button class="qz-cta" id="hl-start-btn" onclick="hostStart()" disabled>クイズを始める</button>
@@ -402,6 +406,12 @@ window.addEventListener('error', function (e) {
     <!-- ★ 修正：絵文字（⏳）はOSによって見た目が違いすぎる（自作アイコン方針に合わせて置き換え、ゆっくり明滅させる） -->
     <div class="qz-waiting-anim"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M12 6V3.5"/><circle cx="12" cy="14" r="7.5"/><path d="M12 14V10"/><path d="M17.5 8.2 19 6.8"/></svg></div>
     <p class="qz-label" id="pl-status">ホストが開始するのを待っています…</p>
+    <p class="qz-hint">友だちを誘うときはこのURLを送れます</p>
+    <div class="qz-share-row">
+      <button class="qz-cta" id="pl-copy-btn" type="button" onclick="copyJoinUrl('pl-copy-btn')">参加URLをコピー</button>
+      <button class="qz-cta qz-cta-sub" type="button" onclick="shareJoinUrl()">共有（Discordなど）</button>
+      <button class="qz-cta qz-cta-sub" type="button" onclick="shareJoinUrlLine()">LINEで送る</button>
+    </div>
     <div class="qz-player-grid" id="pl-players"></div>
   </div>
 </section>
@@ -449,12 +459,12 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="/Icons.js?v=b62ff91b5e"></script>
-<script src="/SwipeGuard.js?v=b62ff91b5e"></script>
-<script src="/Dialog.js?v=b62ff91b5e"></script>
-<script src="/Dropdown.js?v=b62ff91b5e"></script>
-<script src="/Common.js?v=b62ff91b5e"></script>
-<script src="QuizFx.js?v=b62ff91b5e"></script>
-<script src="Quiz.js?v=b62ff91b5e"></script>
+<script src="/Icons.js?v=3e25b2c857"></script>
+<script src="/SwipeGuard.js?v=3e25b2c857"></script>
+<script src="/Dialog.js?v=3e25b2c857"></script>
+<script src="/Dropdown.js?v=3e25b2c857"></script>
+<script src="/Common.js?v=3e25b2c857"></script>
+<script src="QuizFx.js?v=3e25b2c857"></script>
+<script src="Quiz.js?v=3e25b2c857"></script>
 </body>
 </html>

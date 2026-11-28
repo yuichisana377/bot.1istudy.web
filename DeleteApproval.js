@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["DeleteApproval.js"]="b62ff91b5e";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["DeleteApproval.js"]="3e25b2c857";/*@end*/// ============================================================
 //  DeleteApproval.js — 削除の確認ページ用スクリプト
 //  DeleteApproval.html から読み込む。
 //  Discordの削除依頼DMに載っているリンク（?token=...）を開いた作成者本人が、
