@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="5279db271b";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="cb8245a03f";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -5685,7 +5685,7 @@ function shuffleArrayInPlace(arr) {
 }
 // ★ 追加（2026/08/26）：4択にできる条件（答えの異なりの数）を厳しくしたことで、
 //   対象デッキの候補プール自体が元々大きくなった。AIに渡す候補数もそれに合わせて
-//   広げる（FOUR_CHOICE_POOL_MIN_SIZEと合わせて調整すること）。
+//   広げる（※2026/11/28：デッキ内の解答数による下限は撤廃済み）。
 //   ★ 修正（同日）：綴り類似度による事前絞り込み（bigram＋文字数）だけでは、
 //   記述式（文章）の解答で「本当は紛らわしいのに順位が低くて漏れる」候補が
 //   出やすいとの指摘を受け、16→40に拡大（AIが「デッキの中から広く探す」余地を増やす）。
@@ -5731,18 +5731,23 @@ async function setupFourChoiceIfNeeded() {
   }
 
   // ★ 修正（2026/08/26）：答えの異なりが「6件以上」でもまだ選別の余地が乏しく
-  //   紛らわしくない誤答が混ざりやすかったため、「10件を超える（11件以上）」へ
+  //   紛らわしくない誤答が混ざりやすかったため、「10件を超える（11件以上）」へ（※2026/11/28に下限ごと撤廃）
   //   さらに厳格化した。これにより対象デッキの候補プールが元々広くなり、
   //   AI（scheduleFourChoiceAiEnhancement）に渡す候補（shortlist）も自然と
   //   充実する＝AIがより自信を持って紛らわしい誤答を選べるようになる。
-  const FOUR_CHOICE_POOL_MIN_SIZE = 10;
   studyCards.forEach(card => {
     if (cardType(card) !== 'normal') return; // ★ 「4択にする」は通常カードだけが対象（選択式・並び替えは自前のUIで答える）
     const correct = ((studyReverse ? card.question : card.answer) || '').trim();
     if (!correct) return;
     const deckId = card.__deckId || studyDeckId;
     const pool = poolFor(deckId).filter(a => a !== correct);
-    if (pool.length <= FOUR_CHOICE_POOL_MIN_SIZE) return;
+    if (pool.length < 3) {
+      // ★ 変更（2026/11/28）：誤答はサーバー側のClaudeが作る方式になったため、解答の種類数による下限は撤廃。
+      //   デッキ内の候補が3件未満の小さなデッキは、サーバーのキャッシュが取れたカードだけ4択にする
+      //   （下の取得後、取れなかった needsServer のカードはここから外す）。
+      studyChoicesMap.set(cardKey(card), { choices: [correct], correctIndex: 0, shortlist: [], needsServer: true });
+      return;
+    }
     studyChoicesMap.set(cardKey(card), buildChoiceEntry(correct, pool));
   });
 
@@ -5755,6 +5760,7 @@ async function setupFourChoiceIfNeeded() {
   //   取得できたカードはローカルのAI強化（scheduleFourChoiceAiEnhancement）の
   //   対象から外し、二重に問い合わせない。
   const serverCoveredKeys = await applyServerChoiceCaches();
+  for (const [k, v] of [...studyChoicesMap]) if (v.needsServer && !serverCoveredKeys.has(k)) studyChoicesMap.delete(k);
   scheduleFourChoiceAiEnhancement(serverCoveredKeys);
 }
 
