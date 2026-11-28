@@ -20,8 +20,8 @@ html, body {
 }
 
 /* 横向き（高さが低い）のときは、問題文側の最低高さを小さくして下側(選択肢・次へ)に余裕を持たせる */
-@media (max-height: 520px) {
-  .study-bottom { max-height: 78%; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .study-bottom { max-height: 78%; max-height: calc(var(--app-h, 100dvh) * .72); }
   #screen-study .study-top { min-height: 20%; padding: .6rem 1rem .5rem; }
   .study-reveal-bar, .study-nav { padding-top: .4rem; padding-bottom: calc(.4rem + env(safe-area-inset-bottom, 0px)); }
 }
@@ -625,7 +625,7 @@ html, body {
    下側は最大でも画面の約7割までにして、超える分はこの中でスクロールさせる。
    前へ/次へのバーはスクロールしても下端に貼り付ける。 */
 .study-bottom {
-  flex: 0 1 auto; min-height: 0; max-height: 72%;
+  flex: 0 1 auto; min-height: 0; max-height: 72%; max-height: calc(var(--app-h, 100dvh) * .66);
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   background: var(--bg); display: flex; flex-direction: column;
 }

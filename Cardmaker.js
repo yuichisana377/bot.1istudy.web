@@ -1,4 +1,4 @@
-/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="45b1a53624";/*@end*/// ============================================================
+/*@ver*/(window.__jsVer=window.__jsVer||{})["Cardmaker.js"]="ef6fc2564e";/*@end*/// ============================================================
 //  Cardmaker.js — CardMaker専用スクリプト
 //  Cardmaker.html から読み込む
 // ============================================================
@@ -6321,6 +6321,8 @@ function updateStudyOriginalNumberBadge(c) {
 }
 
 function renderStudyCard() {
+  // ★ 下側(.study-bottom)は内部スクロールするので、前のカードのスクロール位置を持ち越さない
+  const _sb = document.querySelector('#screen-study .study-bottom'); if (_sb) _sb.scrollTop = 0;
   const progressId = studyIsFolder ? studyFolderId : studyDeckId;
   if (studyIdx >= studyCards.length) {
     updateUnderstandingBadgeForCurrentCard(); // ★ 追加：完了画面には「今のカード」が無いので隠す
@@ -7691,9 +7693,14 @@ hideLoadingFallback();
 // ★ 画面の向きを変えたときに、見えている高さへ合わせ直す（position:fixed の body が
 //   向き変更前の高さのまま残り、学習画面の「次へ」等が画面外に出て押せなくなるのを防ぐ）
 (function syncAppHeight() {
+  let raf = 0;
   const apply = () => {
-    const h = window.innerHeight;
-    if (h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const h = window.innerHeight;
+      if (h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
+    });
   };
   apply();
   window.addEventListener('resize', apply);
